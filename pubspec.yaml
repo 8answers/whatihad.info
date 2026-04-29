@@ -35,6 +35,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.2.1
+  supabase_flutter: ^2.10.3
 
 dev_dependencies:
   flutter_test:
@@ -60,6 +61,15 @@ flutter:
 
   assets:
     - assets/What_i_had_logo.svg
+    - "assets/Smart 1 (1).png"
+    - "assets/Pray 1.png"
+    - assets/Lose_weight.png
+    - assets/Maintain.png
+    - assets/Gain_muscle.png
+    - assets/Gain_weight.png
+    - assets/t_and_c.svg
+    - assets/Apple.svg
+    - assets/Google Logo (1).svg
 
   fonts:
     - family: Borel
