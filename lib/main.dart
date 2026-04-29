@@ -23,14 +23,10 @@ const String _supabaseAnonKey = String.fromEnvironment(
 const String _authCallbackScheme = 'com.example.whatihad';
 const String _authCallbackHost = 'login-callback';
 const String _authCallbackUrl = '$_authCallbackScheme://$_authCallbackHost/';
-const String _goalLoseWeightImageUrl =
-    'https://www.figma.com/api/mcp/asset/e4f68868-5de5-4a2c-a178-b2b3c398d379';
-const String _goalGainWeightImageUrl =
-    'https://www.figma.com/api/mcp/asset/30a9ea78-34b3-4067-b197-154ca9e3e1dc';
-const String _goalGainMuscleImageUrl =
-    'https://www.figma.com/api/mcp/asset/6f69c26c-01e0-4095-96ae-c19a65537af3';
-const String _goalMaintainImageUrl =
-    'https://www.figma.com/api/mcp/asset/6f69c26c-01e0-4095-96ae-c19a65537af3';
+const String _goalLoseWeightImageUrl = 'assets/Lose_weight.png';
+const String _goalGainWeightImageUrl = 'assets/Gain_weight.png';
+const String _goalGainMuscleImageUrl = 'assets/Gain_muscle.png';
+const String _goalMaintainImageUrl = 'assets/Maintain.png';
 
 PageRouteBuilder<void> _buildSwipeRoute({
   required Widget screen,
@@ -965,6 +961,21 @@ class _NameScreenState extends State<NameScreen>
   bool _isNameClicked = false;
   bool _didNavigateForward = false;
 
+  void _setNameDefaultState() {
+    _isNameLongPressed = false;
+    _isNameClicked = false;
+  }
+
+  void _handleNameTap() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isNameClicked = true;
+      _isNameLongPressed = false;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -974,12 +985,7 @@ class _NameScreenState extends State<NameScreen>
     )..repeat();
     _nameFocusNode.addListener(() {
       if (mounted) {
-        setState(() {
-          if (!_nameFocusNode.hasFocus) {
-            _isNameLongPressed = false;
-            _isNameClicked = false;
-          }
-        });
+        setState(() {});
       }
     });
   }
@@ -1020,7 +1026,10 @@ class _NameScreenState extends State<NameScreen>
       body: _AnimatedGradientScene(
         animation: _controller,
         contentBuilder: (context, metrics) {
-          final titleTop = metrics.padding.top + (15 * metrics.designScale);
+          final titleTop =
+              metrics.padding.top +
+              (15 * metrics.designScale) +
+              (30 * metrics.designScale);
           final contentWidth = math.min(
             358 * metrics.designScale,
             metrics.width - (32 * metrics.designScale),
@@ -1055,7 +1064,7 @@ class _NameScreenState extends State<NameScreen>
                     ),
                     SizedBox(height: 32 * metrics.designScale),
                     GestureDetector(
-                      behavior: HitTestBehavior.translucent,
+                      behavior: HitTestBehavior.opaque,
                       onLongPressDown: (_) {
                         if (mounted) {
                           setState(() {
@@ -1076,7 +1085,6 @@ class _NameScreenState extends State<NameScreen>
                         if (mounted) {
                           setState(() {
                             _isNameLongPressed = false;
-                            _isNameClicked = false;
                           });
                         }
                       },
@@ -1084,35 +1092,27 @@ class _NameScreenState extends State<NameScreen>
                         if (mounted) {
                           setState(() {
                             _isNameLongPressed = false;
-                            _isNameClicked = false;
                           });
                         }
                       },
                       onTap: () {
-                        if (mounted) {
-                          setState(() {
-                            _isNameClicked = true;
-                            _isNameLongPressed = false;
-                          });
-                          _nameFocusNode.requestFocus();
-                        }
+                        _handleNameTap();
                       },
-                      child: Container(
+                      child: SizedBox(
                         width: double.infinity,
                         height: 56 * metrics.designScale,
-                        decoration: BoxDecoration(
-                          color: _isNameLongPressed
+                        child: _RotatingGlassPanel(
+                          scale: metrics.designScale,
+                          borderRadius: 16 * metrics.designScale,
+                          fillColor: _isNameLongPressed
                               ? Colors.transparent
                               : (_isNameClicked
                                     ? Colors.white
                                     : const Color(0x52FFFFFF)),
-                          borderRadius: BorderRadius.circular(
-                            16 * metrics.designScale,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16 * metrics.designScale,
                           ),
-                          border: Border.all(
-                            color: const Color(0x80FFFFFF),
-                            width: (1 * metrics.designScale).clamp(0.8, 1.4),
-                          ),
+                          expandToBounds: true,
                           boxShadow: (_isNameLongPressed || _isNameClicked)
                               ? const [
                                   BoxShadow(
@@ -1121,68 +1121,64 @@ class _NameScreenState extends State<NameScreen>
                                     blurStyle: BlurStyle.outer,
                                   ),
                                 ]
-                              : const [],
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 16 * metrics.designScale,
-                        ),
-                        alignment: Alignment.center,
-                        child: IgnorePointer(
-                          ignoring: true,
-                          child: TextField(
-                            focusNode: _nameFocusNode,
-                            enableInteractiveSelection: false,
-                            onChanged: (_) {
-                              if (mounted) {
-                                setState(() {});
-                              }
-                            },
-                            onEditingComplete: () {
-                              FocusScope.of(context).unfocus();
-                              if (mounted) {
-                                setState(() {
-                                  _isNameLongPressed = false;
-                                  _isNameClicked = false;
-                                });
-                              }
-                            },
-                            onSubmitted: (_) {
-                              FocusScope.of(context).unfocus();
-                              if (mounted) {
-                                setState(() {
-                                  _isNameLongPressed = false;
-                                  _isNameClicked = false;
-                                });
-                              }
-                            },
-                            controller: _nameController,
-                            textInputAction: TextInputAction.done,
-                            textAlign: TextAlign.center,
-                            textAlignVertical: TextAlignVertical.center,
-                            cursorColor: _isNameClicked
-                                ? Colors.black
-                                : Colors.white,
-                            style: TextStyle(
-                              color: _isNameClicked
+                              : const <BoxShadow>[],
+                          enableBlur: !(_isNameLongPressed || _isNameClicked),
+                          child: Align(
+                            alignment: Alignment.center,
+                            child: TextField(
+                              focusNode: _nameFocusNode,
+                              onTap: _handleNameTap,
+                              onChanged: (_) {
+                                if (mounted) {
+                                  setState(() {});
+                                }
+                              },
+                              onEditingComplete: () {
+                                FocusScope.of(context).unfocus();
+                                if (mounted) {
+                                  setState(() {
+                                    _setNameDefaultState();
+                                  });
+                                }
+                              },
+                              onSubmitted: (_) {
+                                FocusScope.of(context).unfocus();
+                                if (mounted) {
+                                  setState(() {
+                                    _setNameDefaultState();
+                                  });
+                                }
+                              },
+                              controller: _nameController,
+                              textInputAction: TextInputAction.done,
+                              enableInteractiveSelection: false,
+                              textAlign: TextAlign.center,
+                              textAlignVertical: TextAlignVertical.center,
+                              cursorColor: _isNameClicked
                                   ? Colors.black
                                   : Colors.white,
-                              fontSize: (18 * metrics.designScale).clamp(
-                                16.0,
-                                22.0,
-                              ),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            decoration: InputDecoration(
-                              isCollapsed: true,
-                              border: InputBorder.none,
-                              hintText: '',
-                              hintStyle: TextStyle(
+                              style: TextStyle(
                                 color: _isNameClicked
-                                    ? const Color(0x80000000)
-                                    : const Color(0xB3FFFFFF),
-                                fontSize: (16 * metrics.designScale).clamp(
-                                  14.0,
-                                  20.0,
+                                    ? Colors.black
+                                    : Colors.white,
+                                fontSize: (18 * metrics.designScale).clamp(
+                                  16.0,
+                                  22.0,
+                                ),
+                                fontWeight: FontWeight.w500,
+                              ),
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                border: InputBorder.none,
+                                hintText: '',
+                                hintStyle: TextStyle(
+                                  color: _isNameClicked
+                                      ? const Color(0x80000000)
+                                      : const Color(0xB3FFFFFF),
+                                  fontSize: (16 * metrics.designScale).clamp(
+                                    14.0,
+                                    20.0,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1272,6 +1268,7 @@ class _GoalScreenState extends State<GoalScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   int _selectedGoalIndex = -1;
+  bool _didNavigateForward = false;
 
   static const List<_GoalOption> _goalOptions = [
     _GoalOption(label: 'Lose Weight', imageUrl: _goalLoseWeightImageUrl),
@@ -1305,7 +1302,15 @@ class _GoalScreenState extends State<GoalScreen>
     );
   }
 
-  void _goNext() {}
+  void _goNext() {
+    if (_didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const AgeScreen()));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1314,6 +1319,7 @@ class _GoalScreenState extends State<GoalScreen>
         animation: _controller,
         contentBuilder: (context, metrics) {
           final titleTop = metrics.padding.top + (15 * metrics.designScale);
+          final questionTop = titleTop + (30 * metrics.designScale);
           final contentWidth = math.min(
             358 * metrics.designScale,
             metrics.width - (32 * metrics.designScale),
@@ -1332,7 +1338,7 @@ class _GoalScreenState extends State<GoalScreen>
           return Stack(
             children: [
               Positioned(
-                top: titleTop,
+                top: questionTop,
                 left: 0,
                 right: 0,
                 child: Text(
@@ -1438,6 +1444,645 @@ class _GoalScreenState extends State<GoalScreen>
   }
 }
 
+class AgeScreen extends StatefulWidget {
+  const AgeScreen({super.key});
+
+  @override
+  State<AgeScreen> createState() => _AgeScreenState();
+}
+
+class _AgeScreenState extends State<AgeScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final FixedExtentScrollController _ageScrollController;
+  int _selectedAge = 18;
+  bool _didNavigateForward = false;
+
+  static final List<int> _ages = List<int>.generate(85, (index) => 13 + index);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+    final initialIndex = _ages.indexOf(_selectedAge);
+    _ageScrollController = FixedExtentScrollController(
+      initialItem: initialIndex < 0 ? 0 : initialIndex,
+    );
+  }
+
+  @override
+  void dispose() {
+    _ageScrollController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBackToGoal() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const GoalScreen(), fromLeft: true),
+    );
+  }
+
+  void _goNext() {
+    if (_didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const WeightScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final titleTop = metrics.padding.top + (15 * metrics.designScale);
+          final questionTop = titleTop + (30 * metrics.designScale);
+          final contentWidth = math.min(
+            358 * metrics.designScale,
+            metrics.width - (32 * metrics.designScale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final agesTop = titleTop + (116 * metrics.designScale);
+          final wheelHeight = (420 * metrics.designScale).clamp(320.0, 500.0);
+          final itemExtent = (108 * metrics.designScale).clamp(86.0, 130.0);
+          final selectedCardHeight = (142 * metrics.designScale).clamp(
+            110.0,
+            170.0,
+          );
+          final controlsBottom = math.max(
+            66 * metrics.designScale,
+            metrics.padding.bottom + (26 * metrics.designScale),
+          );
+          final backButtonWidth = 79 * metrics.designScale;
+          final nextButtonWidth = 263 * metrics.designScale;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: questionTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'What’s your Age?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * metrics.designScale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: agesTop,
+                left: contentLeft,
+                width: contentWidth,
+                child: SizedBox(
+                  height: wheelHeight,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      IgnorePointer(
+                        child: Container(
+                          width: double.infinity,
+                          height: selectedCardHeight,
+                          decoration: BoxDecoration(
+                            color: const Color(0x52FFFFFF),
+                            borderRadius: BorderRadius.circular(
+                              16 * metrics.designScale,
+                            ),
+                            border: Border.all(
+                              color: const Color(0x80FFFFFF),
+                              width: (1 * metrics.designScale).clamp(0.8, 1.4),
+                            ),
+                          ),
+                        ),
+                      ),
+                      ListWheelScrollView.useDelegate(
+                        controller: _ageScrollController,
+                        physics: const FixedExtentScrollPhysics(),
+                        itemExtent: itemExtent,
+                        perspective: 0.0025,
+                        diameterRatio: 3.0,
+                        squeeze: 1.0,
+                        overAndUnderCenterOpacity: 0.8,
+                        onSelectedItemChanged: (index) {
+                          if (mounted) {
+                            setState(() => _selectedAge = _ages[index]);
+                          }
+                        },
+                        childDelegate: ListWheelChildBuilderDelegate(
+                          childCount: _ages.length,
+                          builder: (context, index) {
+                            final age = _ages[index];
+                            final distance = (age - _selectedAge).abs();
+                            final isSelected = distance == 0;
+                            final isNear = distance == 1;
+                            final fontSize = isSelected
+                                ? (96 * metrics.designScale).clamp(72.0, 112.0)
+                                : (isNear
+                                      ? (64 * metrics.designScale).clamp(
+                                          48.0,
+                                          80.0,
+                                        )
+                                      : (32 * metrics.designScale).clamp(
+                                          24.0,
+                                          42.0,
+                                        ));
+                            final color = isSelected
+                                ? Colors.black
+                                : (distance >= 2
+                                      ? const Color(0x80000000)
+                                      : Colors.black);
+
+                            return Center(
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 130),
+                                style: TextStyle(
+                                  fontSize: fontSize,
+                                  color: color,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.0,
+                                ),
+                                child: Text('$age'),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBackToGoal,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * metrics.designScale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * metrics.designScale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: const Color(0x8FFFD206),
+                        enablePressShadeFeedback: true,
+                        onTap: _goNext,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * metrics.designScale / 1.7)
+                                    .clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * metrics.designScale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * metrics.designScale).clamp(
+                                20.0,
+                                28.0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class WeightScreen extends StatefulWidget {
+  const WeightScreen({super.key});
+
+  @override
+  State<WeightScreen> createState() => _WeightScreenState();
+}
+
+class _WeightScreenState extends State<WeightScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  int _selectedWeight = 60;
+  bool _didNavigateForward = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBackToAge() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const AgeScreen(), fromLeft: true),
+    );
+  }
+
+  void _goNext() {
+    if (_didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final titleTop = metrics.padding.top + (15 * metrics.designScale);
+          final questionTop = titleTop + (30 * metrics.designScale);
+          final contentWidth = math.min(
+            358 * metrics.designScale,
+            metrics.width - (32 * metrics.designScale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final cardTop = titleTop + (170 * metrics.designScale);
+          final rulerTop = cardTop + (205 * metrics.designScale);
+          final controlsBottom = math.max(
+            66 * metrics.designScale,
+            metrics.padding.bottom + (26 * metrics.designScale),
+          );
+          final backButtonWidth = 79 * metrics.designScale;
+          final nextButtonWidth = 263 * metrics.designScale;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: questionTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'What’s your Weight?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * metrics.designScale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardTop,
+                left: contentLeft,
+                width: contentWidth,
+                child: Container(
+                  height: (140 * metrics.designScale).clamp(110.0, 170.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0x52FFFFFF),
+                    borderRadius: BorderRadius.circular(
+                      16 * metrics.designScale,
+                    ),
+                    border: Border.all(
+                      color: const Color(0x80FFFFFF),
+                      width: (1 * metrics.designScale).clamp(0.8, 1.4),
+                    ),
+                  ),
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '$_selectedWeight',
+                          style: TextStyle(
+                            fontSize: (96 * metrics.designScale).clamp(
+                              72.0,
+                              112.0,
+                            ),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                            height: 1.0,
+                          ),
+                        ),
+                        SizedBox(width: 16 * metrics.designScale),
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: 12 * metrics.designScale,
+                          ),
+                          child: Text(
+                            'kg',
+                            style: TextStyle(
+                              fontSize: (32 * metrics.designScale).clamp(
+                                24.0,
+                                42.0,
+                              ),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: rulerTop,
+                left: contentLeft,
+                width: contentWidth,
+                child: _WeightRuler(
+                  scale: metrics.designScale,
+                  value: _selectedWeight,
+                  onChanged: (value) {
+                    if (mounted) {
+                      setState(() => _selectedWeight = value);
+                    }
+                  },
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBackToAge,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * metrics.designScale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * metrics.designScale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: const Color(0x8FFFD206),
+                        enablePressShadeFeedback: true,
+                        onTap: _goNext,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * metrics.designScale / 1.7)
+                                    .clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * metrics.designScale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * metrics.designScale).clamp(
+                                20.0,
+                                28.0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WeightRuler extends StatefulWidget {
+  const _WeightRuler({
+    required this.scale,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final double scale;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  static const int _minWeight = 30;
+  static const int _maxWeight = 150;
+
+  @override
+  State<_WeightRuler> createState() => _WeightRulerState();
+}
+
+class _WeightRulerState extends State<_WeightRuler> {
+  double _dragRemainderPx = 0;
+
+  void _applyDeltaPx(double deltaPx) {
+    final pixelsPerKg = (20 * widget.scale).clamp(14.0, 26.0);
+    // Inverted mapping: drag right decreases, drag left increases.
+    _dragRemainderPx -= deltaPx;
+    final deltaKg = (_dragRemainderPx / pixelsPerKg).truncate();
+
+    if (deltaKg != 0) {
+      final next = (widget.value + deltaKg).clamp(
+        _WeightRuler._minWeight,
+        _WeightRuler._maxWeight,
+      );
+      if (next != widget.value) {
+        widget.onChanged(next);
+      }
+      _dragRemainderPx -= deltaKg * pixelsPerKg;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final rulerHeight = (88 * scale).clamp(70.0, 110.0);
+    final markerSize = (18 * scale).clamp(14.0, 24.0);
+
+    return SizedBox(
+      height: rulerHeight,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: (details) {
+              // Right drag increases, left drag decreases.
+              _applyDeltaPx(details.delta.dx);
+            },
+            onHorizontalDragEnd: (_) {
+              _dragRemainderPx = 0;
+            },
+            onTapDown: (details) {
+              final pixelsPerKg = (20 * scale).clamp(14.0, 26.0);
+              final dxFromCenter =
+                  details.localPosition.dx - (constraints.maxWidth / 2);
+              final jumpKg = (dxFromCenter / pixelsPerKg).round();
+              if (jumpKg == 0) {
+                return;
+              }
+              final next = (widget.value - jumpKg).clamp(
+                _WeightRuler._minWeight,
+                _WeightRuler._maxWeight,
+              );
+              if (next != widget.value) {
+                widget.onChanged(next);
+              }
+            },
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _WeightTicksPainter(
+                      scale: scale,
+                      value: widget.value,
+                      minWeight: _WeightRuler._minWeight,
+                      maxWeight: _WeightRuler._maxWeight,
+                      baselineBottomInset: markerSize,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: rulerHeight - markerSize,
+                  child: Icon(
+                    Icons.arrow_drop_up,
+                    color: Colors.white,
+                    size: markerSize,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WeightTicksPainter extends CustomPainter {
+  const _WeightTicksPainter({
+    required this.scale,
+    required this.value,
+    required this.minWeight,
+    required this.maxWeight,
+    required this.baselineBottomInset,
+  });
+
+  final double scale;
+  final int value;
+  final int minWeight;
+  final int maxWeight;
+  final double baselineBottomInset;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centerX = size.width / 2;
+    final baseY = size.height - baselineBottomInset;
+    final spacing = (20 * scale).clamp(14.0, 26.0);
+    final strokeWidth = (2 * scale).clamp(1.2, 2.4);
+    final centerIndex = value;
+    final visibleTicks = (size.width / spacing).ceil() + 6;
+    final minTick = math.max(minWeight, centerIndex - visibleTicks);
+    final maxTick = math.min(maxWeight, centerIndex + visibleTicks);
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    for (int tick = minTick; tick <= maxTick; tick++) {
+      final x = centerX + ((tick - centerIndex) * spacing);
+      if (x < -4 || x > size.width + 4) {
+        continue;
+      }
+
+      final isCenter = tick == centerIndex;
+      final isMajor = tick % 5 == 0;
+      final lineHeight = isCenter
+          ? (70 * scale).clamp(54.0, 84.0)
+          : (isMajor ? (56 * scale) : (50 * scale)).clamp(36.0, 70.0);
+      final distanceRatio = ((x - centerX).abs() / (size.width / 2)).clamp(
+        0.0,
+        1.0,
+      );
+      final opacity = (1.0 - (distanceRatio * 0.45)).clamp(0.45, 1.0);
+
+      paint.color = isCenter
+          ? Colors.white
+          : Colors.black.withValues(alpha: opacity);
+      canvas.drawLine(Offset(x, baseY - lineHeight), Offset(x, baseY), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeightTicksPainter oldDelegate) {
+    return oldDelegate.scale != scale ||
+        oldDelegate.value != value ||
+        oldDelegate.minWeight != minWeight ||
+        oldDelegate.maxWeight != maxWeight ||
+        oldDelegate.baselineBottomInset != baselineBottomInset;
+  }
+}
+
 class _GoalOption {
   const _GoalOption({required this.label, required this.imageUrl});
 
@@ -1445,7 +2090,7 @@ class _GoalOption {
   final String imageUrl;
 }
 
-class _GoalCard extends StatelessWidget {
+class _GoalCard extends StatefulWidget {
   const _GoalCard({
     required this.scale,
     required this.label,
@@ -1461,50 +2106,127 @@ class _GoalCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_GoalCard> createState() => _GoalCardState();
+}
+
+class _GoalCardState extends State<_GoalCard> {
+  bool _isLongPressed = false;
+  bool _isClicked = false;
+
+  @override
+  void didUpdateWidget(covariant _GoalCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isSelected && _isClicked && !_isLongPressed) {
+      setState(() {
+        _isClicked = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final isActive = _isClicked || widget.isSelected;
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (isActive ? Colors.white : const Color(0x52FFFFFF));
+    final hasShadow = _isLongPressed || isActive;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
     return GestureDetector(
-      onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: EdgeInsets.all(16 * scale),
-        decoration: BoxDecoration(
-          color: const Color(0x52FFFFFF),
-          borderRadius: BorderRadius.circular(16 * scale),
-          border: Border.all(
-            color: isSelected ? Colors.white : const Color(0x80FFFFFF),
-            width: (1 * scale).clamp(0.8, 1.4),
+      onLongPressDown: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressStart: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressEnd: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        if (mounted) {
+          setState(() {
+            _isClicked = true;
+            _isLongPressed = false;
+          });
+        }
+        widget.onTap();
+      },
+      child: SizedBox(
+        width: double.infinity,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: fillColor,
+          padding: EdgeInsets.all(16 * scale),
+          expandToBounds: false,
+          boxShadow: shadows,
+          enableBlur: !(_isLongPressed || isActive),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 80 * scale,
+                height: 80 * scale,
+                child: Image.asset(
+                  widget.imageUrl,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
+                      Icons.image_not_supported_outlined,
+                      color: const Color(0x80000000),
+                      size: 30 * scale,
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 8 * scale),
+              Text(
+                widget.label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 80 * scale,
-              height: 80 * scale,
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.image_not_supported_outlined,
-                    color: const Color(0x80000000),
-                    size: 30 * scale,
-                  );
-                },
-              ),
-            ),
-            SizedBox(height: 8 * scale),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: (16 * scale).clamp(14.0, 20.0),
-                color: Colors.black,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
         ),
       ),
     );
