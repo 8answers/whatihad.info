@@ -1008,7 +1008,8 @@ class _NameScreenState extends State<NameScreen>
   }
 
   void _goNext() {
-    if (_didNavigateForward || !mounted) {
+    final hasName = _nameController.text.trim().isNotEmpty;
+    if (!hasName || _didNavigateForward || !mounted) {
       return;
     }
     _didNavigateForward = true;
@@ -1042,6 +1043,7 @@ class _NameScreenState extends State<NameScreen>
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
           final controlsGap = 16 * metrics.designScale;
+          final isNameValid = _nameController.text.trim().isNotEmpty;
 
           return Stack(
             children: [
@@ -1154,14 +1156,10 @@ class _NameScreenState extends State<NameScreen>
                               enableInteractiveSelection: false,
                               textAlign: TextAlign.center,
                               textAlignVertical: TextAlignVertical.center,
-                              cursorColor: _isNameClicked
-                                  ? Colors.black
-                                  : Colors.white,
+                              cursorColor: Colors.black,
                               style: TextStyle(
-                                color: _isNameClicked
-                                    ? Colors.black
-                                    : Colors.white,
-                                fontSize: (18 * metrics.designScale).clamp(
+                                color: Colors.black,
+                                fontSize: (40 * metrics.designScale).clamp(
                                   16.0,
                                   22.0,
                                 ),
@@ -1172,9 +1170,8 @@ class _NameScreenState extends State<NameScreen>
                                 border: InputBorder.none,
                                 hintText: '',
                                 hintStyle: TextStyle(
-                                  color: _isNameClicked
-                                      ? const Color(0x80000000)
-                                      : const Color(0xB3FFFFFF),
+                                  color: const Color(0x80000000),
+                                  fontFamily: 'Borel',
                                   fontSize: (16 * metrics.designScale).clamp(
                                     14.0,
                                     20.0,
@@ -1218,9 +1215,11 @@ class _NameScreenState extends State<NameScreen>
                         scale: metrics.designScale,
                         height: 56 * metrics.designScale,
                         borderRadius: 32 * metrics.designScale,
-                        fillColor: const Color(0x8FFFD206),
-                        enablePressShadeFeedback: true,
-                        onTap: _goNext,
+                        fillColor: isNameValid
+                            ? const Color(0x8FFFD206)
+                            : const Color(0x14FFD206),
+                        enablePressShadeFeedback: isNameValid,
+                        onTap: isNameValid ? _goNext : () {},
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1303,7 +1302,7 @@ class _GoalScreenState extends State<GoalScreen>
   }
 
   void _goNext() {
-    if (_didNavigateForward || !mounted) {
+    if (_selectedGoalIndex < 0 || _didNavigateForward || !mounted) {
       return;
     }
     _didNavigateForward = true;
@@ -1334,6 +1333,7 @@ class _GoalScreenState extends State<GoalScreen>
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
+          final isGoalSelected = _selectedGoalIndex >= 0;
 
           return Stack(
             children: [
@@ -1405,9 +1405,11 @@ class _GoalScreenState extends State<GoalScreen>
                         scale: metrics.designScale,
                         height: 56 * metrics.designScale,
                         borderRadius: 32 * metrics.designScale,
-                        fillColor: const Color(0x8FFFD206),
-                        enablePressShadeFeedback: true,
-                        onTap: _goNext,
+                        fillColor: isGoalSelected
+                            ? const Color(0x8FFFD206)
+                            : const Color(0x14FFD206),
+                        enablePressShadeFeedback: isGoalSelected,
+                        onTap: isGoalSelected ? _goNext : () {},
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1457,8 +1459,10 @@ class _AgeScreenState extends State<AgeScreen>
   late final FixedExtentScrollController _ageScrollController;
   int _selectedAge = 18;
   bool _didNavigateForward = false;
-
-  static final List<int> _ages = List<int>.generate(85, (index) => 13 + index);
+  static const int _minAge = 0;
+  static const int _maxAge = 110;
+  List<int> get _ages =>
+      List<int>.generate(_maxAge - _minAge + 1, (index) => _minAge + index);
 
   @override
   void initState() {
@@ -1734,6 +1738,9 @@ class _WeightScreenState extends State<WeightScreen>
       return;
     }
     _didNavigateForward = true;
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const HeightScreen()));
   }
 
   @override
@@ -1750,7 +1757,9 @@ class _WeightScreenState extends State<WeightScreen>
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
           final cardTop = titleTop + (170 * metrics.designScale);
-          final rulerTop = cardTop + (205 * metrics.designScale);
+          final cardHeight = (140 * metrics.designScale).clamp(110.0, 170.0);
+          final currentRulerGap = (205 * metrics.designScale) - cardHeight;
+          final rulerTop = cardTop + cardHeight + (currentRulerGap * 2);
           final controlsBottom = math.max(
             66 * metrics.designScale,
             metrics.padding.bottom + (26 * metrics.designScale),
@@ -1780,7 +1789,7 @@ class _WeightScreenState extends State<WeightScreen>
                 left: contentLeft,
                 width: contentWidth,
                 child: Container(
-                  height: (140 * metrics.designScale).clamp(110.0, 170.0),
+                  height: cardHeight,
                   decoration: BoxDecoration(
                     color: const Color(0x52FFFFFF),
                     borderRadius: BorderRadius.circular(
@@ -1913,6 +1922,813 @@ class _WeightScreenState extends State<WeightScreen>
   }
 }
 
+class HeightScreen extends StatefulWidget {
+  const HeightScreen({super.key});
+
+  @override
+  State<HeightScreen> createState() => _HeightScreenState();
+}
+
+class _HeightScreenState extends State<HeightScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  int _selectedHeight = 180;
+  bool _didNavigateForward = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBackToWeight() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const WeightScreen(), fromLeft: true),
+    );
+  }
+
+  void _goNext() {
+    if (_didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const DailyActivityScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final titleTop = metrics.padding.top + (15 * metrics.designScale);
+          final questionTop = titleTop + (30 * metrics.designScale);
+          final contentWidth = math.min(
+            358 * metrics.designScale,
+            metrics.width - (32 * metrics.designScale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final cardWidth = (265 * metrics.designScale).clamp(220.0, 300.0);
+          final cardHeight = (100 * metrics.designScale).clamp(84.0, 124.0);
+          final cardTop = (metrics.height - cardHeight) / 2;
+          final rulerWidth = (75 * metrics.designScale).clamp(56.0, 90.0);
+          final rulerHeight = (560 * metrics.designScale).clamp(420.0, 620.0);
+          final rulerTop = (metrics.height - rulerHeight) / 2;
+          final controlsBottom = math.max(
+            66 * metrics.designScale,
+            metrics.padding.bottom + (26 * metrics.designScale),
+          );
+          final backButtonWidth = 79 * metrics.designScale;
+          final nextButtonWidth = 263 * metrics.designScale;
+          final indicatorHeight = (24 * metrics.designScale).clamp(18.0, 30.0);
+          final selectedLineLength = rulerWidth * 0.96;
+          final selectedLineStartX = metrics.width - selectedLineLength;
+          final arrowFontSize = (36 * metrics.designScale).clamp(26.0, 44.0);
+          final arrowLeft =
+              selectedLineStartX -
+              (arrowFontSize * 0.52) +
+              (2 * metrics.designScale);
+
+          return Stack(
+            children: [
+              Positioned(
+                top: questionTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'What’s your Height?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * metrics.designScale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardTop,
+                left: contentLeft,
+                width: cardWidth,
+                child: Container(
+                  height: cardHeight,
+                  decoration: BoxDecoration(
+                    color: const Color(0x52FFFFFF),
+                    borderRadius: BorderRadius.circular(
+                      16 * metrics.designScale,
+                    ),
+                    border: Border.all(
+                      color: const Color(0x80FFFFFF),
+                      width: (1 * metrics.designScale).clamp(0.8, 1.4),
+                    ),
+                  ),
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '$_selectedHeight',
+                          style: TextStyle(
+                            fontSize: (64 * metrics.designScale).clamp(
+                              52.0,
+                              76.0,
+                            ),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                            height: 1.0,
+                          ),
+                        ),
+                        SizedBox(width: 12 * metrics.designScale),
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: 10 * metrics.designScale,
+                          ),
+                          child: Text(
+                            'cm',
+                            style: TextStyle(
+                              fontSize: (32 * metrics.designScale).clamp(
+                                24.0,
+                                40.0,
+                              ),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top:
+                    cardTop +
+                    (cardHeight / 2) -
+                    (indicatorHeight / 2) -
+                    (5 * metrics.designScale),
+                left: arrowLeft,
+                child: IgnorePointer(
+                  child: Text(
+                    '←',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: arrowFontSize,
+                      fontWeight: FontWeight.w300,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: rulerTop,
+                right: 0,
+                width: rulerWidth,
+                child: _HeightRuler(
+                  scale: metrics.designScale,
+                  value: _selectedHeight,
+                  onChanged: (value) {
+                    if (mounted) {
+                      setState(() => _selectedHeight = value);
+                    }
+                  },
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBackToWeight,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * metrics.designScale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * metrics.designScale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: const Color(0x8FFFD206),
+                        enablePressShadeFeedback: true,
+                        onTap: _goNext,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * metrics.designScale / 1.7)
+                                    .clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * metrics.designScale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * metrics.designScale).clamp(
+                                20.0,
+                                28.0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class DailyActivityScreen extends StatefulWidget {
+  const DailyActivityScreen({super.key});
+
+  @override
+  State<DailyActivityScreen> createState() => _DailyActivityScreenState();
+}
+
+class _DailyActivityScreenState extends State<DailyActivityScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  int _selectedIndex = -1;
+  bool _didNavigateForward = false;
+
+  static const List<_ActivityLevelOption> _activityOptions = [
+    _ActivityLevelOption(
+      label: 'Low',
+      description: 'Little to no exercise. Sitting throughout the day.',
+      redBars: 1,
+    ),
+    _ActivityLevelOption(
+      label: 'Light',
+      description: 'Light exercise or sports 1-3 days a week.',
+      redBars: 2,
+    ),
+    _ActivityLevelOption(
+      label: 'Moderate',
+      description: 'Exercise or sports 3-5 days a week. Active lifestyle.',
+      redBars: 3,
+    ),
+    _ActivityLevelOption(
+      label: 'Active',
+      description: 'Hard exercise or sports 6-7 days a week.',
+      redBars: 4,
+    ),
+    _ActivityLevelOption(
+      label: 'Athlete',
+      description: 'Very hard exercise regularly or training twice a day.',
+      redBars: 5,
+    ),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBackToHeight() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const HeightScreen(), fromLeft: true),
+    );
+  }
+
+  void _goNext() {
+    if (_selectedIndex < 0 || _didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final titleTop = metrics.padding.top + (15 * metrics.designScale);
+          final questionTop = titleTop + (30 * metrics.designScale);
+          final contentWidth = math.min(
+            358 * metrics.designScale,
+            metrics.width - (32 * metrics.designScale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final cardsTop = titleTop + (94 * metrics.designScale);
+          final controlsBottom = math.max(
+            66 * metrics.designScale,
+            metrics.padding.bottom + (26 * metrics.designScale),
+          );
+          final backButtonWidth = 79 * metrics.designScale;
+          final nextButtonWidth = 263 * metrics.designScale;
+          final isActivitySelected = _selectedIndex >= 0;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: questionTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Daily Activity Level?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * metrics.designScale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardsTop,
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom + (72 * metrics.designScale),
+                child: ListView.separated(
+                  padding: EdgeInsets.zero,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _activityOptions.length,
+                  separatorBuilder: (context, index) =>
+                      SizedBox(height: 16 * metrics.designScale),
+                  itemBuilder: (context, index) {
+                    final option = _activityOptions[index];
+                    return _ActivityLevelCard(
+                      scale: metrics.designScale,
+                      label: option.label,
+                      description: option.description,
+                      redBars: option.redBars,
+                      isSelected: _selectedIndex == index,
+                      onTap: () {
+                        setState(() {
+                          _selectedIndex = index;
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBackToHeight,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * metrics.designScale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * metrics.designScale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: metrics.designScale,
+                        height: 56 * metrics.designScale,
+                        borderRadius: 32 * metrics.designScale,
+                        fillColor: isActivitySelected
+                            ? const Color(0x8FFFD206)
+                            : const Color(0x14FFD206),
+                        enablePressShadeFeedback: isActivitySelected,
+                        onTap: isActivitySelected ? _goNext : () {},
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * metrics.designScale / 1.7)
+                                    .clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * metrics.designScale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * metrics.designScale).clamp(
+                                20.0,
+                                28.0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ActivityLevelOption {
+  const _ActivityLevelOption({
+    required this.label,
+    required this.description,
+    required this.redBars,
+  });
+
+  final String label;
+  final String description;
+  final int redBars;
+}
+
+class _ActivityLevelCard extends StatefulWidget {
+  const _ActivityLevelCard({
+    required this.scale,
+    required this.label,
+    required this.description,
+    required this.redBars,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final double scale;
+  final String label;
+  final String description;
+  final int redBars;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  State<_ActivityLevelCard> createState() => _ActivityLevelCardState();
+}
+
+class _ActivityLevelCardState extends State<_ActivityLevelCard> {
+  bool _isLongPressed = false;
+  bool _isClicked = false;
+
+  @override
+  void didUpdateWidget(covariant _ActivityLevelCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isSelected && _isClicked && !_isLongPressed) {
+      setState(() {
+        _isClicked = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final cardPadding = 16 * scale;
+    final indicatorGap = 8.0;
+    final indicatorBarWidth = (10 * scale).clamp(8.0, 12.0);
+    final indicatorBarHeight = (4 * scale).clamp(3.0, 5.0);
+    final indicatorStackHeight = (indicatorBarHeight * 5) + (indicatorGap * 4);
+    final baseCardHeight = (84 * scale).clamp(72.0, 106.0);
+    final cardHeight = math.max(
+      baseCardHeight,
+      (cardPadding * 2) + indicatorStackHeight,
+    );
+    final isActive = _isClicked || widget.isSelected;
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (isActive ? Colors.white : const Color(0x52FFFFFF));
+    final hasShadow = _isLongPressed || isActive;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressStart: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressEnd: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        if (mounted) {
+          setState(() {
+            _isLongPressed = false;
+            _isClicked = true;
+          });
+        }
+        widget.onTap();
+      },
+      child: SizedBox(
+        height: cardHeight,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: fillColor,
+          padding: EdgeInsets.all(cardPadding),
+          expandToBounds: true,
+          boxShadow: shadows,
+          enableBlur: !(_isLongPressed || isActive),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.black,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 8 * scale),
+                    Text(
+                      widget.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: (12 * scale).clamp(10.0, 15.0),
+                        color: Colors.black,
+                        fontWeight: FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 12 * scale),
+              SizedBox(
+                height: indicatorStackHeight,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: List<Widget>.generate(9, (index) {
+                    if (index.isOdd) {
+                      return const SizedBox(height: 8);
+                    }
+
+                    final barIndex = index ~/ 2;
+                    final isRed = barIndex >= (5 - widget.redBars);
+                    return Container(
+                      width: indicatorBarWidth,
+                      height: indicatorBarHeight,
+                      decoration: BoxDecoration(
+                        color: isRed ? const Color(0xFFFF787A) : Colors.white,
+                        borderRadius: BorderRadius.circular(4 * scale),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeightRuler extends StatefulWidget {
+  const _HeightRuler({
+    required this.scale,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final double scale;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  static const int _minHeight = 50;
+  static const int _maxHeight = 280;
+
+  @override
+  State<_HeightRuler> createState() => _HeightRulerState();
+}
+
+class _HeightRulerState extends State<_HeightRuler> {
+  double _dragRemainderPx = 0;
+
+  void _applyDeltaPx(double deltaPx) {
+    final pixelsPerCm = (10 * widget.scale).clamp(8.0, 14.0);
+    // Drag up increases, drag down decreases.
+    _dragRemainderPx -= deltaPx;
+    final deltaCm = (_dragRemainderPx / pixelsPerCm).truncate();
+
+    if (deltaCm != 0) {
+      final next = (widget.value - deltaCm).clamp(
+        _HeightRuler._minHeight,
+        _HeightRuler._maxHeight,
+      );
+      if (next != widget.value) {
+        widget.onChanged(next);
+      }
+      _dragRemainderPx -= deltaCm * pixelsPerCm;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final rulerHeight = (560 * scale).clamp(420.0, 620.0);
+
+    return SizedBox(
+      height: rulerHeight,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragUpdate: (details) {
+              _applyDeltaPx(details.delta.dy);
+            },
+            onVerticalDragEnd: (_) {
+              _dragRemainderPx = 0;
+            },
+            onTapDown: (details) {
+              final pixelsPerCm = (10 * scale).clamp(8.0, 14.0);
+              final dyFromCenter =
+                  details.localPosition.dy - (constraints.maxHeight / 2);
+              final jumpCm = (dyFromCenter / pixelsPerCm).round();
+              if (jumpCm == 0) {
+                return;
+              }
+              final next = (widget.value - jumpCm).clamp(
+                _HeightRuler._minHeight,
+                _HeightRuler._maxHeight,
+              );
+              if (next != widget.value) {
+                widget.onChanged(next);
+              }
+            },
+            child: CustomPaint(
+              painter: _HeightTicksPainter(
+                scale: scale,
+                value: widget.value,
+                minHeight: _HeightRuler._minHeight,
+                maxHeight: _HeightRuler._maxHeight,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HeightTicksPainter extends CustomPainter {
+  const _HeightTicksPainter({
+    required this.scale,
+    required this.value,
+    required this.minHeight,
+    required this.maxHeight,
+  });
+
+  final double scale;
+  final int value;
+  final int minHeight;
+  final int maxHeight;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centerY = size.height / 2;
+    final spacing = (10 * scale).clamp(8.0, 14.0);
+    final strokeWidth = (2 * scale).clamp(1.2, 2.4);
+    final centerIndex = value;
+    final visibleTicks = (size.height / spacing).ceil() + 6;
+    final minTick = math.max(minHeight, centerIndex - visibleTicks);
+    final maxTick = math.min(maxHeight, centerIndex + visibleTicks);
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    for (int tick = minTick; tick <= maxTick; tick++) {
+      final y = centerY - ((tick - centerIndex) * spacing);
+      if (y < -4 || y > size.height + 4) {
+        continue;
+      }
+
+      final isCenter = tick == centerIndex;
+      final isMajor = tick % 5 == 0;
+      final lineLength = isCenter
+          ? (size.width * 0.96)
+          : (isMajor ? (size.width * 0.72) : (size.width * 0.5));
+      final distanceRatio = ((y - centerY).abs() / (size.height / 2)).clamp(
+        0.0,
+        1.0,
+      );
+      final opacity = (1.0 - (distanceRatio * 0.5)).clamp(0.35, 1.0);
+
+      paint.color = isCenter
+          ? Colors.white
+          : Colors.black.withValues(alpha: opacity);
+      canvas.drawLine(
+        Offset(size.width - lineLength, y),
+        Offset(size.width, y),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeightTicksPainter oldDelegate) {
+    return oldDelegate.scale != scale ||
+        oldDelegate.value != value ||
+        oldDelegate.minHeight != minHeight ||
+        oldDelegate.maxHeight != maxHeight;
+  }
+}
+
 class _WeightRuler extends StatefulWidget {
   const _WeightRuler({
     required this.scale,
@@ -1924,8 +2740,8 @@ class _WeightRuler extends StatefulWidget {
   final int value;
   final ValueChanged<int> onChanged;
 
-  static const int _minWeight = 30;
-  static const int _maxWeight = 150;
+  static const int _minWeight = 0;
+  static const int _maxWeight = 200;
 
   @override
   State<_WeightRuler> createState() => _WeightRulerState();
@@ -1936,7 +2752,7 @@ class _WeightRulerState extends State<_WeightRuler> {
 
   void _applyDeltaPx(double deltaPx) {
     final pixelsPerKg = (20 * widget.scale).clamp(14.0, 26.0);
-    // Inverted mapping: drag right decreases, drag left increases.
+    // Right drag decreases, left drag increases.
     _dragRemainderPx -= deltaPx;
     final deltaKg = (_dragRemainderPx / pixelsPerKg).truncate();
 
@@ -1956,7 +2772,8 @@ class _WeightRulerState extends State<_WeightRuler> {
   Widget build(BuildContext context) {
     final scale = widget.scale;
     final rulerHeight = (88 * scale).clamp(70.0, 110.0);
-    final markerSize = (18 * scale).clamp(14.0, 24.0);
+    final markerAnchorInset = (18 * scale).clamp(14.0, 24.0);
+    final markerSize = markerAnchorInset * 2;
 
     return SizedBox(
       height: rulerHeight,
@@ -1965,7 +2782,7 @@ class _WeightRulerState extends State<_WeightRuler> {
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onHorizontalDragUpdate: (details) {
-              // Right drag increases, left drag decreases.
+              // Right drag decreases, left drag increases.
               _applyDeltaPx(details.delta.dx);
             },
             onHorizontalDragEnd: (_) {
@@ -1979,7 +2796,7 @@ class _WeightRulerState extends State<_WeightRuler> {
               if (jumpKg == 0) {
                 return;
               }
-              final next = (widget.value - jumpKg).clamp(
+              final next = (widget.value + jumpKg).clamp(
                 _WeightRuler._minWeight,
                 _WeightRuler._maxWeight,
               );
@@ -1988,6 +2805,7 @@ class _WeightRulerState extends State<_WeightRuler> {
               }
             },
             child: Stack(
+              clipBehavior: Clip.none,
               alignment: Alignment.topCenter,
               children: [
                 Positioned.fill(
@@ -1997,12 +2815,12 @@ class _WeightRulerState extends State<_WeightRuler> {
                       value: widget.value,
                       minWeight: _WeightRuler._minWeight,
                       maxWeight: _WeightRuler._maxWeight,
-                      baselineBottomInset: markerSize,
+                      baselineBottomInset: markerAnchorInset,
                     ),
                   ),
                 ),
                 Positioned(
-                  top: rulerHeight - markerSize,
+                  top: rulerHeight - markerAnchorInset,
                   child: Icon(
                     Icons.arrow_drop_up,
                     color: Colors.white,
@@ -2057,14 +2875,15 @@ class _WeightTicksPainter extends CustomPainter {
 
       final isCenter = tick == centerIndex;
       final isMajor = tick % 5 == 0;
+      final availableHeight = baseY.clamp(0.0, size.height);
       final lineHeight = isCenter
-          ? (70 * scale).clamp(54.0, 84.0)
-          : (isMajor ? (56 * scale) : (50 * scale)).clamp(36.0, 70.0);
+          ? (availableHeight * 1.5)
+          : (isMajor ? (availableHeight * 0.82) : (availableHeight * 0.5));
       final distanceRatio = ((x - centerX).abs() / (size.width / 2)).clamp(
         0.0,
         1.0,
       );
-      final opacity = (1.0 - (distanceRatio * 0.45)).clamp(0.45, 1.0);
+      final opacity = (1.0 - (distanceRatio * 0.5)).clamp(0.35, 1.0);
 
       paint.color = isCenter
           ? Colors.white
