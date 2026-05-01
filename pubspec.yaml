@@ -67,17 +67,28 @@ flutter:
     - assets/Maintain.png
     - assets/Gain_muscle.png
     - assets/Gain_weight.png
+    - assets/Eggiterian.png
+    - assets/Non-veg.png
+    - assets/Veg.png
+    - assets/Vegan.png
+    - "assets/You'are_ready.png"
     - assets/t_and_c.svg
     - assets/Apple.svg
     - assets/Google Logo (1).svg
+    - assets/Home_active.png
+    - assets/Notification_inactive.png
+    - assets/Accoiunt_inactive.png
+    - assets/Add.png
+    - assets/addd.png
+    - assets/Bellyo_ai.png
 
   fonts:
     - family: Borel
       fonts:
         - asset: assets/fonts/Borel-Regular.ttf
-    - family: Sacramento
+    - family: Nata Sans
       fonts:
-        - asset: assets/fonts/Sacramento-Regular.ttf
+        - asset: assets/fonts/NataSans-Variable.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

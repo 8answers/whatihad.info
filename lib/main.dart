@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -27,6 +28,164 @@ const String _goalLoseWeightImageUrl = 'assets/Lose_weight.png';
 const String _goalGainWeightImageUrl = 'assets/Gain_weight.png';
 const String _goalGainMuscleImageUrl = 'assets/Gain_muscle.png';
 const String _goalMaintainImageUrl = 'assets/Maintain.png';
+const String _defaultNonBorelFontFamily = 'Nata Sans';
+
+class _OnboardingSkipFlags {
+  static bool skippedBudgetSection = false;
+  static bool skippedWaterSection = false;
+
+  static void reset() {
+    skippedBudgetSection = false;
+    skippedWaterSection = false;
+  }
+}
+
+class _IndianNumberInputFormatter extends TextInputFormatter {
+  const _IndianNumberInputFormatter({this.allowDecimal = true});
+
+  final bool allowDecimal;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final rawText = newValue.text;
+    final beforeCursorRaw = rawText.substring(
+      0,
+      newValue.selection.baseOffset.clamp(0, rawText.length),
+    );
+
+    String normalized = rawText.replaceAll(',', '');
+    String beforeCursorNormalized = beforeCursorRaw.replaceAll(',', '');
+
+    bool hasDecimal = false;
+    if (allowDecimal) {
+      final firstDotIndex = normalized.indexOf('.');
+      if (firstDotIndex != -1) {
+        hasDecimal = true;
+        normalized =
+            '${normalized.substring(0, firstDotIndex + 1)}${normalized.substring(firstDotIndex + 1).replaceAll('.', '')}';
+      }
+      final firstDotBeforeCursor = beforeCursorNormalized.indexOf('.');
+      if (firstDotBeforeCursor != -1) {
+        beforeCursorNormalized =
+            '${beforeCursorNormalized.substring(0, firstDotBeforeCursor + 1)}${beforeCursorNormalized.substring(firstDotBeforeCursor + 1).replaceAll('.', '')}';
+      }
+    } else {
+      normalized = normalized.replaceAll('.', '');
+      beforeCursorNormalized = beforeCursorNormalized.replaceAll('.', '');
+    }
+
+    final normalizedChars = normalized.split('');
+    final filteredBuffer = StringBuffer();
+    for (final ch in normalizedChars) {
+      if (_isDigit(ch)) {
+        filteredBuffer.write(ch);
+      } else if (allowDecimal &&
+          ch == '.' &&
+          !filteredBuffer.toString().contains('.')) {
+        filteredBuffer.write(ch);
+      }
+    }
+
+    final filtered = filteredBuffer.toString();
+    if (filtered.isEmpty) {
+      return const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    final split = filtered.split('.');
+    final integerDigits = split.first.replaceAll(RegExp(r'[^0-9]'), '');
+    final fractionDigits = split.length > 1
+        ? split.sublist(1).join('').replaceAll(RegExp(r'[^0-9]'), '')
+        : '';
+    final showDecimal = allowDecimal && (hasDecimal || split.length > 1);
+
+    final formattedInt = _formatIndianInteger(integerDigits);
+    final formattedText = showDecimal
+        ? '$formattedInt.$fractionDigits'
+        : formattedInt;
+
+    int intDigitsBeforeCursor = 0;
+    int fracDigitsBeforeCursor = 0;
+    bool cursorAfterDecimal = false;
+    for (final ch in beforeCursorNormalized.split('')) {
+      if (_isDigit(ch)) {
+        if (cursorAfterDecimal) {
+          fracDigitsBeforeCursor++;
+        } else {
+          intDigitsBeforeCursor++;
+        }
+      } else if (allowDecimal && ch == '.' && !cursorAfterDecimal) {
+        cursorAfterDecimal = true;
+      }
+    }
+
+    final clampedIntCount = intDigitsBeforeCursor.clamp(
+      0,
+      integerDigits.length,
+    );
+    int selectionOffset = _positionAfterDigits(formattedInt, clampedIntCount);
+
+    if (showDecimal && cursorAfterDecimal) {
+      final clampedFracCount = fracDigitsBeforeCursor.clamp(
+        0,
+        fractionDigits.length,
+      );
+      selectionOffset = (formattedInt.length + 1 + clampedFracCount).clamp(
+        0,
+        formattedText.length,
+      );
+    }
+
+    return TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: selectionOffset),
+    );
+  }
+
+  static bool _isDigit(String ch) =>
+      ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57;
+
+  static int _positionAfterDigits(String text, int digitCount) {
+    if (digitCount <= 0) {
+      return 0;
+    }
+    int seen = 0;
+    for (int i = 0; i < text.length; i++) {
+      if (_isDigit(text[i])) {
+        seen++;
+        if (seen == digitCount) {
+          return i + 1;
+        }
+      }
+    }
+    return text.length;
+  }
+
+  static String _formatIndianInteger(String digits) {
+    if (digits.isEmpty) {
+      return '';
+    }
+    if (digits.length <= 3) {
+      return digits;
+    }
+    final last3 = digits.substring(digits.length - 3);
+    var prefix = digits.substring(0, digits.length - 3);
+    final groups = <String>[];
+    while (prefix.length > 2) {
+      groups.insert(0, prefix.substring(prefix.length - 2));
+      prefix = prefix.substring(0, prefix.length - 2);
+    }
+    if (prefix.isNotEmpty) {
+      groups.insert(0, prefix);
+    }
+    return '${groups.join(',')},$last3';
+  }
+}
 
 PageRouteBuilder<void> _buildSwipeRoute({
   required Widget screen,
@@ -63,6 +222,10 @@ PageRouteBuilder<void> _buildFadeRoute({required Widget screen}) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
   await Supabase.initialize(url: _supabaseUrl, anonKey: _supabaseAnonKey);
   runApp(const WhatIHadApp());
 }
@@ -74,9 +237,10 @@ class WhatIHadApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: FirstScreen(),
+      theme: ThemeData(fontFamily: _defaultNonBorelFontFamily),
+      home: const FirstScreen(),
     );
   }
 }
@@ -96,6 +260,7 @@ class _FirstScreenState extends State<FirstScreen>
   @override
   void initState() {
     super.initState();
+    _OnboardingSkipFlags.reset();
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -123,6 +288,7 @@ class _FirstScreenState extends State<FirstScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: _AnimatedGradientScene(
         animation: _controller,
         contentBuilder: (context, metrics) {
@@ -349,6 +515,7 @@ class _TermsScreenState extends State<TermsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: _AnimatedGradientScene(
         animation: _controller,
         contentBuilder: (context, metrics) {
@@ -688,6 +855,7 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: _AnimatedGradientScene(
         animation: _controller,
         contentBuilder: (context, metrics) {
@@ -843,6 +1011,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: _AnimatedGradientScene(
         animation: _controller,
         contentBuilder: (context, metrics) {
@@ -1099,6 +1268,7 @@ class _NameScreenState extends State<NameScreen>
                       },
                       onTap: () {
                         _handleNameTap();
+                        _nameFocusNode.requestFocus();
                       },
                       child: SizedBox(
                         width: double.infinity,
@@ -1707,6 +1877,7 @@ class _WeightScreenState extends State<WeightScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   int _selectedWeight = 60;
+  bool _isWeightInKg = true;
   bool _didNavigateForward = false;
 
   @override
@@ -1743,6 +1914,15 @@ class _WeightScreenState extends State<WeightScreen>
     ).pushReplacement(_buildSwipeRoute(screen: const HeightScreen()));
   }
 
+  void _setWeightUnit(bool isKg) {
+    if (_isWeightInKg == isKg || !mounted) {
+      return;
+    }
+    setState(() {
+      _isWeightInKg = isKg;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1759,7 +1939,14 @@ class _WeightScreenState extends State<WeightScreen>
           final cardTop = titleTop + (170 * metrics.designScale);
           final cardHeight = (140 * metrics.designScale).clamp(110.0, 170.0);
           final currentRulerGap = (205 * metrics.designScale) - cardHeight;
-          final rulerTop = cardTop + cardHeight + (currentRulerGap * 2);
+          final rulerTop =
+              cardTop +
+              cardHeight +
+              (currentRulerGap * 2) -
+              (55 * metrics.designScale);
+          final rulerHeight = (88 * metrics.designScale).clamp(70.0, 110.0);
+          final unitToggleTop =
+              rulerTop + rulerHeight + (54 * metrics.designScale);
           final controlsBottom = math.max(
             66 * metrics.designScale,
             metrics.padding.bottom + (26 * metrics.designScale),
@@ -1806,7 +1993,9 @@ class _WeightScreenState extends State<WeightScreen>
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '$_selectedWeight',
+                          _isWeightInKg
+                              ? '$_selectedWeight'
+                              : '${(_selectedWeight * 2.2046226218).round()}',
                           style: TextStyle(
                             fontSize: (96 * metrics.designScale).clamp(
                               72.0,
@@ -1823,7 +2012,7 @@ class _WeightScreenState extends State<WeightScreen>
                             bottom: 12 * metrics.designScale,
                           ),
                           child: Text(
-                            'kg',
+                            _isWeightInKg ? 'kg' : 'lbs',
                             style: TextStyle(
                               fontSize: (32 * metrics.designScale).clamp(
                                 24.0,
@@ -1852,6 +2041,21 @@ class _WeightScreenState extends State<WeightScreen>
                       setState(() => _selectedWeight = value);
                     }
                   },
+                ),
+              ),
+              Positioned(
+                top: unitToggleTop,
+                left: contentLeft,
+                width: contentWidth,
+                child: Center(
+                  child: _UnitSelectorPill(
+                    scale: metrics.designScale,
+                    leftLabel: 'kg',
+                    rightLabel: 'lbs',
+                    isLeftSelected: _isWeightInKg,
+                    onTapLeft: () => _setWeightUnit(true),
+                    onTapRight: () => _setWeightUnit(false),
+                  ),
                 ),
               ),
               Positioned(
@@ -1933,6 +2137,7 @@ class _HeightScreenState extends State<HeightScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   int _selectedHeight = 180;
+  bool _isHeightInCm = true;
   bool _didNavigateForward = false;
 
   @override
@@ -1969,6 +2174,15 @@ class _HeightScreenState extends State<HeightScreen>
     ).pushReplacement(_buildSwipeRoute(screen: const DailyActivityScreen()));
   }
 
+  void _setHeightUnit(bool isCm) {
+    if (_isHeightInCm == isCm || !mounted) {
+      return;
+    }
+    setState(() {
+      _isHeightInCm = isCm;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1982,7 +2196,12 @@ class _HeightScreenState extends State<HeightScreen>
             metrics.width - (32 * metrics.designScale),
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
+          const heightControlsLeftShift = 50.0;
           final cardWidth = (265 * metrics.designScale).clamp(220.0, 300.0);
+          final cardLeft =
+              contentLeft +
+              ((contentWidth - cardWidth) / 2) -
+              heightControlsLeftShift;
           final cardHeight = (100 * metrics.designScale).clamp(84.0, 124.0);
           final cardTop = (metrics.height - cardHeight) / 2;
           final rulerWidth = (75 * metrics.designScale).clamp(56.0, 90.0);
@@ -1997,11 +2216,19 @@ class _HeightScreenState extends State<HeightScreen>
           final indicatorHeight = (24 * metrics.designScale).clamp(18.0, 30.0);
           final selectedLineLength = rulerWidth * 0.96;
           final selectedLineStartX = metrics.width - selectedLineLength;
-          final arrowFontSize = (36 * metrics.designScale).clamp(26.0, 44.0);
-          final arrowLeft =
-              selectedLineStartX -
-              (arrowFontSize * 0.52) +
-              (2 * metrics.designScale);
+          final arrowWidth = (34 * metrics.designScale).clamp(26.0, 42.0);
+          final arrowLeft = selectedLineStartX - arrowWidth;
+          final arrowTop = cardTop + (cardHeight / 2) - (indicatorHeight / 2);
+          final unitToggleWidth = math.min(
+            264 * metrics.designScale,
+            contentWidth,
+          );
+          final unitToggleTop =
+              cardTop + cardHeight + (79 * metrics.designScale);
+          final unitToggleLeft =
+              contentLeft +
+              ((contentWidth - unitToggleWidth) / 2) -
+              heightControlsLeftShift;
 
           return Stack(
             children: [
@@ -2022,7 +2249,7 @@ class _HeightScreenState extends State<HeightScreen>
               ),
               Positioned(
                 top: cardTop,
-                left: contentLeft,
+                left: cardLeft,
                 width: cardWidth,
                 child: Container(
                   height: cardHeight,
@@ -2042,7 +2269,9 @@ class _HeightScreenState extends State<HeightScreen>
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '$_selectedHeight',
+                          _isHeightInCm
+                              ? '$_selectedHeight'
+                              : (_selectedHeight / 30.48).toStringAsFixed(1),
                           style: TextStyle(
                             fontSize: (64 * metrics.designScale).clamp(
                               52.0,
@@ -2059,7 +2288,7 @@ class _HeightScreenState extends State<HeightScreen>
                             bottom: 10 * metrics.designScale,
                           ),
                           child: Text(
-                            'cm',
+                            _isHeightInCm ? 'cm' : 'ft',
                             style: TextStyle(
                               fontSize: (32 * metrics.designScale).clamp(
                                 24.0,
@@ -2077,20 +2306,15 @@ class _HeightScreenState extends State<HeightScreen>
                 ),
               ),
               Positioned(
-                top:
-                    cardTop +
-                    (cardHeight / 2) -
-                    (indicatorHeight / 2) -
-                    (5 * metrics.designScale),
+                top: arrowTop,
                 left: arrowLeft,
+                width: arrowWidth,
+                height: indicatorHeight,
                 child: IgnorePointer(
-                  child: Text(
-                    '←',
-                    style: TextStyle(
+                  child: CustomPaint(
+                    painter: _LeftIndicatorArrowPainter(
                       color: Colors.white,
-                      fontSize: arrowFontSize,
-                      fontWeight: FontWeight.w300,
-                      height: 1.0,
+                      strokeWidth: (2 * metrics.designScale).clamp(1.4, 2.6),
                     ),
                   ),
                 ),
@@ -2107,6 +2331,19 @@ class _HeightScreenState extends State<HeightScreen>
                       setState(() => _selectedHeight = value);
                     }
                   },
+                ),
+              ),
+              Positioned(
+                top: unitToggleTop,
+                left: unitToggleLeft,
+                width: unitToggleWidth,
+                child: _UnitSelectorPill(
+                  scale: metrics.designScale,
+                  leftLabel: 'cm',
+                  rightLabel: 'ft',
+                  isLeftSelected: _isHeightInCm,
+                  onTapLeft: () => _setHeightUnit(true),
+                  onTapRight: () => _setHeightUnit(false),
                 ),
               ),
               Positioned(
@@ -2247,6 +2484,9 @@ class _DailyActivityScreenState extends State<DailyActivityScreen>
       return;
     }
     _didNavigateForward = true;
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const BudgetPerMealScreen()));
   }
 
   @override
@@ -2386,6 +2626,3685 @@ class _DailyActivityScreenState extends State<DailyActivityScreen>
   }
 }
 
+class BudgetPerMealScreen extends StatefulWidget {
+  const BudgetPerMealScreen({super.key});
+
+  @override
+  State<BudgetPerMealScreen> createState() => _BudgetPerMealScreenState();
+}
+
+class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  final TextEditingController _customBudgetController = TextEditingController();
+  final FocusNode _customBudgetFocusNode = FocusNode();
+  int _selectedCurrencyIndex = 0;
+  bool _isCurrencyDropdownOpen = false;
+  int? _selectedBudget;
+  bool _isCustomSelected = false;
+  bool _didNavigateForward = false;
+  bool _consumeNextSelectionTap = false;
+
+  static const List<int> _presetBudgets = <int>[100, 150, 200, 250];
+  static const Map<String, String> _currencyGlyphByCode = <String, String>{
+    'AED': 'د.إ',
+    'AUD': r'$',
+    'BRL': r'R$',
+    'CAD': r'$',
+    'EUR': '€',
+    'INR': '₹',
+    'USD': r'$',
+  };
+  static const List<_CurrencyOption> _currencyOptions = <_CurrencyOption>[
+    _CurrencyOption(label: 'Afghan Afghani', symbol: 'AFN'),
+    _CurrencyOption(label: 'Albanian Lek', symbol: 'ALL'),
+    _CurrencyOption(label: 'Algerian Dinar', symbol: 'DZD'),
+    _CurrencyOption(label: 'Angolan Kwanza', symbol: 'AOA'),
+    _CurrencyOption(label: 'Argentine Peso', symbol: 'ARS'),
+    _CurrencyOption(label: 'Armenian Dram', symbol: 'AMD'),
+    _CurrencyOption(label: 'Aruban Florin', symbol: 'AWG'),
+    _CurrencyOption(label: 'Australian Dollar', symbol: 'AUD'),
+    _CurrencyOption(label: 'Azerbaijani Manat', symbol: 'AZN'),
+    _CurrencyOption(label: 'Bahamian Dollar', symbol: 'BSD'),
+    _CurrencyOption(label: 'Bahraini Dinar', symbol: 'BHD'),
+    _CurrencyOption(label: 'Bangladeshi Taka', symbol: 'BDT'),
+    _CurrencyOption(label: 'Barbadian Dollar', symbol: 'BBD'),
+    _CurrencyOption(label: 'Belarusian Ruble', symbol: 'BYN'),
+    _CurrencyOption(label: 'Belize Dollar', symbol: 'BZD'),
+    _CurrencyOption(label: 'Bermudian Dollar', symbol: 'BMD'),
+    _CurrencyOption(label: 'Bhutanese Ngultrum', symbol: 'BTN'),
+    _CurrencyOption(label: 'Bolivian Boliviano', symbol: 'BOB'),
+    _CurrencyOption(
+      label: 'Bosnia-Herzegovina Convertible Mark',
+      symbol: 'BAM',
+    ),
+    _CurrencyOption(label: 'Botswanan Pula', symbol: 'BWP'),
+    _CurrencyOption(label: 'Brazilian Real', symbol: 'BRL'),
+    _CurrencyOption(label: 'Brunei Dollar', symbol: 'BND'),
+    _CurrencyOption(label: 'Bulgarian Lev', symbol: 'BGN'),
+    _CurrencyOption(label: 'Burundian Franc', symbol: 'BIF'),
+    _CurrencyOption(label: 'Cabo Verdean Escudo', symbol: 'CVE'),
+    _CurrencyOption(label: 'Cambodian Riel', symbol: 'KHR'),
+    _CurrencyOption(label: 'Canadian Dollar', symbol: 'CAD'),
+    _CurrencyOption(label: 'Cayman Islands Dollar', symbol: 'KYD'),
+    _CurrencyOption(label: 'Central African CFA Franc', symbol: 'XAF'),
+    _CurrencyOption(label: 'Chilean Peso', symbol: 'CLP'),
+    _CurrencyOption(label: 'Chinese Yuan', symbol: 'CNY'),
+    _CurrencyOption(label: 'Colombian Peso', symbol: 'COP'),
+    _CurrencyOption(label: 'Comorian Franc', symbol: 'KMF'),
+    _CurrencyOption(label: 'Congolese Franc', symbol: 'CDF'),
+    _CurrencyOption(label: 'Costa Rican Colon', symbol: 'CRC'),
+    _CurrencyOption(label: 'Croatian Euro', symbol: 'EUR'),
+    _CurrencyOption(label: 'Cuban Peso', symbol: 'CUP'),
+    _CurrencyOption(label: 'Czech Koruna', symbol: 'CZK'),
+    _CurrencyOption(label: 'Danish Krone', symbol: 'DKK'),
+    _CurrencyOption(label: 'Djiboutian Franc', symbol: 'DJF'),
+    _CurrencyOption(label: 'Dominican Peso', symbol: 'DOP'),
+    _CurrencyOption(label: 'East Caribbean Dollar', symbol: 'XCD'),
+    _CurrencyOption(label: 'Egyptian Pound', symbol: 'EGP'),
+    _CurrencyOption(label: 'Eritrean Nakfa', symbol: 'ERN'),
+    _CurrencyOption(label: 'Ethiopian Birr', symbol: 'ETB'),
+    _CurrencyOption(label: 'Euro', symbol: 'EUR'),
+    _CurrencyOption(label: 'Falkland Islands Pound', symbol: 'FKP'),
+    _CurrencyOption(label: 'Fijian Dollar', symbol: 'FJD'),
+    _CurrencyOption(label: 'Gambian Dalasi', symbol: 'GMD'),
+    _CurrencyOption(label: 'Georgian Lari', symbol: 'GEL'),
+    _CurrencyOption(label: 'Ghanaian Cedi', symbol: 'GHS'),
+    _CurrencyOption(label: 'Gibraltar Pound', symbol: 'GIP'),
+    _CurrencyOption(label: 'Guatemalan Quetzal', symbol: 'GTQ'),
+    _CurrencyOption(label: 'Guinean Franc', symbol: 'GNF'),
+    _CurrencyOption(label: 'Guyanese Dollar', symbol: 'GYD'),
+    _CurrencyOption(label: 'Haitian Gourde', symbol: 'HTG'),
+    _CurrencyOption(label: 'Honduran Lempira', symbol: 'HNL'),
+    _CurrencyOption(label: 'Hong Kong Dollar', symbol: 'HKD'),
+    _CurrencyOption(label: 'Hungarian Forint', symbol: 'HUF'),
+    _CurrencyOption(label: 'Icelandic Krona', symbol: 'ISK'),
+    _CurrencyOption(label: 'Indian Rupee', symbol: 'INR'),
+    _CurrencyOption(label: 'Indonesian Rupiah', symbol: 'IDR'),
+    _CurrencyOption(label: 'Iranian Rial', symbol: 'IRR'),
+    _CurrencyOption(label: 'Iraqi Dinar', symbol: 'IQD'),
+    _CurrencyOption(label: 'Israeli New Shekel', symbol: 'ILS'),
+    _CurrencyOption(label: 'Jamaican Dollar', symbol: 'JMD'),
+    _CurrencyOption(label: 'Japanese Yen', symbol: 'JPY'),
+    _CurrencyOption(label: 'Jordanian Dinar', symbol: 'JOD'),
+    _CurrencyOption(label: 'Kazakhstani Tenge', symbol: 'KZT'),
+    _CurrencyOption(label: 'Kenyan Shilling', symbol: 'KES'),
+    _CurrencyOption(label: 'Kuwaiti Dinar', symbol: 'KWD'),
+    _CurrencyOption(label: 'Kyrgyzstani Som', symbol: 'KGS'),
+    _CurrencyOption(label: 'Lao Kip', symbol: 'LAK'),
+    _CurrencyOption(label: 'Lebanese Pound', symbol: 'LBP'),
+    _CurrencyOption(label: 'Lesotho Loti', symbol: 'LSL'),
+    _CurrencyOption(label: 'Liberian Dollar', symbol: 'LRD'),
+    _CurrencyOption(label: 'Libyan Dinar', symbol: 'LYD'),
+    _CurrencyOption(label: 'Macanese Pataca', symbol: 'MOP'),
+    _CurrencyOption(label: 'Malagasy Ariary', symbol: 'MGA'),
+    _CurrencyOption(label: 'Malawian Kwacha', symbol: 'MWK'),
+    _CurrencyOption(label: 'Malaysian Ringgit', symbol: 'MYR'),
+    _CurrencyOption(label: 'Maldivian Rufiyaa', symbol: 'MVR'),
+    _CurrencyOption(label: 'Mauritanian Ouguiya', symbol: 'MRU'),
+    _CurrencyOption(label: 'Mauritian Rupee', symbol: 'MUR'),
+    _CurrencyOption(label: 'Mexican Peso', symbol: 'MXN'),
+    _CurrencyOption(label: 'Moldovan Leu', symbol: 'MDL'),
+    _CurrencyOption(label: 'Mongolian Tugrik', symbol: 'MNT'),
+    _CurrencyOption(label: 'Moroccan Dirham', symbol: 'MAD'),
+    _CurrencyOption(label: 'Mozambican Metical', symbol: 'MZN'),
+    _CurrencyOption(label: 'Myanmar Kyat', symbol: 'MMK'),
+    _CurrencyOption(label: 'Namibian Dollar', symbol: 'NAD'),
+    _CurrencyOption(label: 'Nepalese Rupee', symbol: 'NPR'),
+    _CurrencyOption(label: 'Netherlands Antillean Guilder', symbol: 'ANG'),
+    _CurrencyOption(label: 'New Taiwan Dollar', symbol: 'TWD'),
+    _CurrencyOption(label: 'New Zealand Dollar', symbol: 'NZD'),
+    _CurrencyOption(label: 'Nicaraguan Cordoba', symbol: 'NIO'),
+    _CurrencyOption(label: 'Nigerian Naira', symbol: 'NGN'),
+    _CurrencyOption(label: 'North Korean Won', symbol: 'KPW'),
+    _CurrencyOption(label: 'North Macedonian Denar', symbol: 'MKD'),
+    _CurrencyOption(label: 'Norwegian Krone', symbol: 'NOK'),
+    _CurrencyOption(label: 'Omani Rial', symbol: 'OMR'),
+    _CurrencyOption(label: 'Pakistani Rupee', symbol: 'PKR'),
+    _CurrencyOption(label: 'Panamanian Balboa', symbol: 'PAB'),
+    _CurrencyOption(label: 'Papua New Guinean Kina', symbol: 'PGK'),
+    _CurrencyOption(label: 'Paraguayan Guarani', symbol: 'PYG'),
+    _CurrencyOption(label: 'Peruvian Sol', symbol: 'PEN'),
+    _CurrencyOption(label: 'Philippine Peso', symbol: 'PHP'),
+    _CurrencyOption(label: 'Polish Zloty', symbol: 'PLN'),
+    _CurrencyOption(label: 'Qatari Riyal', symbol: 'QAR'),
+    _CurrencyOption(label: 'Romanian Leu', symbol: 'RON'),
+    _CurrencyOption(label: 'Russian Ruble', symbol: 'RUB'),
+    _CurrencyOption(label: 'Rwandan Franc', symbol: 'RWF'),
+    _CurrencyOption(label: 'Samoan Tala', symbol: 'WST'),
+    _CurrencyOption(label: 'Sao Tome and Principe Dobra', symbol: 'STN'),
+    _CurrencyOption(label: 'Saudi Riyal', symbol: 'SAR'),
+    _CurrencyOption(label: 'Serbian Dinar', symbol: 'RSD'),
+    _CurrencyOption(label: 'Seychellois Rupee', symbol: 'SCR'),
+    _CurrencyOption(label: 'Sierra Leonean Leone', symbol: 'SLE'),
+    _CurrencyOption(label: 'Singapore Dollar', symbol: 'SGD'),
+    _CurrencyOption(label: 'Solomon Islands Dollar', symbol: 'SBD'),
+    _CurrencyOption(label: 'Somali Shilling', symbol: 'SOS'),
+    _CurrencyOption(label: 'South African Rand', symbol: 'ZAR'),
+    _CurrencyOption(label: 'South Korean Won', symbol: 'KRW'),
+    _CurrencyOption(label: 'South Sudanese Pound', symbol: 'SSP'),
+    _CurrencyOption(label: 'Sri Lankan Rupee', symbol: 'LKR'),
+    _CurrencyOption(label: 'Sudanese Pound', symbol: 'SDG'),
+    _CurrencyOption(label: 'Surinamese Dollar', symbol: 'SRD'),
+    _CurrencyOption(label: 'Swazi Lilangeni', symbol: 'SZL'),
+    _CurrencyOption(label: 'Swedish Krona', symbol: 'SEK'),
+    _CurrencyOption(label: 'Swiss Franc', symbol: 'CHF'),
+    _CurrencyOption(label: 'Syrian Pound', symbol: 'SYP'),
+    _CurrencyOption(label: 'Tajikistani Somoni', symbol: 'TJS'),
+    _CurrencyOption(label: 'Tanzanian Shilling', symbol: 'TZS'),
+    _CurrencyOption(label: 'Thai Baht', symbol: 'THB'),
+    _CurrencyOption(label: 'Tongan Paanga', symbol: 'TOP'),
+    _CurrencyOption(label: 'Trinidad and Tobago Dollar', symbol: 'TTD'),
+    _CurrencyOption(label: 'Tunisian Dinar', symbol: 'TND'),
+    _CurrencyOption(label: 'Turkish Lira', symbol: 'TRY'),
+    _CurrencyOption(label: 'Turkmenistani Manat', symbol: 'TMT'),
+    _CurrencyOption(label: 'Ugandan Shilling', symbol: 'UGX'),
+    _CurrencyOption(label: 'Ukrainian Hryvnia', symbol: 'UAH'),
+    _CurrencyOption(label: 'United Arab Emirates Dirham', symbol: 'AED'),
+    _CurrencyOption(label: 'United States Dollar', symbol: 'USD'),
+    _CurrencyOption(label: 'Uruguayan Peso', symbol: 'UYU'),
+    _CurrencyOption(label: 'Uzbekistani Som', symbol: 'UZS'),
+    _CurrencyOption(label: 'Vanuatu Vatu', symbol: 'VUV'),
+    _CurrencyOption(label: 'Venezuelan Bolivar', symbol: 'VES'),
+    _CurrencyOption(label: 'Vietnamese Dong', symbol: 'VND'),
+    _CurrencyOption(label: 'West African CFA Franc', symbol: 'XOF'),
+    _CurrencyOption(label: 'Yemeni Rial', symbol: 'YER'),
+    _CurrencyOption(label: 'Zambian Kwacha', symbol: 'ZMW'),
+    _CurrencyOption(label: 'Zimbabwe Gold', symbol: 'ZWG'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final inrIndex = _currencyOptions.indexWhere(
+      (_CurrencyOption option) => option.symbol == 'INR',
+    );
+    if (inrIndex >= 0) {
+      _selectedCurrencyIndex = inrIndex;
+    }
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _customBudgetFocusNode.dispose();
+    _customBudgetController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool get _canContinue =>
+      _selectedBudget != null || _customBudgetController.text.trim().isNotEmpty;
+
+  bool _dismissKeyboardOnlyIfNeeded() {
+    if (_customBudgetFocusNode.hasFocus) {
+      FocusScope.of(context).unfocus();
+      return true;
+    }
+    return false;
+  }
+
+  void _dismissKeyboardFromOutsideTap() {
+    if (!_customBudgetFocusNode.hasFocus) {
+      return;
+    }
+    _consumeNextSelectionTap = true;
+    FocusScope.of(context).unfocus();
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) {
+        return;
+      }
+      _consumeNextSelectionTap = false;
+    });
+  }
+
+  void _goBackToDailyActivity() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const DailyActivityScreen(), fromLeft: true),
+    );
+  }
+
+  void _goNext() {
+    if (!_canContinue || _didNavigateForward || !mounted) {
+      return;
+    }
+    _OnboardingSkipFlags.skippedBudgetSection = false;
+    _didNavigateForward = true;
+    _isCurrencyDropdownOpen = false;
+    FocusScope.of(context).unfocus();
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const GoalCalculationScreen()));
+  }
+
+  void _skip() {
+    if (_didNavigateForward || !mounted) {
+      return;
+    }
+    _OnboardingSkipFlags.skippedBudgetSection = true;
+    _didNavigateForward = true;
+    _isCurrencyDropdownOpen = false;
+    FocusScope.of(context).unfocus();
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const GoalCalculationScreen()));
+  }
+
+  void _selectPresetBudget(int value) {
+    if (!mounted) {
+      return;
+    }
+    if (_consumeNextSelectionTap) {
+      _consumeNextSelectionTap = false;
+      return;
+    }
+    if (_dismissKeyboardOnlyIfNeeded()) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    final shouldDeselect = !_isCustomSelected && _selectedBudget == value;
+    setState(() {
+      _isCurrencyDropdownOpen = false;
+      _selectedBudget = shouldDeselect ? null : value;
+      _isCustomSelected = false;
+    });
+  }
+
+  void _selectCustomBudget() {
+    if (!mounted) {
+      return;
+    }
+    if (_consumeNextSelectionTap) {
+      _consumeNextSelectionTap = false;
+      return;
+    }
+    if (_dismissKeyboardOnlyIfNeeded()) {
+      return;
+    }
+    final shouldDeselect = _isCustomSelected;
+    setState(() {
+      _isCurrencyDropdownOpen = false;
+      _isCustomSelected = !shouldDeselect;
+      if (!shouldDeselect) {
+        _selectedBudget = null;
+      }
+    });
+    if (shouldDeselect) {
+      FocusScope.of(context).unfocus();
+    } else {
+      _customBudgetFocusNode.requestFocus();
+    }
+  }
+
+  void _toggleCurrencyDropdown() {
+    if (!mounted) {
+      return;
+    }
+    if (_consumeNextSelectionTap) {
+      _consumeNextSelectionTap = false;
+      return;
+    }
+    if (_dismissKeyboardOnlyIfNeeded()) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isCurrencyDropdownOpen = !_isCurrencyDropdownOpen;
+    });
+  }
+
+  void _selectCurrencyOption(int index) {
+    if (!mounted) {
+      return;
+    }
+    if (_consumeNextSelectionTap) {
+      _consumeNextSelectionTap = false;
+      return;
+    }
+    if (_dismissKeyboardOnlyIfNeeded()) {
+      return;
+    }
+    if (index < 0 || index >= _dropdownCurrencyOptions.length) {
+      return;
+    }
+    setState(() {
+      _selectedCurrencyIndex = index;
+      _isCurrencyDropdownOpen = false;
+    });
+  }
+
+  _CurrencyOption get _selectedCurrency =>
+      _currencyOptions[_selectedCurrencyIndex];
+
+  List<_CurrencyOption> get _dropdownCurrencyOptions {
+    return _currencyOptions;
+  }
+
+  String _currencyBracketSymbol(_CurrencyOption option) {
+    final glyph = _currencyGlyphByCode[option.symbol];
+    if (glyph == null || glyph.isEmpty) {
+      return option.symbol;
+    }
+    return glyph;
+  }
+
+  String _currencyDisplayLabel(_CurrencyOption option) {
+    if (option.symbol == 'INR') {
+      return 'Indian Rupee (${_currencyBracketSymbol(option)})';
+    }
+    return '${option.symbol} (${_currencyBracketSymbol(option)})';
+  }
+
+  String _currencyDropdownLabel(_CurrencyOption option) {
+    switch (option.symbol) {
+      case 'USD':
+        return 'US Dollar (${_currencyBracketSymbol(option)})';
+      case 'AUD':
+        return 'AUD Dollar (${_currencyBracketSymbol(option)})';
+      case 'CAD':
+        return 'CAD Dollar (${_currencyBracketSymbol(option)})';
+      case 'EUR':
+        return 'Euro (${_currencyBracketSymbol(option)})';
+      case 'AED':
+        return 'UAE Dirham (${_currencyBracketSymbol(option)})';
+      case 'BRL':
+        return 'Brazilian Real (${_currencyBracketSymbol(option)})';
+      default:
+        return _currencyDisplayLabel(option);
+    }
+  }
+
+  Widget _buildCurrencySelector(double scale) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleCurrencyDropdown,
+      child: Container(
+        width: (252 * scale).clamp(220.0, 300.0),
+        height: (62 * scale).clamp(56.0, 74.0),
+        padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+        decoration: BoxDecoration(
+          color: const Color(0x52FFFFFF),
+          borderRadius: BorderRadius.circular(16 * scale),
+          border: Border.all(
+            color: const Color(0x80FFFFFF),
+            width: (1 * scale).clamp(0.8, 1.4),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                _currencyDisplayLabel(_selectedCurrency),
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: (24 * scale).clamp(18.0, 28.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+            SizedBox(width: 8 * scale),
+            Icon(
+              _isCurrencyDropdownOpen
+                  ? Icons.keyboard_arrow_up
+                  : Icons.keyboard_arrow_down,
+              color: Colors.white,
+              size: (24 * scale).clamp(20.0, 30.0),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCurrencyDropdownPanel(double scale) {
+    return Container(
+      width: (252 * scale).clamp(220.0, 300.0),
+      constraints: BoxConstraints(maxHeight: (420 * scale).clamp(240.0, 520.0)),
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x52FFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const BouncingScrollPhysics(),
+        itemCount: _dropdownCurrencyOptions.length,
+        separatorBuilder: (_, index) => SizedBox(height: 16 * scale),
+        itemBuilder: (context, index) {
+          final option = _dropdownCurrencyOptions[index];
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _selectCurrencyOption(index),
+            child: Align(
+              alignment: Alignment.center,
+              child: Container(
+                width: math.min(
+                  218 * scale,
+                  ((252 * scale).clamp(220.0, 300.0)) - (32 * scale),
+                ),
+                padding: EdgeInsets.all(8 * scale),
+                decoration: BoxDecoration(
+                  color: const Color(0x52FFFFFF),
+                  borderRadius: BorderRadius.circular(16 * scale),
+                  border: Border.all(
+                    color: const Color(0x80FFFFFF),
+                    width: (1 * scale).clamp(0.8, 1.4),
+                  ),
+                ),
+                child: Text(
+                  _currencyDropdownLabel(option),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: (24 * scale).clamp(18.0, 28.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBudgetCard({
+    required double scale,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required Widget content,
+  }) {
+    return _BudgetOptionCard(
+      scale: scale,
+      isSelected: isSelected,
+      onTap: onTap,
+      child: content,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final titleTop = metrics.padding.top + (15 * scale) + (15 * scale);
+          final optionsTop = titleTop + (56 * scale);
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final selectorWidth = (252 * scale).clamp(220.0, 300.0);
+          final selectorHeight = (62 * scale).clamp(56.0, 74.0);
+          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
+          final selectedCurrencySymbol = _currencyBracketSymbol(
+            _selectedCurrency,
+          );
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+          final backButtonWidth = 79 * scale;
+          final nextButtonWidth = 263 * scale;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Avg Budget per Meal?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * scale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: optionsTop,
+                left: contentLeft,
+                width: contentWidth,
+                bottom: contentBottomInset,
+                child: SingleChildScrollView(
+                  clipBehavior: Clip.none,
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    bottom: bottomPanelHeight + (16 * scale),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(child: _buildCurrencySelector(scale)),
+                      SizedBox(height: 16 * scale),
+                      _buildBudgetCard(
+                        scale: scale,
+                        isSelected: _isCustomSelected,
+                        onTap: _selectCustomBudget,
+                        content: Row(
+                          children: [
+                            Text(
+                              selectedCurrencySymbol,
+                              style: TextStyle(
+                                fontSize: (20 * scale).clamp(16.0, 24.0),
+                                color: Colors.black,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            SizedBox(width: 8 * scale),
+                            Expanded(
+                              child: TextField(
+                                controller: _customBudgetController,
+                                focusNode: _customBudgetFocusNode,
+                                scrollPadding: EdgeInsets.zero,
+                                onTapOutside: (_) {
+                                  _dismissKeyboardFromOutsideTap();
+                                },
+                                onTap: () {
+                                  if (!_isCustomSelected) {
+                                    _selectCustomBudget();
+                                  }
+                                },
+                                onChanged: (_) {
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
+                                },
+                                keyboardType: TextInputType.number,
+                                inputFormatters: const [
+                                  _IndianNumberInputFormatter(
+                                    allowDecimal: true,
+                                  ),
+                                ],
+                                textInputAction: TextInputAction.done,
+                                style: TextStyle(
+                                  fontSize: (32 * scale).clamp(24.0, 38.0),
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.0,
+                                ),
+                                decoration: InputDecoration(
+                                  isCollapsed: true,
+                                  border: InputBorder.none,
+                                  hintText: 'Custom',
+                                  hintStyle: TextStyle(
+                                    fontSize: (32 * scale).clamp(24.0, 38.0),
+                                    color: const Color(0x29000000),
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ..._presetBudgets.map((budget) {
+                        final isSelected =
+                            !_isCustomSelected && _selectedBudget == budget;
+                        return Padding(
+                          padding: EdgeInsets.only(top: 16 * scale),
+                          child: _buildBudgetCard(
+                            scale: scale,
+                            isSelected: isSelected,
+                            onTap: () => _selectPresetBudget(budget),
+                            content: Row(
+                              children: [
+                                Text(
+                                  selectedCurrencySymbol,
+                                  style: TextStyle(
+                                    fontSize: (20 * scale).clamp(16.0, 24.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                Text(
+                                  '$budget',
+                                  style: TextStyle(
+                                    fontSize: (32 * scale).clamp(24.0, 38.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                      SizedBox(height: 20 * scale),
+                      Text(
+                        'Share your meal budget, so AI can suggest\nfoods for your goals.',
+                        style: TextStyle(
+                          fontSize: (16 * scale).clamp(14.0, 20.0),
+                          color: Colors.black,
+                          fontWeight: FontWeight.w400,
+                          height: 1.98,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_isCurrencyDropdownOpen)
+                Positioned(
+                  top: optionsTop + selectorHeight + (8 * scale),
+                  left: contentLeft + ((contentWidth - selectorWidth) / 2),
+                  width: selectorWidth,
+                  child: _buildCurrencyDropdownPanel(scale),
+                ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
+                    child: Container(color: const Color(0x01FF787A)),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom + (56 * scale) + (10 * scale),
+                child: Row(
+                  children: [
+                    SizedBox(width: backButtonWidth + (16 * scale)),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _skip,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12 * scale,
+                              vertical: 2 * scale,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Skip',
+                                  style: TextStyle(
+                                    fontSize: (20 * scale).clamp(16.0, 24.0),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                Icon(
+                                  Icons.arrow_forward,
+                                  color: Colors.white,
+                                  size: (24 * scale).clamp(20.0, 28.0),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBackToDailyActivity,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * scale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: _canContinue
+                            ? const Color(0x8FFFD206)
+                            : const Color(0x14FFD206),
+                        enablePressShadeFeedback: _canContinue,
+                        onTap: _canContinue ? _goNext : () {},
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * scale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * scale).clamp(20.0, 28.0),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class GoalCalculationScreen extends StatefulWidget {
+  const GoalCalculationScreen({super.key});
+
+  @override
+  State<GoalCalculationScreen> createState() => _GoalCalculationScreenState();
+}
+
+class _GoalCalculationScreenState extends State<GoalCalculationScreen>
+    with TickerProviderStateMixin {
+  late final AnimationController _backgroundController;
+  late final AnimationController _fillController;
+  Timer? _nextScreenTimer;
+  bool _didNavigate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _backgroundController = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+    _fillController = AnimationController(
+      vsync: this,
+      duration: _kLoadingFillDuration,
+    )..repeat(reverse: true);
+    _nextScreenTimer = Timer(const Duration(seconds: 3), _goToDailyGoals);
+  }
+
+  void _goToDailyGoals() {
+    if (_didNavigate || !mounted) {
+      return;
+    }
+    _didNavigate = true;
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const DailyNutritionGoalsScreen()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nextScreenTimer?.cancel();
+    _fillController.dispose();
+    _backgroundController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _AnimatedGradientScene(
+        animation: _backgroundController,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final ringSize = (250 * scale).clamp(190.0, 320.0);
+          final innerSize = ringSize * 0.82;
+          final innerRatio = innerSize / ringSize;
+          final ringTop = (296.5 * scale).clamp(
+            metrics.padding.top + (140 * scale),
+            metrics.height * 0.48,
+          );
+          final descriptionTop = ringTop + ringSize + (64 * scale);
+          final strokeWidth = (1 * scale).clamp(0.8, 1.4);
+          final fillProgress = Curves.easeInOut.transform(
+            _fillController.value,
+          );
+          final rotatingAngle = (math.pi / 4) + (fillProgress * math.pi * 3);
+          final rotatingLightStroke = (strokeWidth * 0.5).clamp(0.6, 1.4);
+
+          return Stack(
+            children: [
+              Positioned(
+                left: (metrics.width - ringSize) / 2,
+                top: ringTop,
+                child: SizedBox(
+                  width: ringSize,
+                  height: ringSize,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _RingGapFillPainter(
+                              innerDiameterRatio: innerRatio,
+                              color: const Color(0x33FFDADC),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xB3FFFFFF),
+                            width: strokeWidth,
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: _RotatingCircleLightPainter(
+                              angle: rotatingAngle,
+                              strokeWidth: rotatingLightStroke,
+                              glowWidth: (2 * scale).clamp(1.2, 2.8),
+                              borderStroke: strokeWidth,
+                              innerDiameterRatio: innerRatio,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: innerSize,
+                        height: innerSize,
+                        child: ClipOval(
+                          child: Stack(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xB3FFFFFF),
+                                    width: strokeWidth,
+                                  ),
+                                ),
+                              ),
+                              Center(
+                                child: Text(
+                                  'Calculating...',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontFamily: 'Borel',
+                                    color: Colors.white,
+                                    fontSize: (16 * scale).clamp(14.0, 22.0),
+                                    height: 0.99,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: (metrics.width - (358 * scale)) / 2,
+                top: descriptionTop,
+                width: 358 * scale,
+                child: Text(
+                  'Setting your goals based on standard\nrequirements, adjust them if needed.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w400,
+                    height: 1.98,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class DailyNutritionGoalsScreen extends StatefulWidget {
+  const DailyNutritionGoalsScreen({super.key});
+
+  @override
+  State<DailyNutritionGoalsScreen> createState() =>
+      _DailyNutritionGoalsScreenState();
+}
+
+class _DailyNutritionGoalsScreenState extends State<DailyNutritionGoalsScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Map<String, TextEditingController> _goalValueControllers;
+  bool _isAdvanceOpen = false;
+  bool _didNavigateForward = false;
+  static const List<_NutritionGoalItem> _goalItems = <_NutritionGoalItem>[
+    _NutritionGoalItem(label: 'Calories', value: '2,330', unit: 'kcal'),
+    _NutritionGoalItem(label: 'Protein', value: '100', unit: 'g'),
+    _NutritionGoalItem(label: 'Carbohydrates', value: '100', unit: 'g'),
+    _NutritionGoalItem(label: 'Fat', value: '100', unit: 'g'),
+  ];
+  static const List<_NutritionGoalItem> _advancedGoalItems =
+      <_NutritionGoalItem>[
+        _NutritionGoalItem(label: 'Fiber', value: '2,330', unit: 'g'),
+        _NutritionGoalItem(label: 'Sugar', value: '100', unit: 'g'),
+        _NutritionGoalItem(label: 'Sodium', value: '100', unit: 'mg'),
+      ];
+
+  @override
+  void initState() {
+    super.initState();
+    _goalValueControllers = <String, TextEditingController>{
+      for (final item in [..._goalItems, ..._advancedGoalItems])
+        item.label: TextEditingController(text: item.value),
+    };
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _goalValueControllers.values) {
+      controller.dispose();
+    }
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const BudgetPerMealScreen(), fromLeft: true),
+    );
+  }
+
+  void _goNext() {
+    if (_didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const DailyHydrationGoalsScreen()),
+    );
+  }
+
+  void _toggleAdvance() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isAdvanceOpen = !_isAdvanceOpen;
+    });
+  }
+
+  Widget _buildNutritionGoalCard({
+    required _NutritionGoalItem item,
+    required TextEditingController valueController,
+    required double scale,
+    required double contentWidth,
+    required double cardHeight,
+  }) {
+    return SizedBox(
+      width: contentWidth,
+      height: cardHeight,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16 * scale),
+          color: const Color(0x2EFFFFFF),
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: (16 * scale).clamp(12.0, 20.0).toDouble(),
+          vertical: (12 * scale).clamp(8.0, 16.0).toDouble(),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                item.label,
+                style: TextStyle(
+                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: (140 * scale).clamp(130.0, 170.0).toDouble(),
+              height: (56 * scale).clamp(48.0, 60.0).toDouble(),
+              child: _EditableNutritionValueField(
+                scale: scale,
+                controller: valueController,
+                fontSize: (24 * scale).clamp(18.0, 30.0),
+              ),
+            ),
+            SizedBox(width: 8 * scale),
+            SizedBox(
+              width: 27 * scale,
+              height: 25 * scale,
+              child: Align(
+                alignment: Alignment.center,
+                child: Text(
+                  item.unit,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: (14 * scale).clamp(12.0, 18.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final recommendedTop = titleTop + (50 * scale);
+          final cardsTop = titleTop + (94 * scale);
+          final cardHeight = (80 * scale).clamp(68.0, 96.0);
+          final cardGap = 16 * scale;
+          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+          final backButtonWidth = 79 * scale;
+          final nextButtonWidth = 263 * scale;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Daily Nutrition Goals?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * scale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: recommendedTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Recommended',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: (20 * scale).clamp(16.0, 26.0),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardsTop,
+                left: contentLeft,
+                width: contentWidth,
+                bottom: contentBottomInset,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    bottom: bottomPanelHeight + (16 * scale),
+                  ),
+                  child: Column(
+                    children: [
+                      ..._goalItems.map(
+                        (item) => Padding(
+                          padding: EdgeInsets.only(
+                            bottom: item == _goalItems.last ? 0 : cardGap,
+                          ),
+                          child: _buildNutritionGoalCard(
+                            item: item,
+                            valueController: _goalValueControllers[item.label]!,
+                            scale: scale,
+                            contentWidth: contentWidth,
+                            cardHeight: cardHeight,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 24 * scale),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _toggleAdvance,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Advance',
+                              style: TextStyle(
+                                fontSize: (32 * scale / 1.7).clamp(18.0, 28.0),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * scale),
+                            Icon(
+                              _isAdvanceOpen
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                              color: Colors.white,
+                              size: (24 * scale).clamp(20.0, 30.0),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_isAdvanceOpen) ...[
+                        SizedBox(height: 16 * scale),
+                        ..._advancedGoalItems.map(
+                          (item) => Padding(
+                            padding: EdgeInsets.only(
+                              bottom: item == _advancedGoalItems.last
+                                  ? 0
+                                  : cardGap,
+                            ),
+                            child: _buildNutritionGoalCard(
+                              item: item,
+                              valueController:
+                                  _goalValueControllers[item.label]!,
+                              scale: scale,
+                              contentWidth: contentWidth,
+                              cardHeight: cardHeight,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
+                    child: Container(color: const Color(0x01FF787A)),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBack,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * scale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: const Color(0x8FFFD206),
+                        enablePressShadeFeedback: true,
+                        onTap: _goNext,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * scale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * scale).clamp(20.0, 28.0),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class DailyHydrationGoalsScreen extends StatefulWidget {
+  const DailyHydrationGoalsScreen({super.key});
+
+  @override
+  State<DailyHydrationGoalsScreen> createState() =>
+      _DailyHydrationGoalsScreenState();
+}
+
+class _DailyHydrationGoalsScreenState extends State<DailyHydrationGoalsScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final TextEditingController _waterController;
+  bool _isHydrationInLiters = true;
+  bool _didNavigateForward = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _waterController = TextEditingController(text: '3');
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _waterController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(
+        screen: const DailyNutritionGoalsScreen(),
+        fromLeft: true,
+      ),
+    );
+  }
+
+  void _goToDietPreferences({required bool skippedHydrationSection}) {
+    if (_didNavigateForward || !mounted) {
+      return;
+    }
+    _OnboardingSkipFlags.skippedWaterSection = skippedHydrationSection;
+    _didNavigateForward = true;
+    FocusScope.of(context).unfocus();
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const DietPreferenceScreen()));
+  }
+
+  void _goNext() {
+    _goToDietPreferences(skippedHydrationSection: false);
+  }
+
+  void _skip() {
+    _goToDietPreferences(skippedHydrationSection: true);
+  }
+
+  double? _parseFormattedNumber(String input) {
+    final normalized = input.replaceAll(',', '').trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+    return double.tryParse(normalized);
+  }
+
+  String _formatNumberForField(double value) {
+    final isNegative = value < 0;
+    final absValue = value.abs();
+    final whole = absValue.truncate();
+    final decimal = absValue - whole;
+    final formattedWhole = _IndianNumberInputFormatter._formatIndianInteger(
+      whole.toString(),
+    );
+
+    if (decimal < 0.0001) {
+      return isNegative ? '-$formattedWhole' : formattedWhole;
+    }
+
+    String frac = absValue.toStringAsFixed(2).split('.').last;
+    frac = frac.replaceFirst(RegExp(r'0+$'), '');
+    final combined = '$formattedWhole.$frac';
+    return isNegative ? '-$combined' : combined;
+  }
+
+  void _setHydrationUnit(bool isLiters) {
+    if (_isHydrationInLiters == isLiters || !mounted) {
+      return;
+    }
+    final currentValue = _parseFormattedNumber(_waterController.text);
+    setState(() {
+      _isHydrationInLiters = isLiters;
+      if (currentValue != null) {
+        final converted = isLiters
+            ? currentValue / 33.8140227018
+            : currentValue * 33.8140227018;
+        final nextText = _formatNumberForField(converted);
+        _waterController.value = TextEditingValue(
+          text: nextText,
+          selection: TextSelection.collapsed(offset: nextText.length),
+        );
+      }
+    });
+  }
+
+  Widget _buildHydrationCard({
+    required double scale,
+    required double contentWidth,
+    required double cardHeight,
+  }) {
+    return SizedBox(
+      width: contentWidth,
+      height: cardHeight,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16 * scale),
+          color: const Color(0x2EFFFFFF),
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: (16 * scale).clamp(12.0, 20.0).toDouble(),
+          vertical: (12 * scale).clamp(8.0, 16.0).toDouble(),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'Water',
+                style: TextStyle(
+                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: (140 * scale).clamp(130.0, 170.0).toDouble(),
+              height: (56 * scale).clamp(48.0, 60.0).toDouble(),
+              child: _EditableNutritionValueField(
+                scale: scale,
+                controller: _waterController,
+                fontSize: (24 * scale).clamp(18.0, 30.0),
+              ),
+            ),
+            SizedBox(width: 8 * scale),
+            SizedBox(
+              width: 60 * scale,
+              height: 25 * scale,
+              child: Align(
+                alignment: Alignment.center,
+                child: Text(
+                  _isHydrationInLiters ? 'Liters (l)' : 'oz',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: (14 * scale).clamp(12.0, 18.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final recommendedTop = titleTop + (50 * scale);
+          final cardsTop = titleTop + (94 * scale);
+          final cardHeight = (80 * scale).clamp(68.0, 96.0);
+          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+          final backButtonWidth = 79 * scale;
+          final nextButtonWidth = 263 * scale;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Daily Hydration Goals?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * scale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: recommendedTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Recommended',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: (20 * scale).clamp(16.0, 26.0),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardsTop,
+                left: contentLeft,
+                width: contentWidth,
+                bottom: contentBottomInset,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    bottom: bottomPanelHeight + (16 * scale),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildHydrationCard(
+                        scale: scale,
+                        contentWidth: contentWidth,
+                        cardHeight: cardHeight,
+                      ),
+                      SizedBox(height: 16 * scale),
+                      _UnitSelectorPill(
+                        scale: scale,
+                        leftLabel: 'liters',
+                        rightLabel: 'oz',
+                        fontSize: 16,
+                        isLeftSelected: _isHydrationInLiters,
+                        onTapLeft: () => _setHydrationUnit(true),
+                        onTapRight: () => _setHydrationUnit(false),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
+                    child: Container(color: const Color(0x01FF787A)),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom + (56 * scale) + (10 * scale),
+                child: Row(
+                  children: [
+                    SizedBox(width: backButtonWidth + (16 * scale)),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _skip,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12 * scale,
+                              vertical: 2 * scale,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Skip',
+                                  style: TextStyle(
+                                    fontSize: (20 * scale).clamp(16.0, 24.0),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                Icon(
+                                  Icons.arrow_forward,
+                                  color: Colors.white,
+                                  size: (24 * scale).clamp(20.0, 28.0),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBack,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * scale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: const Color(0x8FFFD206),
+                        enablePressShadeFeedback: true,
+                        onTap: _goNext,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * scale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * scale).clamp(20.0, 28.0),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class DietPreferenceScreen extends StatefulWidget {
+  const DietPreferenceScreen({super.key});
+
+  @override
+  State<DietPreferenceScreen> createState() => _DietPreferenceScreenState();
+}
+
+class _DietPreferenceScreenState extends State<DietPreferenceScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  int? _selectedIndex;
+  bool _didNavigateForward = false;
+  bool get _canContinue => _selectedIndex != null;
+
+  static const List<_DietPreferenceOption> _options = <_DietPreferenceOption>[
+    _DietPreferenceOption(label: 'Vegetarian', imagePath: 'assets/Veg.png'),
+    _DietPreferenceOption(
+      label: 'Non-vegetarian',
+      imagePath: 'assets/Non-veg.png',
+    ),
+    _DietPreferenceOption(
+      label: 'Eggetarian',
+      imagePath: 'assets/Eggiterian.png',
+    ),
+    _DietPreferenceOption(label: 'Vegan', imagePath: 'assets/Vegan.png'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(
+        screen: const DailyHydrationGoalsScreen(),
+        fromLeft: true,
+      ),
+    );
+  }
+
+  void _goNext() {
+    if (!_canContinue || _didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const YouAreReadyScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final cardsTop = titleTop + (94 * scale);
+          final cardWidth = 171 * scale;
+          final cardHeight = 141 * scale;
+          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+          final backButtonWidth = 79 * scale;
+          final nextButtonWidth = 263 * scale;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Diet Preference?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * scale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardsTop,
+                left: contentLeft,
+                width: contentWidth,
+                bottom: contentBottomInset,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    bottom: bottomPanelHeight + (16 * scale),
+                  ),
+                  child: Wrap(
+                    spacing: 16 * scale,
+                    runSpacing: 16 * scale,
+                    children: List<Widget>.generate(_options.length, (index) {
+                      final option = _options[index];
+                      return _DietPreferenceCard(
+                        scale: scale,
+                        width: cardWidth,
+                        height: cardHeight,
+                        label: option.label,
+                        imagePath: option.imagePath,
+                        isSelected: _selectedIndex == index,
+                        onTap: () {
+                          if (!mounted) {
+                            return;
+                          }
+                          setState(() {
+                            _selectedIndex = _selectedIndex == index
+                                ? null
+                                : index;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
+                    child: Container(color: const Color(0x01FF787A)),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBack,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * scale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    SizedBox(
+                      width: nextButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: _canContinue
+                            ? const Color(0x8FFFD206)
+                            : const Color(0x14FFD206),
+                        enablePressShadeFeedback: _canContinue,
+                        onTap: _canContinue ? _goNext : () {},
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Next',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 12 * scale),
+                            Icon(
+                              Icons.arrow_forward,
+                              color: Colors.white,
+                              size: (24 * scale).clamp(20.0, 28.0),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class YouAreReadyScreen extends StatefulWidget {
+  const YouAreReadyScreen({super.key});
+
+  @override
+  State<YouAreReadyScreen> createState() => _YouAreReadyScreenState();
+}
+
+class _YouAreReadyScreenState extends State<YouAreReadyScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goNext() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildSwipeRoute(screen: const DailyProgressScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final visualTop = metrics.padding.top + (68 * scale);
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+
+          return Stack(
+            children: [
+              Positioned(
+                top: visualTop,
+                left: 0,
+                right: 0,
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: 200 * scale,
+                      height: 275 * scale,
+                      child: Image.asset(
+                        "assets/You'are_ready.png",
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Icon(
+                            Icons.image_not_supported_outlined,
+                            color: const Color(0x80000000),
+                            size: 36 * scale,
+                          );
+                        },
+                      ),
+                    ),
+                    SizedBox(height: 32 * scale),
+                    Text(
+                      'You’re Ready',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Borel',
+                        fontSize: (32 * scale).clamp(24.0, 42.0),
+                        color: Colors.white,
+                        height: 0.99,
+                      ),
+                    ),
+                    SizedBox(height: 46 * scale),
+                    SizedBox(
+                      width: 288 * scale,
+                      child: Text(
+                        'Start tracking your meals',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: (24 * scale).clamp(18.0, 30.0),
+                          color: Colors.black,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: _RotatingGlassButton(
+                  scale: scale,
+                  height: 56 * scale,
+                  borderRadius: 32 * scale,
+                  fillColor: const Color(0x8FFFD206),
+                  enablePressShadeFeedback: true,
+                  onTap: _goNext,
+                  child: Text(
+                    'Continue',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class DailyProgressScreen extends StatefulWidget {
+  const DailyProgressScreen({super.key});
+
+  @override
+  State<DailyProgressScreen> createState() => _DailyProgressScreenState();
+}
+
+class _DailyProgressScreenState extends State<DailyProgressScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  int _selectedBottomNavIndex = 0;
+  bool _isAdvanceOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _toggleAdvance() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isAdvanceOpen = !_isAdvanceOpen;
+    });
+  }
+
+  void _goToAccountPage() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(
+        screen: AccountScreen(
+          skippedBudgetSection: _OnboardingSkipFlags.skippedBudgetSection,
+          skippedWaterSection: _OnboardingSkipFlags.skippedWaterSection,
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title, double scale) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontFamily: 'Borel',
+        fontSize: (32 * scale).clamp(24.0, 40.0),
+        color: Colors.white,
+        height: 0.99,
+      ),
+    );
+  }
+
+  Widget _outerPanel({required double scale, required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0x29FFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      padding: EdgeInsets.all(8 * scale),
+      child: child,
+    );
+  }
+
+  Widget _innerPanel({
+    required double scale,
+    required Widget child,
+    double? height,
+  }) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: const Color(0x52FFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      padding: EdgeInsets.all(8 * scale),
+      child: child,
+    );
+  }
+
+  Widget _metricBlock({
+    required double scale,
+    required String label,
+    required Color accentColor,
+    required String totalValueText,
+    String percentText = '25 %',
+    String currentText = '200',
+    bool highlightCurrent = true,
+  }) {
+    return _innerPanel(
+      scale: scale,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: (14 * scale).clamp(12.0, 16.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                percentText,
+                style: TextStyle(
+                  fontSize: (14 * scale).clamp(12.0, 16.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8 * scale),
+          Container(
+            width: double.infinity,
+            height: 14 * scale,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16 * scale),
+              border: Border.all(color: Colors.white, width: 1 * scale),
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: const [0.0, 0.22, 0.22001, 1.0],
+                colors: [
+                  accentColor,
+                  accentColor,
+                  Colors.white.withValues(alpha: 0),
+                  Colors.white.withValues(alpha: 0),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 8 * scale),
+          Align(
+            alignment: Alignment.centerRight,
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(
+                  fontSize: (14 * scale).clamp(12.0, 16.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                ),
+                children: [
+                  TextSpan(
+                    text: currentText,
+                    style: TextStyle(
+                      color: highlightCurrent ? Colors.white : Colors.black,
+                    ),
+                  ),
+                  TextSpan(text: ' / $totalValueText'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _navIconTile({
+    required double scale,
+    required IconData icon,
+    bool selected = false,
+  }) {
+    return Container(
+      width: 48 * scale,
+      height: 48 * scale,
+      decoration: BoxDecoration(
+        color: selected ? Colors.white : const Color(0x52FFFFFF),
+        borderRadius: BorderRadius.circular(15 * scale),
+        boxShadow: selected
+            ? const [
+                BoxShadow(
+                  color: Color(0xFFFF0000),
+                  blurRadius: 4,
+                  blurStyle: BlurStyle.outer,
+                ),
+              ]
+            : null,
+      ),
+      child: Icon(
+        icon,
+        color: selected ? Colors.black : Colors.white,
+        size: 28 * scale,
+      ),
+    );
+  }
+
+  Widget _bottomNavIconButton({
+    required double scale,
+    required int index,
+    required String assetPath,
+  }) {
+    final isSelected = _selectedBottomNavIndex == index;
+    return SizedBox(
+      width: 48 * scale,
+      height: 48 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (!mounted) {
+            return;
+          }
+          if (index == 2) {
+            _goToAccountPage();
+            return;
+          }
+          setState(() {
+            _selectedBottomNavIndex = index;
+          });
+        },
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 15 * scale,
+          fillColor: isSelected ? Colors.white : const Color(0x52FFFFFF),
+          padding: EdgeInsets.zero,
+          expandToBounds: true,
+          boxShadow: isSelected
+              ? const [
+                  BoxShadow(
+                    color: Color(0xFFFF0000),
+                    blurRadius: 4,
+                    blurStyle: BlurStyle.outer,
+                  ),
+                ]
+              : const <BoxShadow>[],
+          enableBlur: !isSelected,
+          child: Center(
+            child: SizedBox(
+              width: 24 * scale,
+              height: 24 * scale,
+              child: Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                color: isSelected ? Colors.black : Colors.white,
+                colorBlendMode: BlendMode.srcIn,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(
+                    Icons.image_not_supported_outlined,
+                    color: isSelected ? Colors.black : Colors.white,
+                    size: 20 * scale,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final contentTop = metrics.padding.top + (18 * scale);
+          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+          final navHeight = 64 * scale;
+          final scrollBottomPadding = bottomPanelHeight + (24 * scale);
+          final hideWaterSection = _OnboardingSkipFlags.skippedWaterSection;
+          final hideBudgetSection = _OnboardingSkipFlags.skippedBudgetSection;
+          final hideMealsTimelineSection =
+              hideWaterSection || hideBudgetSection;
+
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(
+                    contentLeft,
+                    contentTop,
+                    contentLeft,
+                    scrollBottomPadding,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _sectionTitle('Daily Progress', scale),
+                          ),
+                          _navIconTile(scale: scale, icon: Icons.history),
+                        ],
+                      ),
+                      SizedBox(height: 18 * scale),
+                      _outerPanel(
+                        scale: scale,
+                        child: Column(
+                          children: [
+                            if (!hideWaterSection) ...[
+                              _metricBlock(
+                                scale: scale,
+                                label: 'Water',
+                                accentColor: const Color(0xFFDEF4FC),
+                                totalValueText: '3 l',
+                                currentText: '0.2',
+                                highlightCurrent: false,
+                              ),
+                              SizedBox(height: 8 * scale),
+                            ],
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _metricBlock(
+                                    scale: scale,
+                                    label: 'Calories',
+                                    accentColor: const Color(0xFFFF8341),
+                                    totalValueText: '2045 Kcal',
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                Expanded(
+                                  child: _metricBlock(
+                                    scale: scale,
+                                    label: 'Protein',
+                                    accentColor: const Color(0xFF41A0FF),
+                                    totalValueText: '2045 g',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 8 * scale),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _metricBlock(
+                                    scale: scale,
+                                    label: 'Carbohydrates',
+                                    accentColor: const Color(0xFFC940FF),
+                                    totalValueText: '2045 g',
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                Expanded(
+                                  child: _metricBlock(
+                                    scale: scale,
+                                    label: 'Fat',
+                                    accentColor: const Color(0xFFFFE241),
+                                    totalValueText: '2045 g',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 16 * scale),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _toggleAdvance,
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16 * scale,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Advance',
+                                      style: TextStyle(
+                                        fontSize: (20 * scale).clamp(
+                                          16.0,
+                                          24.0,
+                                        ),
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12 * scale),
+                                    Icon(
+                                      _isAdvanceOpen
+                                          ? Icons.keyboard_arrow_up
+                                          : Icons.keyboard_arrow_down,
+                                      color: Colors.white,
+                                      size: (26 * scale).clamp(20.0, 32.0),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (_isAdvanceOpen) ...[
+                              SizedBox(height: 16 * scale),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _metricBlock(
+                                      scale: scale,
+                                      label: 'Fiber',
+                                      accentColor: const Color(0xFFF3E5AB),
+                                      totalValueText: '2045 g',
+                                    ),
+                                  ),
+                                  SizedBox(width: 8 * scale),
+                                  Expanded(
+                                    child: _metricBlock(
+                                      scale: scale,
+                                      label: 'Sodium',
+                                      accentColor: Colors.white,
+                                      totalValueText: '2045 mg',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 8 * scale),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: SizedBox(
+                                  width: (167 * scale).clamp(140.0, 220.0),
+                                  child: _metricBlock(
+                                    scale: scale,
+                                    label: 'Sugar',
+                                    accentColor: const Color(0xFFFF4144),
+                                    totalValueText: '2045 g',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (!hideBudgetSection) ...[
+                        SizedBox(height: 30 * scale),
+                        _sectionTitle("Today’s Budget", scale),
+                        SizedBox(height: 8 * scale),
+                        _outerPanel(
+                          scale: scale,
+                          child: _metricBlock(
+                            scale: scale,
+                            label: 'Spent Today',
+                            accentColor: const Color(0xFF00A814),
+                            totalValueText: '₹ 1000',
+                            currentText: '₹ 200',
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 30 * scale),
+                      _sectionTitle('Bellyo Suggestion', scale),
+                      SizedBox(height: 8 * scale),
+                      _outerPanel(
+                        scale: scale,
+                        child: _innerPanel(
+                          scale: scale,
+                          height: 88 * scale,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.topLeft,
+                                  child: Text(
+                                    'Your source for expert nutrition tips and covering healthy recipes, cooking hacks.',
+                                    style: TextStyle(
+                                      fontSize: (14 * scale).clamp(12.0, 16.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.chat_bubble_outline,
+                                color: Colors.white,
+                                size: (18 * scale).clamp(14.0, 22.0),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (!hideMealsTimelineSection) ...[
+                        SizedBox(height: 30 * scale),
+                        _sectionTitle('Meals Timeline', scale),
+                        SizedBox(height: 8 * scale),
+                        _outerPanel(
+                          scale: scale,
+                          child: _innerPanel(
+                            scale: scale,
+                            height: 88 * scale,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'No meals added yet',
+                                    style: TextStyle(
+                                      fontSize: (14 * scale).clamp(12.0, 16.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                _navIconTile(scale: scale, icon: Icons.add),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
+                    child: Container(color: const Color(0x01FF787A)),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 0,
+                bottom: controlsBottom + (74 * scale),
+                child: SizedBox(
+                  width: 72 * scale,
+                  height: 99 * scale,
+                  child: Image.asset(
+                    'assets/Bellyo_ai.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        Icons.image_not_supported_outlined,
+                        color: const Color(0x80000000),
+                        size: 36 * scale,
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: navHeight,
+                        decoration: BoxDecoration(
+                          color: const Color(0x29FFFFFF),
+                          borderRadius: BorderRadius.circular(16 * scale),
+                        ),
+                        padding: EdgeInsets.all(8 * scale),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _bottomNavIconButton(
+                              scale: scale,
+                              index: 0,
+                              assetPath: 'assets/Home_active.png',
+                            ),
+                            _bottomNavIconButton(
+                              scale: scale,
+                              index: 1,
+                              assetPath: 'assets/Notification_inactive.png',
+                            ),
+                            _bottomNavIconButton(
+                              scale: scale,
+                              index: 2,
+                              assetPath: 'assets/Accoiunt_inactive.png',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    Container(
+                      width: navHeight,
+                      height: navHeight,
+                      decoration: BoxDecoration(
+                        color: const Color(0x29FFFFFF),
+                        borderRadius: BorderRadius.circular(16 * scale),
+                      ),
+                      padding: EdgeInsets.all(8 * scale),
+                      child: _bottomNavIconButton(
+                        scale: scale,
+                        index: 3,
+                        assetPath: 'assets/Add.png',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class AccountScreen extends StatefulWidget {
+  const AccountScreen({
+    super.key,
+    required this.skippedBudgetSection,
+    required this.skippedWaterSection,
+  });
+
+  final bool skippedBudgetSection;
+  final bool skippedWaterSection;
+
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goHome() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildSwipeRoute(screen: const DailyProgressScreen(), fromLeft: true),
+    );
+  }
+
+  Widget _sectionTitle(String title, double scale) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontFamily: 'Borel',
+        fontSize: (32 * scale).clamp(24.0, 40.0),
+        color: Colors.white,
+        height: 0.99,
+      ),
+    );
+  }
+
+  Widget _nameCard({required double scale, required String name}) {
+    return SizedBox(
+      height: 56 * scale,
+      child: _RotatingGlassPanel(
+        scale: scale,
+        borderRadius: 16 * scale,
+        fillColor: const Color(0x52FFFFFF),
+        padding: EdgeInsets.symmetric(horizontal: 8 * scale),
+        expandToBounds: true,
+        child: Center(
+          child: Text(
+            name,
+            style: TextStyle(
+              fontSize: (16 * scale).clamp(14.0, 20.0),
+              color: Colors.black,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _profileInfoCard({
+    required double scale,
+    required String label,
+    String? value,
+    bool showPlaceholder = false,
+  }) {
+    return Expanded(
+      child: SizedBox(
+        height: 56 * scale,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: const Color(0x52FFFFFF),
+          padding: EdgeInsets.symmetric(
+            horizontal: 8 * scale,
+            vertical: 6 * scale,
+          ),
+          expandToBounds: true,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: (14 * scale).clamp(12.0, 16.0),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                  height: 1.0,
+                ),
+              ),
+              SizedBox(height: 4 * scale),
+              if (showPlaceholder)
+                _addPlaceholderChip(scale: scale)
+              else
+                Text(
+                  value ?? '',
+                  style: TextStyle(
+                    fontSize: (14 * scale).clamp(12.0, 16.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                    height: 1.0,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionTile({
+    required double scale,
+    required String title,
+    String? value,
+    bool showPlaceholder = false,
+    bool showArrow = true,
+    Color titleColor = Colors.white,
+    bool centerTitle = false,
+  }) {
+    return SizedBox(
+      height: 56 * scale,
+      child: _RotatingGlassPanel(
+        scale: scale,
+        borderRadius: 16 * scale,
+        fillColor: const Color(0x52FFFFFF),
+        padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+        expandToBounds: true,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                textAlign: centerTitle ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                  color: titleColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (showPlaceholder)
+              Padding(
+                padding: EdgeInsets.only(right: 10 * scale),
+                child: _addPlaceholderChip(scale: scale),
+              ),
+            if (value != null)
+              Padding(
+                padding: EdgeInsets.only(right: 10 * scale),
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            if (showArrow)
+              Icon(
+                Icons.chevron_right,
+                color: Colors.white,
+                size: (22 * scale).clamp(18.0, 28.0),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _addPlaceholderChip({required double scale}) {
+    final chipSize = 18 * scale;
+    return SizedBox(
+      width: chipSize,
+      height: chipSize,
+      child: _RotatingGlassPanel(
+        scale: scale,
+        borderRadius: 5 * scale,
+        fillColor: const Color(0x3DFFFFFF),
+        padding: EdgeInsets.all(2 * scale),
+        expandToBounds: true,
+        child: Center(
+          child: Image.asset(
+            'assets/addd.png',
+            fit: BoxFit.contain,
+            color: Colors.white,
+            colorBlendMode: BlendMode.srcIn,
+            errorBuilder: (context, error, stackTrace) {
+              return Icon(
+                Icons.add,
+                color: Colors.white,
+                size: (12 * scale).clamp(10.0, 14.0),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _bottomNavIconButton({
+    required double scale,
+    required String assetPath,
+    required bool isSelected,
+    VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      width: 48 * scale,
+      height: 48 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 15 * scale,
+          fillColor: isSelected ? Colors.white : const Color(0x52FFFFFF),
+          padding: EdgeInsets.zero,
+          expandToBounds: true,
+          boxShadow: isSelected
+              ? const [
+                  BoxShadow(
+                    color: Color(0xFFFF0000),
+                    blurRadius: 4,
+                    blurStyle: BlurStyle.outer,
+                  ),
+                ]
+              : const <BoxShadow>[],
+          enableBlur: !isSelected,
+          child: Center(
+            child: SizedBox(
+              width: 24 * scale,
+              height: 24 * scale,
+              child: Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                color: isSelected ? Colors.black : Colors.white,
+                colorBlendMode: BlendMode.srcIn,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(
+                    Icons.image_not_supported_outlined,
+                    color: isSelected ? Colors.black : Colors.white,
+                    size: 20 * scale,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final contentTop = titleTop + (58 * scale);
+          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+          final navHeight = 64 * scale;
+          final scrollBottomPadding = bottomPanelHeight + (24 * scale);
+          final showBudgetPlaceholder = widget.skippedBudgetSection;
+          final showHydrationPlaceholder = widget.skippedWaterSection;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: Center(child: _sectionTitle('Account', scale)),
+              ),
+              Positioned.fill(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(
+                    contentLeft,
+                    contentTop,
+                    contentLeft,
+                    scrollBottomPadding,
+                  ),
+                  child: Column(
+                    children: [
+                      _nameCard(scale: scale, name: 'Prajna S P'),
+                      SizedBox(height: 8 * scale),
+                      Row(
+                        children: [
+                          _profileInfoCard(
+                            scale: scale,
+                            label: 'Goal',
+                            value: 'Gain Muscle',
+                          ),
+                          SizedBox(width: 8 * scale),
+                          _profileInfoCard(
+                            scale: scale,
+                            label: 'Age',
+                            value: '21',
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Row(
+                        children: [
+                          _profileInfoCard(
+                            scale: scale,
+                            label: 'Weight',
+                            value: '66 Kg',
+                          ),
+                          SizedBox(width: 8 * scale),
+                          _profileInfoCard(
+                            scale: scale,
+                            label: 'Height',
+                            value: '160 cm',
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Row(
+                        children: [
+                          _profileInfoCard(
+                            scale: scale,
+                            label: 'Daily Activity Level',
+                            value: 'Light',
+                          ),
+                          SizedBox(width: 8 * scale),
+                          _profileInfoCard(
+                            scale: scale,
+                            label: 'Avg Budget per Meal',
+                            value: r'$ 25',
+                            showPlaceholder: showBudgetPlaceholder,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8 * scale),
+                      _actionTile(scale: scale, title: 'Daily Nutrition Goals'),
+                      SizedBox(height: 8 * scale),
+                      _actionTile(
+                        scale: scale,
+                        title: 'Daily Hydration Goals',
+                        value: showHydrationPlaceholder ? null : '3 l',
+                        showPlaceholder: showHydrationPlaceholder,
+                      ),
+                      SizedBox(height: 8 * scale),
+                      _actionTile(
+                        scale: scale,
+                        title: 'Diet Preference',
+                        value: 'Non-vegetarian',
+                      ),
+                      SizedBox(height: 8 * scale),
+                      _actionTile(scale: scale, title: 'Terms'),
+                      SizedBox(height: 8 * scale),
+                      _actionTile(scale: scale, title: 'About'),
+                      SizedBox(height: 8 * scale),
+                      _actionTile(scale: scale, title: 'Account Deletion'),
+                      SizedBox(height: 8 * scale),
+                      _actionTile(
+                        scale: scale,
+                        title: 'Logout',
+                        titleColor: const Color(0xFFFF0000),
+                        showArrow: false,
+                        centerTitle: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
+                    child: Container(color: const Color(0x01FF787A)),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: navHeight,
+                        decoration: BoxDecoration(
+                          color: const Color(0x29FFFFFF),
+                          borderRadius: BorderRadius.circular(16 * scale),
+                        ),
+                        padding: EdgeInsets.all(8 * scale),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _bottomNavIconButton(
+                              scale: scale,
+                              assetPath: 'assets/Home_active.png',
+                              isSelected: false,
+                              onTap: _goHome,
+                            ),
+                            _bottomNavIconButton(
+                              scale: scale,
+                              assetPath: 'assets/Notification_inactive.png',
+                              isSelected: false,
+                            ),
+                            _bottomNavIconButton(
+                              scale: scale,
+                              assetPath: 'assets/Accoiunt_inactive.png',
+                              isSelected: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    Container(
+                      width: navHeight,
+                      height: navHeight,
+                      decoration: BoxDecoration(
+                        color: const Color(0x29FFFFFF),
+                        borderRadius: BorderRadius.circular(16 * scale),
+                      ),
+                      padding: EdgeInsets.all(8 * scale),
+                      child: _bottomNavIconButton(
+                        scale: scale,
+                        assetPath: 'assets/Add.png',
+                        isSelected: false,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DietPreferenceOption {
+  const _DietPreferenceOption({required this.label, required this.imagePath});
+
+  final String label;
+  final String imagePath;
+}
+
+class _BudgetOptionCard extends StatefulWidget {
+  const _BudgetOptionCard({
+    required this.scale,
+    required this.isSelected,
+    required this.onTap,
+    required this.child,
+  });
+
+  final double scale;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  State<_BudgetOptionCard> createState() => _BudgetOptionCardState();
+}
+
+class _BudgetOptionCardState extends State<_BudgetOptionCard> {
+  bool _isLongPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final isActive = widget.isSelected;
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (isActive ? Colors.white : const Color(0x52FFFFFF));
+    final hasShadow = _isLongPressed || isActive;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+        });
+      },
+      onLongPressStart: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+        });
+      },
+      onLongPressEnd: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+        widget.onTap();
+      },
+      child: SizedBox(
+        height: (74 * scale).clamp(66.0, 88.0),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8 * scale),
+          child: _RotatingGlassPanel(
+            scale: scale,
+            borderRadius: 16 * scale,
+            fillColor: fillColor,
+            padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+            expandToBounds: true,
+            boxShadow: shadows,
+            enableBlur: !(_isLongPressed || isActive),
+            child: Align(alignment: Alignment.centerLeft, child: widget.child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DietPreferenceCard extends StatefulWidget {
+  const _DietPreferenceCard({
+    required this.scale,
+    required this.width,
+    required this.height,
+    required this.label,
+    required this.imagePath,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final double scale;
+  final double width;
+  final double height;
+  final String label;
+  final String imagePath;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  State<_DietPreferenceCard> createState() => _DietPreferenceCardState();
+}
+
+class _DietPreferenceCardState extends State<_DietPreferenceCard> {
+  bool _isLongPressed = false;
+  bool _isClicked = false;
+
+  @override
+  void didUpdateWidget(covariant _DietPreferenceCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isSelected && _isClicked && !_isLongPressed) {
+      setState(() {
+        _isClicked = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final isActive = _isClicked || widget.isSelected;
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (isActive ? Colors.white : const Color(0x52FFFFFF));
+    final hasShadow = _isLongPressed || isActive;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressStart: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressEnd: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        if (mounted) {
+          setState(() {
+            _isClicked = true;
+            _isLongPressed = false;
+          });
+        }
+        widget.onTap();
+      },
+      child: SizedBox(
+        width: widget.width,
+        height: widget.height,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: fillColor,
+          padding: EdgeInsets.symmetric(
+            horizontal: 16 * scale,
+            vertical: 15 * scale,
+          ),
+          expandToBounds: true,
+          boxShadow: shadows,
+          enableBlur: !(_isLongPressed || isActive),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 80 * scale,
+                height: 80 * scale,
+                child: Image.asset(
+                  widget.imagePath,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
+                      Icons.image_not_supported_outlined,
+                      color: const Color(0x80000000),
+                      size: 30 * scale,
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 6 * scale),
+              Text(
+                widget.label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NutritionGoalItem {
+  const _NutritionGoalItem({
+    required this.label,
+    required this.value,
+    required this.unit,
+  });
+
+  final String label;
+  final String value;
+  final String unit;
+}
+
+class _EditableNutritionValueField extends StatefulWidget {
+  const _EditableNutritionValueField({
+    required this.scale,
+    required this.controller,
+    required this.fontSize,
+  });
+
+  final double scale;
+  final TextEditingController controller;
+  final double fontSize;
+
+  @override
+  State<_EditableNutritionValueField> createState() =>
+      _EditableNutritionValueFieldState();
+}
+
+class _EditableNutritionValueFieldState
+    extends State<_EditableNutritionValueField> {
+  final FocusNode _focusNode = FocusNode();
+  bool _isLongPressed = false;
+  bool _isClicked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus && mounted) {
+        setState(() {
+          _isLongPressed = false;
+          _isClicked = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (_isClicked ? Colors.white : const Color(0x40FFFFFF));
+    final hasShadow = _isLongPressed || _isClicked;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressStart: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressEnd: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isClicked = true;
+          _isLongPressed = false;
+        });
+        _focusNode.requestFocus();
+      },
+      child: _RotatingGlassPanel(
+        scale: widget.scale,
+        borderRadius: 15,
+        fillColor: fillColor,
+        padding: EdgeInsets.symmetric(
+          horizontal: 16 * widget.scale,
+          vertical: 8 * widget.scale,
+        ),
+        expandToBounds: true,
+        boxShadow: shadows,
+        enableBlur: !(_isLongPressed || _isClicked),
+        child: Align(
+          alignment: Alignment.center,
+          child: TextField(
+            controller: widget.controller,
+            focusNode: _focusNode,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: const [
+              _IndianNumberInputFormatter(allowDecimal: true),
+            ],
+            textAlign: TextAlign.center,
+            textAlignVertical: TextAlignVertical.center,
+            maxLines: 1,
+            enableInteractiveSelection: false,
+            scrollPadding: EdgeInsets.zero,
+            style: TextStyle(
+              fontSize: widget.fontSize,
+              color: Colors.black,
+              fontWeight: FontWeight.w500,
+              height: 1.0,
+            ),
+            strutStyle: StrutStyle(
+              fontSize: widget.fontSize,
+              height: 1.0,
+              forceStrutHeight: true,
+            ),
+            cursorColor: Colors.black,
+            decoration: const InputDecoration(
+              isCollapsed: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onTap: () {
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _isClicked = true;
+                _isLongPressed = false;
+              });
+            },
+            onTapOutside: (_) {
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnitSelectorPill extends StatelessWidget {
+  const _UnitSelectorPill({
+    required this.scale,
+    required this.leftLabel,
+    required this.rightLabel,
+    required this.isLeftSelected,
+    this.fontSize,
+    this.onTapLeft,
+    this.onTapRight,
+  });
+
+  final double scale;
+  final String leftLabel;
+  final String rightLabel;
+  final bool isLeftSelected;
+  final double? fontSize;
+  final VoidCallback? onTapLeft;
+  final VoidCallback? onTapRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedWidth = 124 * scale;
+    final unselectedWidth = 116 * scale;
+    final selectedDecoration = BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(32 * scale),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0xFFFF0000),
+          blurRadius: 2,
+          blurStyle: BlurStyle.outer,
+        ),
+      ],
+    );
+    final textStyle = TextStyle(
+      fontSize: fontSize ?? (32 * scale).clamp(24.0, 40.0),
+      color: Colors.black,
+      fontWeight: FontWeight.w500,
+      height: 1.0,
+    );
+
+    return Container(
+      width: 264 * scale,
+      height: 64 * scale,
+      padding: EdgeInsets.all(8 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x29FFFFFF),
+        borderRadius: BorderRadius.circular(32 * scale),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTapLeft,
+            child: Container(
+              width: selectedWidth,
+              height: 48 * scale,
+              decoration: isLeftSelected ? selectedDecoration : null,
+              child: Center(child: Text(leftLabel, style: textStyle)),
+            ),
+          ),
+          SizedBox(width: 8 * scale),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTapRight,
+            child: Container(
+              width: unselectedWidth,
+              height: 48 * scale,
+              decoration: isLeftSelected ? null : selectedDecoration,
+              child: Center(
+                child: Text(
+                  rightLabel,
+                  textAlign: TextAlign.center,
+                  style: textStyle,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ActivityLevelOption {
   const _ActivityLevelOption({
     required this.label,
@@ -2396,6 +6315,13 @@ class _ActivityLevelOption {
   final String label;
   final String description;
   final int redBars;
+}
+
+class _CurrencyOption {
+  const _CurrencyOption({required this.label, required this.symbol});
+
+  final String label;
+  final String symbol;
 }
 
 class _ActivityLevelCard extends StatefulWidget {
@@ -2525,22 +6451,26 @@ class _ActivityLevelCardState extends State<_ActivityLevelCard> {
                   children: [
                     Text(
                       widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: (16 * scale).clamp(14.0, 20.0),
                         color: Colors.black,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                    SizedBox(height: 8 * scale),
-                    Text(
-                      widget.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: (12 * scale).clamp(10.0, 15.0),
-                        color: Colors.black,
-                        fontWeight: FontWeight.w500,
-                        height: 1.2,
+                    SizedBox(height: (6 * scale).clamp(4.0, 8.0)),
+                    Flexible(
+                      child: Text(
+                        widget.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: (12 * scale).clamp(10.0, 15.0),
+                          color: Colors.black,
+                          fontWeight: FontWeight.w500,
+                          height: 1.2,
+                        ),
                       ),
                     ),
                   ],
@@ -2726,6 +6656,56 @@ class _HeightTicksPainter extends CustomPainter {
         oldDelegate.value != value ||
         oldDelegate.minHeight != minHeight ||
         oldDelegate.maxHeight != maxHeight;
+  }
+}
+
+class _LeftIndicatorArrowPainter extends CustomPainter {
+  const _LeftIndicatorArrowPainter({
+    required this.color,
+    required this.strokeWidth,
+  });
+
+  final Color color;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centerY = size.height / 2;
+    final headBaseX = (size.width * 0.55)
+        .clamp(10.0, size.width * 0.72)
+        .toDouble();
+    final headHalfHeight = (size.height * 0.38)
+        .clamp(6.0, size.height * 0.5)
+        .toDouble();
+
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    // The shaft's right edge attaches exactly where the selected white line ends.
+    canvas.drawLine(
+      Offset(headBaseX, centerY),
+      Offset(size.width, centerY),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(headBaseX, centerY),
+      Offset(size.width, centerY - headHalfHeight),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(headBaseX, centerY),
+      Offset(size.width, centerY + headHalfHeight),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LeftIndicatorArrowPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
   }
 }
 
