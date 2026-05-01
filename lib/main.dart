@@ -46,6 +46,20 @@ const Map<String, String> _budgetCurrencyGlyphByCode = <String, String>{
   'INR': '₹',
   'USD': r'$',
 };
+const int _defaultDietPreferenceIndex = 1;
+const List<_DietPreferenceOption> _dietPreferenceOptions =
+    <_DietPreferenceOption>[
+      _DietPreferenceOption(label: 'Vegetarian', imagePath: 'assets/Veg.png'),
+      _DietPreferenceOption(
+        label: 'Non-vegetarian',
+        imagePath: 'assets/Non-veg.png',
+      ),
+      _DietPreferenceOption(
+        label: 'Eggetarian',
+        imagePath: 'assets/Eggiterian.png',
+      ),
+      _DietPreferenceOption(label: 'Vegan', imagePath: 'assets/Vegan.png'),
+    ];
 
 class _OnboardingSkipFlags {
   static bool skippedBudgetSection = false;
@@ -78,6 +92,7 @@ class _OnboardingProfileState {
   static bool hydrationEnabled = true;
   static String hydrationGoalText = '3';
   static bool isHydrationInLiters = true;
+  static int selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
 
   static void reset() {
     selectedGoalIndex = 2;
@@ -99,6 +114,7 @@ class _OnboardingProfileState {
     hydrationEnabled = true;
     hydrationGoalText = '3';
     isHydrationInLiters = true;
+    selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
   }
 }
 
@@ -909,6 +925,723 @@ class _AccountTermsScreenState extends State<AccountTermsScreen>
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class AccountDeletionScreen extends StatefulWidget {
+  const AccountDeletionScreen({super.key});
+
+  @override
+  State<AccountDeletionScreen> createState() => _AccountDeletionScreenState();
+}
+
+class _AccountDeletionScreenState extends State<AccountDeletionScreen>
+    with SingleTickerProviderStateMixin {
+  static const int _otpLength = 6;
+  static const int _resendCooldownDefaultSeconds = 60;
+  static const int _tryAgainLockSeconds = 90 * 60;
+
+  late final AnimationController _controller;
+  late final TextEditingController _otpHiddenController;
+  late final FocusNode _otpHiddenFocusNode;
+  Timer? _otpTimer;
+  Timer? _otpAutoVerifyTimer;
+
+  bool _isRequestInProgress = false;
+  bool _isVerifyInProgress = false;
+  bool _isOtpVerified = false;
+  bool _didRequestOtp = false;
+  bool _showOtpError = false;
+  int _resendAttempts = 0;
+  int _resendCooldownSeconds = 0;
+  int _tryAgainSeconds = 0;
+  int _otpVerifyGeneration = 0;
+  String _otpValue = '';
+
+  String? get _registeredEmail {
+    final email = supabase.auth.currentUser?.email?.trim();
+    if (email == null || email.isEmpty) {
+      return null;
+    }
+    return email;
+  }
+
+  bool get _hasRegisteredEmail => _registeredEmail != null;
+
+  bool get _canTapOtpAction {
+    if (_isRequestInProgress || _isVerifyInProgress) {
+      return false;
+    }
+    if (!_hasRegisteredEmail) {
+      return false;
+    }
+    if (_tryAgainSeconds > 0) {
+      return false;
+    }
+    if (!_didRequestOtp) {
+      return true;
+    }
+    return _resendCooldownSeconds == 0 && _resendAttempts < 3;
+  }
+
+  bool get _canTapDeleteAccount =>
+      _didRequestOtp &&
+      _tryAgainSeconds == 0 &&
+      !_isVerifyInProgress &&
+      _otpValue.length == _otpLength &&
+      _isOtpVerified;
+
+  @override
+  void initState() {
+    super.initState();
+    _otpHiddenController = TextEditingController();
+    _otpHiddenFocusNode = FocusNode();
+    _otpHiddenController.addListener(_syncOtpValueFromField);
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _otpTimer?.cancel();
+    _otpAutoVerifyTimer?.cancel();
+    _otpHiddenController.removeListener(_syncOtpValueFromField);
+    _otpHiddenController.dispose();
+    _otpHiddenFocusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _ensureOtpTimerRunning() {
+    if (_otpTimer != null) {
+      return;
+    }
+    _otpTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        if (_resendCooldownSeconds > 0) {
+          _resendCooldownSeconds--;
+        }
+        if (_tryAgainSeconds > 0) {
+          _tryAgainSeconds--;
+          if (_tryAgainSeconds == 0) {
+            _didRequestOtp = false;
+            _resendAttempts = 0;
+            _resendCooldownSeconds = 0;
+            _resetOtpValidationState();
+            _setOtpValue('', updateField: true);
+          }
+        }
+      });
+      _stopOtpTimerIfIdle();
+    });
+  }
+
+  void _stopOtpTimerIfIdle() {
+    if (_resendCooldownSeconds > 0 || _tryAgainSeconds > 0) {
+      return;
+    }
+    _otpTimer?.cancel();
+    _otpTimer = null;
+  }
+
+  String _formatCountdownLabel(int totalSeconds) {
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String get _otpActionLabel {
+    if (!_hasRegisteredEmail) {
+      return 'No registered email';
+    }
+    if (_isRequestInProgress) {
+      return _didRequestOtp ? 'Sending OTP...' : 'Getting OTP...';
+    }
+    if (_tryAgainSeconds > 0) {
+      return 'Try After (${_formatCountdownLabel(_tryAgainSeconds)})';
+    }
+    if (!_didRequestOtp) {
+      return 'Get OTP';
+    }
+    if (_resendCooldownSeconds > 0) {
+      return 'Resend OTP (${_formatCountdownLabel(_resendCooldownSeconds)}) [$_resendAttempts/3]';
+    }
+    return 'Resend OTP [$_resendAttempts/3]';
+  }
+
+  String _sanitizeOtp(String input) {
+    final filtered = input
+        .replaceAll(RegExp(r'[^0-9A-Za-z]'), '')
+        .toUpperCase();
+    if (filtered.length <= _otpLength) {
+      return filtered;
+    }
+    return filtered.substring(0, _otpLength);
+  }
+
+  void _setOtpValue(String value, {required bool updateField}) {
+    final normalized = _sanitizeOtp(value);
+    _otpValue = normalized;
+    if (updateField && _otpHiddenController.text != normalized) {
+      _otpHiddenController.value = TextEditingValue(
+        text: normalized,
+        selection: TextSelection.collapsed(offset: normalized.length),
+      );
+    }
+  }
+
+  void _resetOtpValidationState({bool clearError = true}) {
+    _otpVerifyGeneration++;
+    _otpAutoVerifyTimer?.cancel();
+    _otpAutoVerifyTimer = null;
+    _isOtpVerified = false;
+    if (clearError) {
+      _showOtpError = false;
+    }
+  }
+
+  Future<bool> _verifyOtpWithFallback(String token) async {
+    final email = _registeredEmail;
+    if (email == null) {
+      return false;
+    }
+    final otpTypes = <OtpType>[
+      OtpType.email,
+      OtpType.magiclink,
+      OtpType.signup,
+    ];
+    for (final otpType in otpTypes) {
+      try {
+        await supabase.auth.verifyOTP(
+          type: otpType,
+          token: token,
+          email: email,
+        );
+        return true;
+      } on AuthException {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  void _scheduleAutoOtpVerification() {
+    _otpAutoVerifyTimer?.cancel();
+    if (!_didRequestOtp ||
+        _tryAgainSeconds > 0 ||
+        _otpValue.length != _otpLength) {
+      return;
+    }
+    final generation = ++_otpVerifyGeneration;
+    _otpAutoVerifyTimer = Timer(const Duration(milliseconds: 250), () async {
+      if (!mounted ||
+          generation != _otpVerifyGeneration ||
+          _isVerifyInProgress) {
+        return;
+      }
+      final token = _otpValue;
+      if (token.length != _otpLength) {
+        return;
+      }
+      setState(() {
+        _isVerifyInProgress = true;
+      });
+      final verified = await _verifyOtpWithFallback(token);
+      if (!mounted || generation != _otpVerifyGeneration) {
+        return;
+      }
+      setState(() {
+        _isVerifyInProgress = false;
+        _isOtpVerified = verified;
+        _showOtpError = !verified;
+      });
+    });
+  }
+
+  void _syncOtpValueFromField() {
+    if (!mounted) {
+      return;
+    }
+    final nextValue = _sanitizeOtp(_otpHiddenController.text);
+    if (_otpHiddenController.text != nextValue) {
+      _otpHiddenController.value = TextEditingValue(
+        text: nextValue,
+        selection: TextSelection.collapsed(offset: nextValue.length),
+      );
+    }
+    if (_otpValue == nextValue) {
+      return;
+    }
+    setState(() {
+      _otpValue = nextValue;
+      _resetOtpValidationState();
+    });
+    _scheduleAutoOtpVerification();
+  }
+
+  void _focusOtpInput() {
+    if (!mounted) {
+      return;
+    }
+    _otpHiddenFocusNode.requestFocus();
+    _otpHiddenController.selection = TextSelection.collapsed(
+      offset: _otpHiddenController.text.length,
+    );
+  }
+
+  String _otpDisplayCharacter(int index) {
+    if (_showOtpError) {
+      const wrongPattern = <String>['0', 'X', '0', '0', '0', '0'];
+      return wrongPattern[index];
+    }
+    if (index >= _otpValue.length) {
+      return '';
+    }
+    return _otpValue[index];
+  }
+
+  String get _otpStatusLabel {
+    if (!_didRequestOtp || _otpValue.length != _otpLength) {
+      return '';
+    }
+    if (_isVerifyInProgress) {
+      return 'Checking OTP...';
+    }
+    if (_isOtpVerified) {
+      return 'OTP is correct';
+    }
+    if (_showOtpError) {
+      return 'OTP is wrong';
+    }
+    return '';
+  }
+
+  Color get _otpStatusColor {
+    if (_isOtpVerified) {
+      return const Color(0xFF31E68B);
+    }
+    if (_showOtpError) {
+      return const Color(0xFFFF6B6B);
+    }
+    return Colors.white;
+  }
+
+  Future<void> _requestOrResendOtp() async {
+    if (!_canTapOtpAction || !mounted) {
+      return;
+    }
+    final email = _registeredEmail;
+    if (email == null) {
+      return;
+    }
+
+    setState(() {
+      _isRequestInProgress = true;
+      _resetOtpValidationState();
+      _setOtpValue('', updateField: true);
+    });
+
+    try {
+      await supabase.auth.signInWithOtp(email: email, shouldCreateUser: false);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        if (!_didRequestOtp) {
+          _didRequestOtp = true;
+          _resendAttempts = 1;
+          _resendCooldownSeconds = _resendCooldownDefaultSeconds;
+        } else {
+          _resendAttempts += 1;
+          if (_resendAttempts >= 3) {
+            _resendAttempts = 3;
+            _tryAgainSeconds = _tryAgainLockSeconds;
+            _resendCooldownSeconds = 0;
+          } else {
+            _resendCooldownSeconds = _resendCooldownDefaultSeconds;
+          }
+        }
+      });
+      _ensureOtpTimerRunning();
+      _focusOtpInput();
+    } on AuthException catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _resetOtpValidationState();
+        _showOtpError = true;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRequestInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _validateOtpAndDelete() async {
+    if (!_canTapDeleteAccount || !mounted) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    // OTP is already verified before this point; now only execute delete flow.
+    setState(() {
+      _resetOtpValidationState();
+      _resendAttempts = _resendAttempts <= 0 ? 1 : _resendAttempts;
+      _resendCooldownSeconds = _resendCooldownDefaultSeconds;
+      _setOtpValue('', updateField: true);
+    });
+    _ensureOtpTimerRunning();
+  }
+
+  Widget _buildOtpDigitCell({required int index, required double scale}) {
+    final canEdit = _didRequestOtp && _tryAgainSeconds == 0;
+    final fillColor = _showOtpError
+        ? const Color(0x29FF0000)
+        : (_didRequestOtp ? const Color(0x52FFFFFF) : const Color(0x3DFFFFFF));
+    final textColor = _showOtpError
+        ? Colors.black
+        : (_didRequestOtp ? Colors.black : const Color(0x29000000));
+
+    return SizedBox(
+      width: 50 * scale,
+      height: 50 * scale,
+      child: _RotatingGlassPanel(
+        scale: scale,
+        borderRadius: 15 * scale,
+        fillColor: fillColor,
+        padding: EdgeInsets.zero,
+        expandToBounds: true,
+        boxShadow: _showOtpError
+            ? const [
+                BoxShadow(
+                  color: Color(0xFFFF0000),
+                  blurRadius: 2,
+                  blurStyle: BlurStyle.outer,
+                ),
+              ]
+            : const <BoxShadow>[],
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: canEdit ? _focusOtpInput : null,
+          child: Center(
+            child: Text(
+              _otpDisplayCharacter(index),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: (24 * scale).clamp(18.0, 30.0),
+                color: textColor,
+                fontWeight: FontWeight.w500,
+                height: 1.0,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOtpSupportCard(double scale) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0x52FFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      padding: EdgeInsets.all(16 * scale),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Having trouble with OTP verification?',
+            style: TextStyle(
+              fontSize: (16 * scale).clamp(14.0, 20.0),
+              color: Colors.black,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 16 * scale),
+          Text(
+            'You can request account deletion by\nemailing us at',
+            style: TextStyle(
+              fontSize: (14 * scale).clamp(12.0, 18.0),
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              height: 1.25,
+            ),
+          ),
+          SizedBox(height: 16 * scale),
+          Text(
+            'whatihad.info@gmail.com',
+            style: TextStyle(
+              fontSize: (14 * scale).clamp(12.0, 18.0),
+              color: const Color(0xFFFF0000),
+              fontWeight: FontWeight.w500,
+              decoration: TextDecoration.underline,
+              decorationColor: const Color(0xFFFF0000),
+            ),
+          ),
+          SizedBox(height: 16 * scale),
+          Text(
+            'from your registered email address.\nWe’ll verify your request and process it\nshortly.',
+            style: TextStyle(
+              fontSize: (14 * scale).clamp(12.0, 18.0),
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              height: 1.25,
+            ),
+          ),
+          SizedBox(height: 16 * scale),
+          Text(
+            'Requests are usually processed within\n24–48 hours.',
+            style: TextStyle(
+              fontSize: (14 * scale).clamp(12.0, 18.0),
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: _AnimatedGradientScene(
+          animation: _controller,
+          contentBuilder: (context, metrics) {
+            final scale = metrics.designScale;
+            final contentWidth = math.min(
+              358 * scale,
+              metrics.width - (32 * scale),
+            );
+            final contentLeft = (metrics.width - contentWidth) / 2;
+            final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+            final contentTop = titleTop + (72 * scale);
+            final controlsBottom = math.max(
+              66 * scale,
+              metrics.padding.bottom + (26 * scale),
+            );
+            final scrollBottomPadding = controlsBottom + (72 * scale);
+            final backButtonWidth = 79 * scale;
+            final deleteButtonWidth = 263 * scale;
+
+            return Stack(
+              children: [
+                Positioned(
+                  top: titleTop,
+                  left: 0,
+                  right: 0,
+                  child: Text(
+                    'Account Deletion',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Borel',
+                      fontSize: (32 * scale).clamp(24.0, 42.0),
+                      color: Colors.white,
+                      height: 0.99,
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(
+                      contentLeft,
+                      contentTop,
+                      contentLeft,
+                      scrollBottomPadding,
+                    ),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          width: contentWidth,
+                          height: 56 * scale,
+                          child: _RotatingGlassPanel(
+                            scale: scale,
+                            borderRadius: 16 * scale,
+                            fillColor: const Color(0x52FFFFFF),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16 * scale,
+                            ),
+                            expandToBounds: true,
+                            child: Center(
+                              child: Text(
+                                _registeredEmail ?? 'No registered email found',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 24 * scale),
+                        SizedBox(
+                          width: deleteButtonWidth,
+                          child: _RotatingGlassButton(
+                            scale: scale,
+                            height: 56 * scale,
+                            borderRadius: 32 * scale,
+                            fillColor: _canTapOtpAction
+                                ? const Color(0xCC00B2FF)
+                                : const Color(0x6600B2FF),
+                            enablePressShadeFeedback: _canTapOtpAction,
+                            onTap: _canTapOtpAction
+                                ? _requestOrResendOtp
+                                : () {},
+                            child: Text(
+                              _otpActionLabel,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 24 * scale),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: List<Widget>.generate(
+                            _otpLength,
+                            (index) =>
+                                _buildOtpDigitCell(index: index, scale: scale),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 1,
+                          height: 1,
+                          child: Opacity(
+                            opacity: 0,
+                            child: TextField(
+                              controller: _otpHiddenController,
+                              focusNode: _otpHiddenFocusNode,
+                              autofocus: false,
+                              enabled: _didRequestOtp && _tryAgainSeconds == 0,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              maxLength: _otpLength,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9A-Za-z]'),
+                                ),
+                                LengthLimitingTextInputFormatter(_otpLength),
+                              ],
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                counterText: '',
+                                isCollapsed: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 10 * scale),
+                        SizedBox(
+                          height: 20 * scale,
+                          child: Text(
+                            _otpStatusLabel,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: (14 * scale).clamp(12.0, 18.0),
+                              color: _otpStatusColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 16 * scale),
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Colors.white,
+                          size: (24 * scale).clamp(20.0, 30.0),
+                        ),
+                        SizedBox(height: 16 * scale),
+                        _buildOtpSupportCard(scale),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: contentLeft,
+                  width: contentWidth,
+                  bottom: controlsBottom,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: backButtonWidth,
+                        child: _RotatingGlassButton(
+                          scale: scale,
+                          height: 56 * scale,
+                          borderRadius: 32 * scale,
+                          fillColor: Colors.white,
+                          enablePressShadeFeedback: true,
+                          onTap: _goBack,
+                          child: Icon(
+                            Icons.arrow_back,
+                            color: const Color(0xFFFFD206),
+                            size: (24 * scale).clamp(20.0, 28.0),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 16 * scale),
+                      SizedBox(
+                        width: deleteButtonWidth,
+                        child: _RotatingGlassButton(
+                          scale: scale,
+                          height: 56 * scale,
+                          borderRadius: 32 * scale,
+                          fillColor: _canTapDeleteAccount
+                              ? const Color(0x52FF0606)
+                              : const Color(0x24FF0606),
+                          enablePressShadeFeedback: _canTapDeleteAccount,
+                          onTap: _canTapDeleteAccount
+                              ? _validateOtpAndDelete
+                              : () {},
+                          child: Text(
+                            _isVerifyInProgress
+                                ? 'Verifying...'
+                                : 'Delete Account',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -2024,6 +2757,208 @@ class _AccountGoalScreenState extends State<AccountGoalScreen>
                               ),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class AccountDietPreferenceScreen extends StatefulWidget {
+  const AccountDietPreferenceScreen({
+    super.key,
+    required this.initialSelectedIndex,
+  });
+
+  final int initialSelectedIndex;
+
+  @override
+  State<AccountDietPreferenceScreen> createState() =>
+      _AccountDietPreferenceScreenState();
+}
+
+class _AccountDietPreferenceScreenState
+    extends State<AccountDietPreferenceScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late int _selectedIndex;
+  bool _didNavigateForward = false;
+
+  bool get _hasChanged => _selectedIndex != widget.initialSelectedIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.initialSelectedIndex
+        .clamp(0, _dietPreferenceOptions.length - 1)
+        .toInt();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _savePreference() {
+    if (!_hasChanged || _didNavigateForward || !mounted) {
+      return;
+    }
+    _didNavigateForward = true;
+    Navigator.of(context).pop(_selectedIndex);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final cardsTop = titleTop + (94 * scale);
+          final cardWidth = 171 * scale;
+          final cardHeight = 141 * scale;
+          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
+          final controlsBottom = math.max(
+            66 * scale,
+            metrics.padding.bottom + (26 * scale),
+          );
+          final backButtonWidth = 79 * scale;
+          final saveButtonWidth = 263 * scale;
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: Text(
+                  'Diet Preference?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Borel',
+                    fontSize: (32 * scale).clamp(24.0, 42.0),
+                    color: Colors.white,
+                    height: 0.99,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: cardsTop,
+                left: contentLeft,
+                width: contentWidth,
+                bottom: contentBottomInset,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    bottom: bottomPanelHeight + (16 * scale),
+                  ),
+                  child: Wrap(
+                    spacing: 16 * scale,
+                    runSpacing: 16 * scale,
+                    children: List<Widget>.generate(
+                      _dietPreferenceOptions.length,
+                      (index) {
+                        final option = _dietPreferenceOptions[index];
+                        return _DietPreferenceCard(
+                          scale: scale,
+                          width: cardWidth,
+                          height: cardHeight,
+                          label: option.label,
+                          imagePath: option.imagePath,
+                          isSelected: _selectedIndex == index,
+                          showSelectionGlow: false,
+                          onTap: () {
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(() => _selectedIndex = index);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
+                    child: Container(color: const Color(0x01FF787A)),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: backButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBack,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (24 * scale).clamp(20.0, 28.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    SizedBox(
+                      width: saveButtonWidth,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: _hasChanged
+                            ? const Color(0x8FFFD206)
+                            : const Color(0x52FFD206),
+                        enablePressShadeFeedback: _hasChanged,
+                        onTap: _hasChanged ? _savePreference : () {},
+                        child: Text(
+                          'Save',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -6322,22 +7257,12 @@ class _DietPreferenceScreenState extends State<DietPreferenceScreen>
   bool _didNavigateForward = false;
   bool get _canContinue => _selectedIndex != null;
 
-  static const List<_DietPreferenceOption> _options = <_DietPreferenceOption>[
-    _DietPreferenceOption(label: 'Vegetarian', imagePath: 'assets/Veg.png'),
-    _DietPreferenceOption(
-      label: 'Non-vegetarian',
-      imagePath: 'assets/Non-veg.png',
-    ),
-    _DietPreferenceOption(
-      label: 'Eggetarian',
-      imagePath: 'assets/Eggiterian.png',
-    ),
-    _DietPreferenceOption(label: 'Vegan', imagePath: 'assets/Vegan.png'),
-  ];
-
   @override
   void initState() {
     super.initState();
+    _selectedIndex = _OnboardingProfileState.selectedDietPreferenceIndex
+        .clamp(0, _dietPreferenceOptions.length - 1)
+        .toInt();
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -6366,6 +7291,9 @@ class _DietPreferenceScreenState extends State<DietPreferenceScreen>
     if (!_canContinue || _didNavigateForward || !mounted) {
       return;
     }
+    _OnboardingProfileState.selectedDietPreferenceIndex = _selectedIndex!
+        .clamp(0, _dietPreferenceOptions.length - 1)
+        .toInt();
     _didNavigateForward = true;
     Navigator.of(
       context,
@@ -6428,27 +7356,30 @@ class _DietPreferenceScreenState extends State<DietPreferenceScreen>
                   child: Wrap(
                     spacing: 16 * scale,
                     runSpacing: 16 * scale,
-                    children: List<Widget>.generate(_options.length, (index) {
-                      final option = _options[index];
-                      return _DietPreferenceCard(
-                        scale: scale,
-                        width: cardWidth,
-                        height: cardHeight,
-                        label: option.label,
-                        imagePath: option.imagePath,
-                        isSelected: _selectedIndex == index,
-                        onTap: () {
-                          if (!mounted) {
-                            return;
-                          }
-                          setState(() {
-                            _selectedIndex = _selectedIndex == index
-                                ? null
-                                : index;
-                          });
-                        },
-                      );
-                    }),
+                    children: List<Widget>.generate(
+                      _dietPreferenceOptions.length,
+                      (index) {
+                        final option = _dietPreferenceOptions[index];
+                        return _DietPreferenceCard(
+                          scale: scale,
+                          width: cardWidth,
+                          height: cardHeight,
+                          label: option.label,
+                          imagePath: option.imagePath,
+                          isSelected: _selectedIndex == index,
+                          onTap: () {
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(() {
+                              _selectedIndex = _selectedIndex == index
+                                  ? null
+                                  : index;
+                            });
+                          },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -7316,6 +8247,7 @@ class _AccountScreenState extends State<AccountScreen>
   int? _selectedBudgetPerMeal = 200;
   String _customBudgetPerMeal = '';
   bool _isCustomBudgetPerMeal = false;
+  int _selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
   Map<String, String> _nutritionGoalValues = Map<String, String>.from(
     _defaultNutritionGoalValues,
   );
@@ -7335,6 +8267,12 @@ class _AccountScreenState extends State<AccountScreen>
     'Moderate',
     'Active',
     'Athlete',
+  ];
+  static const List<String> _dietPreferenceLabels = <String>[
+    'Vegetarian',
+    'Non-vegetarian',
+    'Eggetarian',
+    'Vegan',
   ];
 
   @override
@@ -7370,6 +8308,10 @@ class _AccountScreenState extends State<AccountScreen>
     _advancedNutritionGoalValues = Map<String, String>.from(
       _OnboardingProfileState.advancedNutritionGoalValues,
     );
+    _selectedDietPreferenceIndex = _OnboardingProfileState
+        .selectedDietPreferenceIndex
+        .clamp(0, _dietPreferenceLabels.length - 1)
+        .toInt();
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -7665,12 +8607,42 @@ class _AccountScreenState extends State<AccountScreen>
     _OnboardingSkipFlags.skippedWaterSection = result.skippedHydrationSection;
   }
 
+  Future<void> _openDietPreferenceScreen() async {
+    if (!mounted) {
+      return;
+    }
+    final selectedIndex = await Navigator.of(context).push<int>(
+      _buildAccountEditRoute<int>(
+        screen: AccountDietPreferenceScreen(
+          initialSelectedIndex: _selectedDietPreferenceIndex,
+        ),
+      ),
+    );
+    if (!mounted || selectedIndex == null) {
+      return;
+    }
+    final clampedIndex = selectedIndex
+        .clamp(0, _dietPreferenceLabels.length - 1)
+        .toInt();
+    setState(() => _selectedDietPreferenceIndex = clampedIndex);
+    _OnboardingProfileState.selectedDietPreferenceIndex = clampedIndex;
+  }
+
   Future<void> _openTermsScreen() async {
     if (!mounted) {
       return;
     }
     await Navigator.of(context).push<void>(
       _buildAccountEditRoute<void>(screen: const AccountTermsScreen()),
+    );
+  }
+
+  Future<void> _openAccountDeletionScreen() async {
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      _buildAccountEditRoute<void>(screen: const AccountDeletionScreen()),
     );
   }
 
@@ -8035,7 +9007,9 @@ class _AccountScreenState extends State<AccountScreen>
                       _actionTile(
                         scale: scale,
                         title: 'Diet Preference',
-                        value: 'Non-vegetarian',
+                        value:
+                            _dietPreferenceLabels[_selectedDietPreferenceIndex],
+                        onTap: _openDietPreferenceScreen,
                       ),
                       SizedBox(height: 8 * scale),
                       _actionTile(
@@ -8046,7 +9020,11 @@ class _AccountScreenState extends State<AccountScreen>
                       SizedBox(height: 8 * scale),
                       _actionTile(scale: scale, title: 'About'),
                       SizedBox(height: 8 * scale),
-                      _actionTile(scale: scale, title: 'Account Deletion'),
+                      _actionTile(
+                        scale: scale,
+                        title: 'Account Deletion',
+                        onTap: _openAccountDeletionScreen,
+                      ),
                       SizedBox(height: 8 * scale),
                       _actionTile(
                         scale: scale,
@@ -8251,6 +9229,7 @@ class _DietPreferenceCard extends StatefulWidget {
     required this.imagePath,
     required this.isSelected,
     required this.onTap,
+    this.showSelectionGlow = true,
   });
 
   final double scale;
@@ -8260,6 +9239,7 @@ class _DietPreferenceCard extends StatefulWidget {
   final String imagePath;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool showSelectionGlow;
 
   @override
   State<_DietPreferenceCard> createState() => _DietPreferenceCardState();
@@ -8286,7 +9266,7 @@ class _DietPreferenceCardState extends State<_DietPreferenceCard> {
     final fillColor = _isLongPressed
         ? Colors.transparent
         : (isActive ? Colors.white : const Color(0x52FFFFFF));
-    final hasShadow = _isLongPressed || isActive;
+    final hasShadow = widget.showSelectionGlow && (_isLongPressed || isActive);
     final shadows = hasShadow
         ? const [
             BoxShadow(
