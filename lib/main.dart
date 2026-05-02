@@ -29,7 +29,7 @@ const String _goalGainWeightImageUrl = 'assets/Gain_weight.png';
 const String _goalGainMuscleImageUrl = 'assets/Gain_muscle.png';
 const String _goalMaintainImageUrl = 'assets/Maintain.png';
 const String _defaultNonBorelFontFamily = 'Nata Sans';
-const Color _menuBarBlockFillColor = Color(0xFFFFFFFF);
+const Color _menuBarBlockFillColor = Color(0x04FFFFFF);
 const Color _bottomNavActiveIconColor = Color(0xFFFF7375);
 const double _bottomBlurLayerCount = 8;
 const double _bottomBlurTopSigma = 0.25;
@@ -7656,7 +7656,12 @@ class _YouAreReadyScreenState extends State<YouAreReadyScreen>
 }
 
 class DailyProgressScreen extends StatefulWidget {
-  const DailyProgressScreen({super.key});
+  const DailyProgressScreen({
+    super.key,
+    this.initialSelectedBottomNavIndex = 0,
+  });
+
+  final int initialSelectedBottomNavIndex;
 
   @override
   State<DailyProgressScreen> createState() => _DailyProgressScreenState();
@@ -7671,6 +7676,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
   @override
   void initState() {
     super.initState();
+    _selectedBottomNavIndex = widget.initialSelectedBottomNavIndex.clamp(0, 3);
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -7739,6 +7745,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       borderRadius: 16 * scale,
       fillColor: const Color(0x52FFFFFF),
       padding: EdgeInsets.all(8 * scale),
+      lightLengthMultiplier: 18.0,
       child: child,
     );
 
@@ -7949,7 +7956,11 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
               : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
           final navHeight = 64 * scale;
           final blurPanelHeight = navHeight + controlsBottom;
-          final scrollBottomPadding = blurPanelHeight + (24 * scale);
+          final bananaTopInset = controlsBottom + (74 * scale) + (99 * scale);
+          final scrollBottomPadding = math.max(
+            blurPanelHeight + (24 * scale),
+            bananaTopInset + (16 * scale),
+          );
           final hideWaterSection = _OnboardingSkipFlags.skippedWaterSection;
           final hideBudgetSection = _OnboardingSkipFlags.skippedBudgetSection;
           final hideMealsTimelineSection =
@@ -8127,7 +8138,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                         scale: scale,
                         child: _innerPanel(
                           scale: scale,
-                          height: 88 * scale,
+                          height: 88,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -8164,25 +8175,69 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                         SizedBox(height: 30 * scale),
                         _sectionTitle('Meals Timeline', scale),
                         SizedBox(height: 8 * scale),
-                        _outerPanel(
-                          scale: scale,
-                          child: _innerPanel(
-                            scale: scale,
-                            height: 88 * scale,
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'No meals added yet',
-                                    style: TextStyle(
-                                      fontSize: (14 * scale).clamp(12.0, 16.0),
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.w500,
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0x29FFFFFF),
+                            borderRadius: BorderRadius.circular(16 * scale),
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: Container(
+                            height: 88,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0x52FFFFFF),
+                              borderRadius: BorderRadius.circular(16 * scale),
+                            ),
+                            child: SizedBox(
+                              height: 72,
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0x66FFFFFF),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'No meals added yet',
+                                        style: TextStyle(
+                                          fontFamily: 'Nata Sans',
+                                          fontSize: 14,
+                                          height: 1,
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0x4CFFFFFF),
+                                      borderRadius: BorderRadius.circular(
+                                        16 * scale,
+                                      ),
+                                      border: Border.all(
+                                        color: const Color(0x99FFFFFF),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.add_rounded,
+                                      color: Colors.white,
+                                      size: 36,
                                     ),
                                   ),
-                                ),
-                                _navIconTile(scale: scale, icon: Icons.add),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -8436,12 +8491,14 @@ class _AccountScreenState extends State<AccountScreen>
     super.dispose();
   }
 
-  void _goHome() {
+  void _goToDailyProgressTab(int tabIndex) {
     if (!mounted) {
       return;
     }
     Navigator.of(context).pushReplacement(
-      _buildNoTransitionRoute(screen: const DailyProgressScreen()),
+      _buildNoTransitionRoute(
+        screen: DailyProgressScreen(initialSelectedBottomNavIndex: tabIndex),
+      ),
     );
   }
 
@@ -8828,7 +8885,7 @@ class _AccountScreenState extends State<AccountScreen>
                     height: 1.0,
                   ),
                 ),
-                SizedBox(height: 4 * scale),
+                const SizedBox(height: 8),
                 if (showPlaceholder)
                   _addPlaceholderChip(scale: scale)
                 else
@@ -9191,12 +9248,13 @@ class _AccountScreenState extends State<AccountScreen>
                                   scale: scale,
                                   assetPath: 'assets/Home_in.svg',
                                   isSelected: false,
-                                  onTap: _goHome,
+                                  onTap: () => _goToDailyProgressTab(0),
                                 ),
                                 _bottomNavIconButton(
                                   scale: scale,
                                   assetPath: 'assets/Notification_in.svg',
                                   isSelected: false,
+                                  onTap: () => _goToDailyProgressTab(1),
                                 ),
                                 _bottomNavIconButton(
                                   scale: scale,
@@ -9229,6 +9287,7 @@ class _AccountScreenState extends State<AccountScreen>
                             scale: scale,
                             assetPath: 'assets/Add_new.svg',
                             isSelected: false,
+                            onTap: () => _goToDailyProgressTab(3),
                           ),
                         ),
                       ),
@@ -10606,6 +10665,7 @@ class _RotatingGlassPanel extends StatefulWidget {
     this.expandToBounds = false,
     this.boxShadow,
     this.enableBlur = true,
+    this.lightLengthMultiplier = 18.0,
   });
 
   final double scale;
@@ -10617,6 +10677,7 @@ class _RotatingGlassPanel extends StatefulWidget {
   final bool expandToBounds;
   final List<BoxShadow>? boxShadow;
   final bool enableBlur;
+  final double lightLengthMultiplier;
 
   @override
   State<_RotatingGlassPanel> createState() => _RotatingGlassPanelState();
@@ -10691,6 +10752,7 @@ class _RotatingGlassPanelState extends State<_RotatingGlassPanel>
                       strokeWidth: rotatingLightStroke,
                       glowWidth: (2 * scale).clamp(1.2, 2.8),
                       borderStroke: borderStroke,
+                      lightLengthMultiplier: widget.lightLengthMultiplier,
                     ),
                   ),
                 ),
@@ -11087,6 +11149,7 @@ class _RotatingBorderLightPainter extends CustomPainter {
     required this.strokeWidth,
     required this.glowWidth,
     required this.borderStroke,
+    this.lightLengthMultiplier = 18.0,
   });
 
   final double angle;
@@ -11094,6 +11157,7 @@ class _RotatingBorderLightPainter extends CustomPainter {
   final double strokeWidth;
   final double glowWidth;
   final double borderStroke;
+  final double lightLengthMultiplier;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -11130,25 +11194,7 @@ class _RotatingBorderLightPainter extends CustomPainter {
         Color(0x00FFFFFF),
         Color(0x00FFFFFF),
       ],
-      // Two identical, softer profiles that blend into the border.
-      stops: const [
-        0.0,
-        0.062,
-        0.086,
-        0.104,
-        0.122,
-        0.14,
-        0.166,
-        0.5,
-        0.56,
-        0.586,
-        0.604,
-        0.622,
-        0.64,
-        0.666,
-        0.69,
-        1.0,
-      ],
+      stops: _buildLightStops(lightLengthMultiplier),
     ).createShader(drawRect);
 
     final glowPaint = Paint()
@@ -11172,7 +11218,42 @@ class _RotatingBorderLightPainter extends CustomPainter {
         oldDelegate.borderRadius != borderRadius ||
         oldDelegate.strokeWidth != strokeWidth ||
         oldDelegate.glowWidth != glowWidth ||
-        oldDelegate.borderStroke != borderStroke;
+        oldDelegate.borderStroke != borderStroke ||
+        oldDelegate.lightLengthMultiplier != lightLengthMultiplier;
+  }
+
+  static List<double> _buildLightStops(double lengthMultiplier) {
+    final factor = math.max(1.0, lengthMultiplier);
+    const firstCenter = 0.122;
+    const secondCenter = 0.622;
+
+    double scaleStop({
+      required double value,
+      required double center,
+      required double min,
+      required double max,
+    }) {
+      return (center + ((value - center) * factor)).clamp(min, max).toDouble();
+    }
+
+    return [
+      0.0,
+      scaleStop(value: 0.062, center: firstCenter, min: 0.0, max: 0.5),
+      scaleStop(value: 0.086, center: firstCenter, min: 0.0, max: 0.5),
+      scaleStop(value: 0.104, center: firstCenter, min: 0.0, max: 0.5),
+      firstCenter,
+      scaleStop(value: 0.14, center: firstCenter, min: 0.0, max: 0.5),
+      scaleStop(value: 0.166, center: firstCenter, min: 0.0, max: 0.5),
+      0.5,
+      scaleStop(value: 0.56, center: secondCenter, min: 0.5, max: 1.0),
+      scaleStop(value: 0.586, center: secondCenter, min: 0.5, max: 1.0),
+      scaleStop(value: 0.604, center: secondCenter, min: 0.5, max: 1.0),
+      secondCenter,
+      scaleStop(value: 0.64, center: secondCenter, min: 0.5, max: 1.0),
+      scaleStop(value: 0.666, center: secondCenter, min: 0.5, max: 1.0),
+      scaleStop(value: 0.69, center: secondCenter, min: 0.5, max: 1.0),
+      1.0,
+    ];
   }
 }
 
