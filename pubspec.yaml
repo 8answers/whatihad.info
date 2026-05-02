@@ -75,11 +75,12 @@ flutter:
     - assets/t_and_c.svg
     - assets/Apple.svg
     - assets/Google Logo (1).svg
-    - assets/Home_active.png
-    - assets/Notification_inactive.png
-    - assets/Accoiunt_inactive.png
+    - assets/Home_in.svg
+    - assets/Notification_in.svg
+    - assets/Account_in.svg
+    - assets/Add_new.svg
+    - assets/Chat.svg
     - assets/Add.png
-    - assets/addd.png
     - assets/Bellyo_ai.png
 
   fonts:

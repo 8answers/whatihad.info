@@ -29,10 +29,34 @@ const String _goalGainWeightImageUrl = 'assets/Gain_weight.png';
 const String _goalGainMuscleImageUrl = 'assets/Gain_muscle.png';
 const String _goalMaintainImageUrl = 'assets/Maintain.png';
 const String _defaultNonBorelFontFamily = 'Nata Sans';
-const Color _menuBarBlockFillColor = Color(0x1FFFFFFF);
+const Color _menuBarBlockFillColor = Color(0xFFFFFFFF);
+const Color _bottomNavActiveIconColor = Color(0xFFFF7375);
+const double _bottomBlurLayerCount = 8;
+const double _bottomBlurTopSigma = 0.25;
 const double _bottomBlurBottomSigma = 2.0;
-const double _bottomBlurTopHoldStop = 2.0;
-const double _bottomBlurSeamOverlap = 4.0;
+const double _dailyProgressMenuBarBlurSigma = 40.0;
+const ColorFilter _halfOpacityBackdropColorFilter = ColorFilter.matrix(<double>[
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0.5,
+  0,
+]);
 const Map<String, String> _defaultNutritionGoalValues = <String, String>{
   'Calories': '2,330',
   'Protein': '100',
@@ -66,7 +90,7 @@ const List<_DietPreferenceOption> _dietPreferenceOptions =
     ];
 
 Widget _buildBottomBlurFadeOverlay() {
-  // Progressive blend from 0 -> 0.5 with seamless dissolve at the top edge.
+  // Progressive blur + 50% backdrop opacity, without extra overlay layer.
   return ClipRect(
     child: LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
@@ -78,36 +102,43 @@ Widget _buildBottomBlurFadeOverlay() {
         return Stack(
           fit: StackFit.expand,
           children: [
-            Transform.translate(
-              offset: const Offset(0, -_bottomBlurSeamOverlap),
-              child: SizedBox(
-                height: panelHeight + _bottomBlurSeamOverlap,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: _bottomBlurBottomSigma,
-                    sigmaY: _bottomBlurBottomSigma,
-                  ),
-                  child: const ColoredBox(color: Colors.transparent),
-                ),
+            for (int index = 0; index < _bottomBlurLayerCount; index++)
+              _buildProgressiveBottomBlurSlice(
+                panelHeight: panelHeight,
+                layerIndex: index,
               ),
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[
-                    Color(0x00FFFFFF),
-                    Color(0x00FFFFFF),
-                    Color(0x80FFFFFF),
-                  ],
-                  stops: <double>[0.0, _bottomBlurTopHoldStop, 1.0],
-                ),
-              ),
-            ),
           ],
         );
       },
+    ),
+  );
+}
+
+Widget _buildProgressiveBottomBlurSlice({
+  required double panelHeight,
+  required int layerIndex,
+}) {
+  final sliceTop = panelHeight * (layerIndex / _bottomBlurLayerCount);
+  final sliceHeight = (panelHeight / _bottomBlurLayerCount) + 2;
+  final blurProgress = _bottomBlurLayerCount <= 1
+      ? 1.0
+      : layerIndex / (_bottomBlurLayerCount - 1);
+  final sigma =
+      _bottomBlurTopSigma +
+      ((_bottomBlurBottomSigma - _bottomBlurTopSigma) * blurProgress);
+  final filteredBackdrop = ImageFilter.compose(
+    inner: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+    outer: _halfOpacityBackdropColorFilter,
+  );
+
+  return Positioned(
+    top: sliceTop,
+    left: 0,
+    right: 0,
+    height: sliceHeight,
+    child: BackdropFilter(
+      filter: filteredBackdrop,
+      child: const ColoredBox(color: Colors.transparent),
     ),
   );
 }
@@ -407,6 +438,17 @@ PageRouteBuilder<void> _buildFadeRoute({required Widget screen}) {
         opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
         child: child,
       );
+    },
+  );
+}
+
+PageRouteBuilder<void> _buildNoTransitionRoute({required Widget screen}) {
+  return PageRouteBuilder<void>(
+    transitionDuration: Duration.zero,
+    reverseTransitionDuration: Duration.zero,
+    pageBuilder: (context, animation, secondaryAnimation) => screen,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return child;
     },
   );
 }
@@ -2890,7 +2932,7 @@ class _AccountDietPreferenceScreenState
             metrics.width - (32 * scale),
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
-          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final titleTop = metrics.padding.top + (18 * scale);
           final cardsTop = titleTop + (94 * scale);
           final cardWidth = 171 * scale;
           final cardHeight = 141 * scale;
@@ -3451,7 +3493,7 @@ class _AccountDailyNutritionGoalsScreenState
             metrics.width - (32 * scale),
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
-          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final titleTop = metrics.padding.top + (18 * scale);
           final recommendedTop = titleTop + (50 * scale);
           final cardsTop = titleTop + (94 * scale);
           final cardHeight = (80 * scale).clamp(68.0, 96.0);
@@ -6009,27 +6051,12 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
           return Stack(
             children: [
               Positioned(
-                top: titleTop,
-                left: 0,
-                right: 0,
-                child: Text(
-                  'Avg Budget per Meal?',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Borel',
-                    fontSize: (32 * scale).clamp(24.0, 42.0),
-                    color: Colors.white,
-                    height: 0.99,
-                  ),
-                ),
-              ),
-              Positioned(
                 top: optionsTop,
                 left: contentLeft,
                 width: contentWidth,
                 bottom: contentBottomInset,
                 child: SingleChildScrollView(
-                  clipBehavior: Clip.none,
+                  clipBehavior: Clip.hardEdge,
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.only(
                     bottom: bottomPanelHeight + (16 * scale),
@@ -6146,6 +6173,23 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Text(
+                    'Avg Budget per Meal?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Borel',
+                      fontSize: (32 * scale).clamp(24.0, 42.0),
+                      color: Colors.white,
+                      height: 0.99,
+                    ),
                   ),
                 ),
               ),
@@ -7653,7 +7697,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       return;
     }
     Navigator.of(context).pushReplacement(
-      _buildSwipeRoute(
+      _buildNoTransitionRoute(
         screen: AccountScreen(
           skippedBudgetSection: _OnboardingSkipFlags.skippedBudgetSection,
           skippedWaterSection: _OnboardingSkipFlags.skippedWaterSection,
@@ -7690,15 +7734,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     required Widget child,
     double? height,
   }) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0x52FFFFFF),
-        borderRadius: BorderRadius.circular(16 * scale),
-      ),
+    final panel = _RotatingGlassPanel(
+      scale: scale,
+      borderRadius: 16 * scale,
+      fillColor: const Color(0x52FFFFFF),
       padding: EdgeInsets.all(8 * scale),
       child: child,
     );
+
+    if (height == null) {
+      return panel;
+    }
+
+    return SizedBox(height: height, child: panel);
   }
 
   Widget _metricBlock({
@@ -7789,12 +7837,15 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     required IconData icon,
     bool selected = false,
   }) {
-    return Container(
+    return SizedBox(
       width: 48 * scale,
       height: 48 * scale,
-      decoration: BoxDecoration(
-        color: selected ? Colors.white : const Color(0x52FFFFFF),
-        borderRadius: BorderRadius.circular(15 * scale),
+      child: _RotatingGlassPanel(
+        scale: scale,
+        borderRadius: 15 * scale,
+        fillColor: selected ? Colors.white : const Color(0x52FFFFFF),
+        padding: EdgeInsets.zero,
+        expandToBounds: true,
         boxShadow: selected
             ? const [
                 BoxShadow(
@@ -7803,12 +7854,15 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                   blurStyle: BlurStyle.outer,
                 ),
               ]
-            : null,
-      ),
-      child: Icon(
-        icon,
-        color: selected ? Colors.black : Colors.white,
-        size: 28 * scale,
+            : const <BoxShadow>[],
+        enableBlur: !selected,
+        child: Center(
+          child: Icon(
+            icon,
+            color: selected ? Colors.black : Colors.white,
+            size: 28 * scale,
+          ),
+        ),
       ),
     );
   }
@@ -7854,20 +7908,15 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           enableBlur: !isSelected,
           child: Center(
             child: SizedBox(
-              width: 24 * scale,
-              height: 24 * scale,
-              child: Image.asset(
+              width: 30 * scale,
+              height: 30 * scale,
+              child: SvgPicture.asset(
                 assetPath,
                 fit: BoxFit.contain,
-                color: isSelected ? Colors.black : Colors.white,
-                colorBlendMode: BlendMode.srcIn,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.image_not_supported_outlined,
-                    color: isSelected ? Colors.black : Colors.white,
-                    size: 20 * scale,
-                  );
-                },
+                colorFilter: ColorFilter.mode(
+                  isSelected ? _bottomNavActiveIconColor : Colors.black,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
           ),
@@ -7889,14 +7938,18 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
             metrics.width - (32 * scale),
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
-          final contentTop = metrics.padding.top + (18 * scale);
-          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
-          );
+          final titleTop = metrics.padding.top + (18 * scale);
+          final contentTop = titleTop + (58 * scale);
+          final isIPhone =
+              !kIsWeb &&
+              defaultTargetPlatform == TargetPlatform.iOS &&
+              math.min(metrics.width, metrics.height) < 600;
+          final controlsBottom = isIPhone
+              ? metrics.padding.bottom
+              : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
           final navHeight = 64 * scale;
-          final scrollBottomPadding = bottomPanelHeight + (24 * scale);
+          final blurPanelHeight = navHeight + controlsBottom;
+          final scrollBottomPadding = blurPanelHeight + (24 * scale);
           final hideWaterSection = _OnboardingSkipFlags.skippedWaterSection;
           final hideBudgetSection = _OnboardingSkipFlags.skippedBudgetSection;
           final hideMealsTimelineSection =
@@ -7904,27 +7957,22 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
 
           return Stack(
             children: [
-              Positioned.fill(
+              Positioned(
+                left: 0,
+                right: 0,
+                top: contentTop,
+                bottom: 0,
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    contentTop,
+                    0,
                     contentLeft,
                     scrollBottomPadding,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _sectionTitle('Daily Progress', scale),
-                          ),
-                          _navIconTile(scale: scale, icon: Icons.history),
-                        ],
-                      ),
-                      SizedBox(height: 18 * scale),
                       _outerPanel(
                         scale: scale,
                         child: Column(
@@ -8096,10 +8144,17 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                   ),
                                 ),
                               ),
-                              Icon(
-                                Icons.chat_bubble_outline,
-                                color: Colors.white,
-                                size: (18 * scale).clamp(14.0, 22.0),
+                              SizedBox(
+                                width: (18 * scale).clamp(14.0, 22.0),
+                                height: (18 * scale).clamp(14.0, 22.0),
+                                child: SvgPicture.asset(
+                                  'assets/Chat.svg',
+                                  fit: BoxFit.contain,
+                                  colorFilter: const ColorFilter.mode(
+                                    Colors.white,
+                                    BlendMode.srcIn,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -8137,14 +8192,42 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 ),
               ),
               Positioned(
+                top: titleTop,
+                left: contentLeft,
+                width: contentWidth,
+                child: IgnorePointer(
+                  child: SizedBox(
+                    height: 48 * scale,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: _sectionTitle('Daily Progress', scale),
+                          ),
+                        ),
+                        Transform.translate(
+                          offset: Offset(0, -8 * scale),
+                          child: _navIconTile(
+                            scale: scale,
+                            icon: Icons.history,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: bottomPanelHeight,
+                height: blurPanelHeight,
                 child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
-                right: 0,
+                right: 16 * scale,
                 bottom: controlsBottom + (74 * scale),
                 child: SizedBox(
                   width: 72 * scale,
@@ -8169,48 +8252,66 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 child: Row(
                   children: [
                     Expanded(
-                      child: Container(
-                        height: navHeight,
-                        decoration: BoxDecoration(
-                          color: _menuBarBlockFillColor,
-                          borderRadius: BorderRadius.circular(16 * scale),
-                        ),
-                        padding: EdgeInsets.all(8 * scale),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _bottomNavIconButton(
-                              scale: scale,
-                              index: 0,
-                              assetPath: 'assets/Home_active.png',
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16 * scale),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(
+                            sigmaX: _dailyProgressMenuBarBlurSigma,
+                            sigmaY: _dailyProgressMenuBarBlurSigma,
+                          ),
+                          child: Container(
+                            height: navHeight,
+                            decoration: BoxDecoration(
+                              color: _menuBarBlockFillColor,
+                              borderRadius: BorderRadius.circular(16 * scale),
                             ),
-                            _bottomNavIconButton(
-                              scale: scale,
-                              index: 1,
-                              assetPath: 'assets/Notification_inactive.png',
+                            padding: EdgeInsets.all(8 * scale),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _bottomNavIconButton(
+                                  scale: scale,
+                                  index: 0,
+                                  assetPath: 'assets/Home_in.svg',
+                                ),
+                                _bottomNavIconButton(
+                                  scale: scale,
+                                  index: 1,
+                                  assetPath: 'assets/Notification_in.svg',
+                                ),
+                                _bottomNavIconButton(
+                                  scale: scale,
+                                  index: 2,
+                                  assetPath: 'assets/Account_in.svg',
+                                ),
+                              ],
                             ),
-                            _bottomNavIconButton(
-                              scale: scale,
-                              index: 2,
-                              assetPath: 'assets/Accoiunt_inactive.png',
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                     SizedBox(width: 16 * scale),
-                    Container(
-                      width: navHeight,
-                      height: navHeight,
-                      decoration: BoxDecoration(
-                        color: _menuBarBlockFillColor,
-                        borderRadius: BorderRadius.circular(16 * scale),
-                      ),
-                      padding: EdgeInsets.all(8 * scale),
-                      child: _bottomNavIconButton(
-                        scale: scale,
-                        index: 3,
-                        assetPath: 'assets/Add.png',
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16 * scale),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(
+                          sigmaX: _dailyProgressMenuBarBlurSigma,
+                          sigmaY: _dailyProgressMenuBarBlurSigma,
+                        ),
+                        child: Container(
+                          width: navHeight,
+                          height: navHeight,
+                          decoration: BoxDecoration(
+                            color: _menuBarBlockFillColor,
+                            borderRadius: BorderRadius.circular(16 * scale),
+                          ),
+                          padding: EdgeInsets.all(8 * scale),
+                          child: _bottomNavIconButton(
+                            scale: scale,
+                            index: 3,
+                            assetPath: 'assets/Add_new.svg',
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -8340,7 +8441,7 @@ class _AccountScreenState extends State<AccountScreen>
       return;
     }
     Navigator.of(context).pushReplacement(
-      _buildSwipeRoute(screen: const DailyProgressScreen(), fromLeft: true),
+      _buildNoTransitionRoute(screen: const DailyProgressScreen()),
     );
   }
 
@@ -8825,7 +8926,7 @@ class _AccountScreenState extends State<AccountScreen>
         expandToBounds: true,
         child: Center(
           child: Image.asset(
-            'assets/addd.png',
+            'assets/Add.png',
             fit: BoxFit.contain,
             color: Colors.white,
             colorBlendMode: BlendMode.srcIn,
@@ -8872,20 +8973,15 @@ class _AccountScreenState extends State<AccountScreen>
           enableBlur: !isSelected,
           child: Center(
             child: SizedBox(
-              width: 24 * scale,
-              height: 24 * scale,
-              child: Image.asset(
+              width: 30 * scale,
+              height: 30 * scale,
+              child: SvgPicture.asset(
                 assetPath,
                 fit: BoxFit.contain,
-                color: isSelected ? Colors.black : Colors.white,
-                colorBlendMode: BlendMode.srcIn,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.image_not_supported_outlined,
-                    color: isSelected ? Colors.black : Colors.white,
-                    size: 20 * scale,
-                  );
-                },
+                colorFilter: ColorFilter.mode(
+                  isSelected ? _bottomNavActiveIconColor : Colors.black,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
           ),
@@ -8907,32 +9003,33 @@ class _AccountScreenState extends State<AccountScreen>
             metrics.width - (32 * scale),
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
-          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
+          final titleTop = metrics.padding.top + (18 * scale);
           final contentTop = titleTop + (58 * scale);
-          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
-          );
+          final isIPhone =
+              !kIsWeb &&
+              defaultTargetPlatform == TargetPlatform.iOS &&
+              math.min(metrics.width, metrics.height) < 600;
+          final controlsBottom = isIPhone
+              ? metrics.padding.bottom
+              : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
           final navHeight = 64 * scale;
-          final scrollBottomPadding = bottomPanelHeight + (24 * scale);
+          final blurPanelHeight = navHeight + controlsBottom;
+          final scrollBottomPadding = blurPanelHeight + (24 * scale);
           final showBudgetPlaceholder = !_hasEnteredBudget;
           final showHydrationPlaceholder = !_hasEnteredHydration;
 
           return Stack(
             children: [
               Positioned(
-                top: titleTop,
                 left: 0,
                 right: 0,
-                child: Center(child: _sectionTitle('Account', scale)),
-              ),
-              Positioned.fill(
+                top: contentTop,
+                bottom: 0,
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    contentTop,
+                    0,
                     contentLeft,
                     scrollBottomPadding,
                   ),
@@ -9049,10 +9146,21 @@ class _AccountScreenState extends State<AccountScreen>
                 ),
               ),
               Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: SizedBox(
+                    height: 48 * scale,
+                    child: Center(child: _sectionTitle('Account', scale)),
+                  ),
+                ),
+              ),
+              Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: bottomPanelHeight,
+                height: blurPanelHeight,
                 child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
@@ -9062,49 +9170,67 @@ class _AccountScreenState extends State<AccountScreen>
                 child: Row(
                   children: [
                     Expanded(
-                      child: Container(
-                        height: navHeight,
-                        decoration: BoxDecoration(
-                          color: _menuBarBlockFillColor,
-                          borderRadius: BorderRadius.circular(16 * scale),
-                        ),
-                        padding: EdgeInsets.all(8 * scale),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _bottomNavIconButton(
-                              scale: scale,
-                              assetPath: 'assets/Home_active.png',
-                              isSelected: false,
-                              onTap: _goHome,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16 * scale),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(
+                            sigmaX: _dailyProgressMenuBarBlurSigma,
+                            sigmaY: _dailyProgressMenuBarBlurSigma,
+                          ),
+                          child: Container(
+                            height: navHeight,
+                            decoration: BoxDecoration(
+                              color: _menuBarBlockFillColor,
+                              borderRadius: BorderRadius.circular(16 * scale),
                             ),
-                            _bottomNavIconButton(
-                              scale: scale,
-                              assetPath: 'assets/Notification_inactive.png',
-                              isSelected: false,
+                            padding: EdgeInsets.all(8 * scale),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _bottomNavIconButton(
+                                  scale: scale,
+                                  assetPath: 'assets/Home_in.svg',
+                                  isSelected: false,
+                                  onTap: _goHome,
+                                ),
+                                _bottomNavIconButton(
+                                  scale: scale,
+                                  assetPath: 'assets/Notification_in.svg',
+                                  isSelected: false,
+                                ),
+                                _bottomNavIconButton(
+                                  scale: scale,
+                                  assetPath: 'assets/Account_in.svg',
+                                  isSelected: true,
+                                ),
+                              ],
                             ),
-                            _bottomNavIconButton(
-                              scale: scale,
-                              assetPath: 'assets/Accoiunt_inactive.png',
-                              isSelected: true,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                     SizedBox(width: 16 * scale),
-                    Container(
-                      width: navHeight,
-                      height: navHeight,
-                      decoration: BoxDecoration(
-                        color: _menuBarBlockFillColor,
-                        borderRadius: BorderRadius.circular(16 * scale),
-                      ),
-                      padding: EdgeInsets.all(8 * scale),
-                      child: _bottomNavIconButton(
-                        scale: scale,
-                        assetPath: 'assets/Add.png',
-                        isSelected: false,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16 * scale),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(
+                          sigmaX: _dailyProgressMenuBarBlurSigma,
+                          sigmaY: _dailyProgressMenuBarBlurSigma,
+                        ),
+                        child: Container(
+                          width: navHeight,
+                          height: navHeight,
+                          decoration: BoxDecoration(
+                            color: _menuBarBlockFillColor,
+                            borderRadius: BorderRadius.circular(16 * scale),
+                          ),
+                          padding: EdgeInsets.all(8 * scale),
+                          child: _bottomNavIconButton(
+                            scale: scale,
+                            assetPath: 'assets/Add_new.svg',
+                            isSelected: false,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -11288,8 +11414,8 @@ class _AnimatedGradientScene extends StatelessWidget {
                   top: blueTop,
                   width: blueBlobWidth,
                   height: blueBlobHeight,
-                  color: const Color(0xFF92EBFF),
-                  blurSigma: 50 * designScale,
+                  color: const Color(0xFFCBF6FF),
+                  blurSigma: 1000 * designScale,
                 ),
                 _GlowBlob(
                   left: redLeft,
