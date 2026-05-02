@@ -29,6 +29,10 @@ const String _goalGainWeightImageUrl = 'assets/Gain_weight.png';
 const String _goalGainMuscleImageUrl = 'assets/Gain_muscle.png';
 const String _goalMaintainImageUrl = 'assets/Maintain.png';
 const String _defaultNonBorelFontFamily = 'Nata Sans';
+const Color _menuBarBlockFillColor = Color(0x1FFFFFFF);
+const double _bottomBlurBottomSigma = 2.0;
+const double _bottomBlurTopHoldStop = 2.0;
+const double _bottomBlurSeamOverlap = 4.0;
 const Map<String, String> _defaultNutritionGoalValues = <String, String>{
   'Calories': '2,330',
   'Protein': '100',
@@ -60,6 +64,53 @@ const List<_DietPreferenceOption> _dietPreferenceOptions =
       ),
       _DietPreferenceOption(label: 'Vegan', imagePath: 'assets/Vegan.png'),
     ];
+
+Widget _buildBottomBlurFadeOverlay() {
+  // Progressive blend from 0 -> 0.5 with seamless dissolve at the top edge.
+  return ClipRect(
+    child: LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final panelHeight = constraints.maxHeight;
+        if (panelHeight <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Transform.translate(
+              offset: const Offset(0, -_bottomBlurSeamOverlap),
+              child: SizedBox(
+                height: panelHeight + _bottomBlurSeamOverlap,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: _bottomBlurBottomSigma,
+                    sigmaY: _bottomBlurBottomSigma,
+                  ),
+                  child: const ColoredBox(color: Colors.transparent),
+                ),
+              ),
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[
+                    Color(0x00FFFFFF),
+                    Color(0x00FFFFFF),
+                    Color(0x80FFFFFF),
+                  ],
+                  stops: <double>[0.0, _bottomBlurTopHoldStop, 1.0],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
 
 class _OnboardingSkipFlags {
   static bool skippedBudgetSection = false;
@@ -2911,12 +2962,7 @@ class _AccountDietPreferenceScreenState
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 left: contentLeft,
@@ -3529,12 +3575,7 @@ class _AccountDailyNutritionGoalsScreenState
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 left: contentLeft,
@@ -4045,12 +4086,7 @@ class _AccountDailyHydrationGoalsScreenState
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 left: contentLeft,
@@ -6125,12 +6161,7 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               if (!widget.isAccountEdit)
                 Positioned(
@@ -6771,12 +6802,7 @@ class _DailyNutritionGoalsScreenState extends State<DailyNutritionGoalsScreen>
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 left: contentLeft,
@@ -7127,12 +7153,7 @@ class _DailyHydrationGoalsScreenState extends State<DailyHydrationGoalsScreen>
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 left: contentLeft,
@@ -7388,12 +7409,7 @@ class _DietPreferenceScreenState extends State<DietPreferenceScreen>
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 left: contentLeft,
@@ -8125,12 +8141,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 right: 0,
@@ -8161,7 +8172,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                       child: Container(
                         height: navHeight,
                         decoration: BoxDecoration(
-                          color: const Color(0x29FFFFFF),
+                          color: _menuBarBlockFillColor,
                           borderRadius: BorderRadius.circular(16 * scale),
                         ),
                         padding: EdgeInsets.all(8 * scale),
@@ -8192,7 +8203,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                       width: navHeight,
                       height: navHeight,
                       decoration: BoxDecoration(
-                        color: const Color(0x29FFFFFF),
+                        color: _menuBarBlockFillColor,
                         borderRadius: BorderRadius.circular(16 * scale),
                       ),
                       padding: EdgeInsets.all(8 * scale),
@@ -9042,12 +9053,7 @@ class _AccountScreenState extends State<AccountScreen>
                 right: 0,
                 bottom: 0,
                 height: bottomPanelHeight,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 2.2, sigmaY: 2.2),
-                    child: Container(color: const Color(0x01FF787A)),
-                  ),
-                ),
+                child: _buildBottomBlurFadeOverlay(),
               ),
               Positioned(
                 left: contentLeft,
@@ -9059,7 +9065,7 @@ class _AccountScreenState extends State<AccountScreen>
                       child: Container(
                         height: navHeight,
                         decoration: BoxDecoration(
-                          color: const Color(0x29FFFFFF),
+                          color: _menuBarBlockFillColor,
                           borderRadius: BorderRadius.circular(16 * scale),
                         ),
                         padding: EdgeInsets.all(8 * scale),
@@ -9091,7 +9097,7 @@ class _AccountScreenState extends State<AccountScreen>
                       width: navHeight,
                       height: navHeight,
                       decoration: BoxDecoration(
-                        color: const Color(0x29FFFFFF),
+                        color: _menuBarBlockFillColor,
                         borderRadius: BorderRadius.circular(16 * scale),
                       ),
                       padding: EdgeInsets.all(8 * scale),
