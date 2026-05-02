@@ -143,6 +143,23 @@ Widget _buildProgressiveBottomBlurSlice({
   );
 }
 
+bool _isCompactIPhoneLayout(_SceneMetrics metrics) {
+  return !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.iOS &&
+      math.min(metrics.width, metrics.height) < 600;
+}
+
+double _actionControlsBottomInset({
+  required _SceneMetrics metrics,
+  required double scale,
+}) {
+  if (_isCompactIPhoneLayout(metrics)) {
+    // Keep action rows just above iPhone safe area.
+    return metrics.padding.bottom + (8 * scale);
+  }
+  return math.max(66 * scale, metrics.padding.bottom + (26 * scale));
+}
+
 class _OnboardingSkipFlags {
   static bool skippedBudgetSection = false;
   static bool skippedWaterSection = false;
@@ -1533,9 +1550,9 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
             final contentLeft = (metrics.width - contentWidth) / 2;
             final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
             final contentTop = titleTop + (72 * scale);
-            final controlsBottom = math.max(
-              66 * scale,
-              metrics.padding.bottom + (26 * scale),
+            final controlsBottom = _actionControlsBottomInset(
+              metrics: metrics,
+              scale: scale,
             );
             final scrollBottomPadding = controlsBottom + (72 * scale);
             final backButtonWidth = 79 * scale;
@@ -1667,12 +1684,6 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
-                        SizedBox(height: 16 * scale),
-                        Icon(
-                          Icons.keyboard_arrow_down,
-                          color: Colors.white,
-                          size: (24 * scale).clamp(20.0, 30.0),
                         ),
                         SizedBox(height: 16 * scale),
                         _buildOtpSupportCard(scale),
@@ -2264,9 +2275,9 @@ class _NameScreenState extends State<NameScreen>
             metrics.width - (32 * metrics.designScale),
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
-          final controlsBottom = math.max(
-            66 * metrics.designScale,
-            metrics.padding.bottom + (26 * metrics.designScale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: metrics.designScale,
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
@@ -2557,9 +2568,9 @@ class _GoalScreenState extends State<GoalScreen>
           final cardGap = 16 * metrics.designScale;
           final cardWidth = (contentWidth - cardGap) / 2;
           final cardsTop = titleTop + (100 * metrics.designScale);
-          final controlsBottom = math.max(
-            66 * metrics.designScale,
-            metrics.padding.bottom + (26 * metrics.designScale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: metrics.designScale,
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
@@ -2748,9 +2759,9 @@ class _AccountGoalScreenState extends State<AccountGoalScreen>
           final cardGap = 16 * metrics.designScale;
           final cardWidth = (contentWidth - cardGap) / 2;
           final cardsTop = titleTop + (100 * metrics.designScale);
-          final controlsBottom = math.max(
-            66 * metrics.designScale,
-            metrics.padding.bottom + (26 * metrics.designScale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: metrics.designScale,
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
@@ -2938,9 +2949,9 @@ class _AccountDietPreferenceScreenState
           final cardHeight = 141 * scale;
           final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
           final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
           final backButtonWidth = 79 * scale;
           final saveButtonWidth = 263 * scale;
@@ -3500,9 +3511,9 @@ class _AccountDailyNutritionGoalsScreenState
           final cardGap = 16 * scale;
           final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
           final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
@@ -4053,9 +4064,9 @@ class _AccountDailyHydrationGoalsScreenState
           final cardHeight = (80 * scale).clamp(68.0, 96.0);
           final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
           final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
@@ -4410,9 +4421,9 @@ class _AgeScreenState extends State<AgeScreen>
             110.0,
             170.0,
           );
-          final controlsBottom = math.max(
-            66 * metrics.designScale,
-            metrics.padding.bottom + (26 * metrics.designScale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: metrics.designScale,
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
@@ -4693,9 +4704,9 @@ class _WeightScreenState extends State<WeightScreen>
           final rulerHeight = (88 * metrics.designScale).clamp(70.0, 110.0);
           final unitToggleTop =
               rulerTop + rulerHeight + (54 * metrics.designScale);
-          final controlsBottom = math.max(
-            66 * metrics.designScale,
-            metrics.padding.bottom + (26 * metrics.designScale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: metrics.designScale,
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
@@ -4984,9 +4995,9 @@ class _HeightScreenState extends State<HeightScreen>
           final rulerWidth = (75 * metrics.designScale).clamp(56.0, 90.0);
           final rulerHeight = (560 * metrics.designScale).clamp(420.0, 620.0);
           final rulerTop = (metrics.height - rulerHeight) / 2;
-          final controlsBottom = math.max(
-            66 * metrics.designScale,
-            metrics.padding.bottom + (26 * metrics.designScale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: metrics.designScale,
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
@@ -5302,9 +5313,9 @@ class _DailyActivityScreenState extends State<DailyActivityScreen>
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
           final cardsTop = titleTop + (94 * metrics.designScale);
-          final controlsBottom = math.max(
-            66 * metrics.designScale,
-            metrics.padding.bottom + (26 * metrics.designScale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: metrics.designScale,
           );
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
@@ -6041,9 +6052,9 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
           final selectedCurrencySymbol = _currencyBracketSymbol(
             _selectedCurrency,
           );
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
@@ -6727,9 +6738,9 @@ class _DailyNutritionGoalsScreenState extends State<DailyNutritionGoalsScreen>
           final cardGap = 16 * scale;
           final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
           final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
@@ -7123,9 +7134,9 @@ class _DailyHydrationGoalsScreenState extends State<DailyHydrationGoalsScreen>
           final cardHeight = (80 * scale).clamp(68.0, 96.0);
           final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
           final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
@@ -7384,9 +7395,9 @@ class _DietPreferenceScreenState extends State<DietPreferenceScreen>
           final cardHeight = 141 * scale;
           final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
           final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
@@ -7570,9 +7581,9 @@ class _YouAreReadyScreenState extends State<YouAreReadyScreen>
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
           final visualTop = metrics.padding.top + (68 * scale);
-          final controlsBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
 
           return Stack(
