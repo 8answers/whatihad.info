@@ -217,6 +217,440 @@ class _OnboardingProfileState {
   }
 }
 
+class _CustomFoodEntry {
+  const _CustomFoodEntry({
+    required this.id,
+    required this.name,
+    required this.caloriesText,
+    required this.timeText,
+    required this.proteinText,
+    required this.carbohydratesText,
+    required this.fatText,
+    required this.fiberText,
+    required this.sugarText,
+    required this.sodiumText,
+    this.isFavorite = false,
+  });
+
+  final int id;
+  final String name;
+  final String caloriesText;
+  final String timeText;
+  final String proteinText;
+  final String carbohydratesText;
+  final String fatText;
+  final String fiberText;
+  final String sugarText;
+  final String sodiumText;
+  final bool isFavorite;
+
+  _CustomFoodEntry copyWith({bool? isFavorite}) {
+    return _CustomFoodEntry(
+      id: id,
+      name: name,
+      caloriesText: caloriesText,
+      timeText: timeText,
+      proteinText: proteinText,
+      carbohydratesText: carbohydratesText,
+      fatText: fatText,
+      fiberText: fiberText,
+      sugarText: sugarText,
+      sodiumText: sodiumText,
+      isFavorite: isFavorite ?? this.isFavorite,
+    );
+  }
+}
+
+class _CustomFoodEntryStore {
+  static int _nextId = 1;
+  static final List<_CustomFoodEntry> _entries = <_CustomFoodEntry>[];
+
+  static List<_CustomFoodEntry> get entries =>
+      List<_CustomFoodEntry>.unmodifiable(_entries);
+
+  static _CustomFoodEntry create({
+    required String name,
+    required String caloriesText,
+    required String timeText,
+    required String proteinText,
+    required String carbohydratesText,
+    required String fatText,
+    required String fiberText,
+    required String sugarText,
+    required String sodiumText,
+    bool isFavorite = false,
+  }) {
+    return _CustomFoodEntry(
+      id: _nextId++,
+      name: name,
+      caloriesText: caloriesText,
+      timeText: timeText,
+      proteinText: proteinText,
+      carbohydratesText: carbohydratesText,
+      fatText: fatText,
+      fiberText: fiberText,
+      sugarText: sugarText,
+      sodiumText: sodiumText,
+      isFavorite: isFavorite,
+    );
+  }
+
+  static void add(_CustomFoodEntry entry) {
+    _entries.insert(0, entry);
+  }
+
+  static void removeById(int id) {
+    _entries.removeWhere((entry) => entry.id == id);
+  }
+
+  static void setFavoriteById(int id, bool isFavorite) {
+    final index = _entries.indexWhere((entry) => entry.id == id);
+    if (index < 0) {
+      return;
+    }
+    _entries[index] = _entries[index].copyWith(isFavorite: isFavorite);
+  }
+}
+
+class _DailyFoodCatalogItem {
+  const _DailyFoodCatalogItem({
+    required this.id,
+    required this.name,
+    required this.caloriesKcal,
+    this.isFavorite = false,
+  });
+
+  final int id;
+  final String name;
+  final int caloriesKcal;
+  final bool isFavorite;
+
+  _DailyFoodCatalogItem copyWith({bool? isFavorite}) {
+    return _DailyFoodCatalogItem(
+      id: id,
+      name: name,
+      caloriesKcal: caloriesKcal,
+      isFavorite: isFavorite ?? this.isFavorite,
+    );
+  }
+}
+
+class _DailyFoodDatabase {
+  static final Set<int> _favoriteFoodIds = <int>{};
+  static bool _triedRemoteSearch = false;
+  static bool _remoteSearchAvailable = true;
+
+  static final List<_DailyFoodCatalogItem>
+  _localFoods = <_DailyFoodCatalogItem>[
+    _DailyFoodCatalogItem(id: 1001, name: 'Water', caloriesKcal: 0),
+    _DailyFoodCatalogItem(id: 1002, name: 'Mineral Water', caloriesKcal: 0),
+    _DailyFoodCatalogItem(id: 1003, name: 'Sparkling Water', caloriesKcal: 0),
+    _DailyFoodCatalogItem(id: 1004, name: 'Coconut Water', caloriesKcal: 45),
+    _DailyFoodCatalogItem(id: 1005, name: 'Lemon Water', caloriesKcal: 5),
+    _DailyFoodCatalogItem(id: 1006, name: 'Black Coffee', caloriesKcal: 2),
+    _DailyFoodCatalogItem(id: 1007, name: 'Espresso', caloriesKcal: 5),
+    _DailyFoodCatalogItem(id: 1008, name: 'Cappuccino', caloriesKcal: 90),
+    _DailyFoodCatalogItem(id: 1009, name: 'Cafe Latte', caloriesKcal: 130),
+    _DailyFoodCatalogItem(id: 1010, name: 'Green Tea', caloriesKcal: 2),
+    _DailyFoodCatalogItem(id: 1011, name: 'Black Tea', caloriesKcal: 2),
+    _DailyFoodCatalogItem(id: 1012, name: 'Milk Tea', caloriesKcal: 85),
+    _DailyFoodCatalogItem(id: 1013, name: 'Masala Chai', caloriesKcal: 95),
+    _DailyFoodCatalogItem(id: 1014, name: 'Whole Milk', caloriesKcal: 149),
+    _DailyFoodCatalogItem(id: 1015, name: 'Toned Milk', caloriesKcal: 122),
+    _DailyFoodCatalogItem(id: 1016, name: 'Skim Milk', caloriesKcal: 83),
+    _DailyFoodCatalogItem(id: 1017, name: 'Chocolate Milk', caloriesKcal: 190),
+    _DailyFoodCatalogItem(id: 1018, name: 'Almond Milk', caloriesKcal: 60),
+    _DailyFoodCatalogItem(id: 1019, name: 'Soy Milk', caloriesKcal: 105),
+    _DailyFoodCatalogItem(id: 1020, name: 'Oat Milk', caloriesKcal: 120),
+    _DailyFoodCatalogItem(id: 1021, name: 'Buttermilk', caloriesKcal: 60),
+    _DailyFoodCatalogItem(id: 1022, name: 'Sweet Lassi', caloriesKcal: 180),
+    _DailyFoodCatalogItem(id: 1023, name: 'Salted Lassi', caloriesKcal: 130),
+    _DailyFoodCatalogItem(id: 1024, name: 'Orange Juice', caloriesKcal: 112),
+    _DailyFoodCatalogItem(id: 1025, name: 'Apple Juice', caloriesKcal: 114),
+    _DailyFoodCatalogItem(
+      id: 1026,
+      name: 'Pomegranate Juice',
+      caloriesKcal: 135,
+    ),
+    _DailyFoodCatalogItem(id: 1027, name: 'Mango Juice', caloriesKcal: 128),
+    _DailyFoodCatalogItem(id: 1028, name: 'Protein Shake', caloriesKcal: 180),
+    _DailyFoodCatalogItem(id: 1029, name: 'Curd', caloriesKcal: 98),
+    _DailyFoodCatalogItem(id: 1030, name: 'Greek Yogurt', caloriesKcal: 130),
+    _DailyFoodCatalogItem(id: 1031, name: 'Paneer', caloriesKcal: 265),
+    _DailyFoodCatalogItem(id: 1032, name: 'Cottage Cheese', caloriesKcal: 206),
+    _DailyFoodCatalogItem(id: 1033, name: 'Cheddar Cheese', caloriesKcal: 113),
+    _DailyFoodCatalogItem(
+      id: 1034,
+      name: 'Mozzarella Cheese',
+      caloriesKcal: 85,
+    ),
+    _DailyFoodCatalogItem(id: 1035, name: 'Parmesan Cheese', caloriesKcal: 111),
+    _DailyFoodCatalogItem(id: 1036, name: 'Butter', caloriesKcal: 102),
+    _DailyFoodCatalogItem(id: 1037, name: 'Ghee', caloriesKcal: 112),
+    _DailyFoodCatalogItem(id: 1038, name: 'Boiled Egg', caloriesKcal: 78),
+    _DailyFoodCatalogItem(id: 1039, name: 'Omelette', caloriesKcal: 155),
+    _DailyFoodCatalogItem(
+      id: 1040,
+      name: 'Egg White Omelette',
+      caloriesKcal: 95,
+    ),
+    _DailyFoodCatalogItem(id: 1041, name: 'Scrambled Eggs', caloriesKcal: 182),
+    _DailyFoodCatalogItem(id: 1042, name: 'Apple', caloriesKcal: 95),
+    _DailyFoodCatalogItem(id: 1043, name: 'Banana', caloriesKcal: 105),
+    _DailyFoodCatalogItem(id: 1044, name: 'Orange', caloriesKcal: 62),
+    _DailyFoodCatalogItem(id: 1045, name: 'Mango', caloriesKcal: 99),
+    _DailyFoodCatalogItem(id: 1046, name: 'Pineapple', caloriesKcal: 83),
+    _DailyFoodCatalogItem(id: 1047, name: 'Papaya', caloriesKcal: 55),
+    _DailyFoodCatalogItem(id: 1048, name: 'Watermelon', caloriesKcal: 46),
+    _DailyFoodCatalogItem(id: 1049, name: 'Grapes', caloriesKcal: 104),
+    _DailyFoodCatalogItem(id: 1050, name: 'Guava', caloriesKcal: 68),
+    _DailyFoodCatalogItem(id: 1051, name: 'Kiwi', caloriesKcal: 42),
+    _DailyFoodCatalogItem(id: 1052, name: 'Strawberries', caloriesKcal: 49),
+    _DailyFoodCatalogItem(id: 1053, name: 'Blueberries', caloriesKcal: 57),
+    _DailyFoodCatalogItem(id: 1054, name: 'Fruit Salad', caloriesKcal: 160),
+    _DailyFoodCatalogItem(id: 1055, name: 'Almonds', caloriesKcal: 170),
+    _DailyFoodCatalogItem(id: 1056, name: 'Cashews', caloriesKcal: 157),
+    _DailyFoodCatalogItem(id: 1057, name: 'Pistachios', caloriesKcal: 159),
+    _DailyFoodCatalogItem(id: 1058, name: 'Walnuts', caloriesKcal: 185),
+    _DailyFoodCatalogItem(id: 1059, name: 'Peanuts', caloriesKcal: 166),
+    _DailyFoodCatalogItem(id: 1060, name: 'Peanut Butter', caloriesKcal: 188),
+    _DailyFoodCatalogItem(id: 1061, name: 'Chia Seeds', caloriesKcal: 138),
+    _DailyFoodCatalogItem(id: 1062, name: 'Flax Seeds', caloriesKcal: 150),
+    _DailyFoodCatalogItem(id: 1063, name: 'Potato Chips', caloriesKcal: 152),
+    _DailyFoodCatalogItem(id: 1064, name: 'Banana Chips', caloriesKcal: 165),
+    _DailyFoodCatalogItem(id: 1065, name: 'Tortilla Chips', caloriesKcal: 140),
+    _DailyFoodCatalogItem(id: 1066, name: 'Nachos', caloriesKcal: 220),
+    _DailyFoodCatalogItem(id: 1067, name: 'French Fries', caloriesKcal: 312),
+    _DailyFoodCatalogItem(id: 1068, name: 'Popcorn', caloriesKcal: 106),
+    _DailyFoodCatalogItem(id: 1069, name: 'Salted Crackers', caloriesKcal: 120),
+    _DailyFoodCatalogItem(
+      id: 1070,
+      name: 'Digestive Biscuit',
+      caloriesKcal: 84,
+    ),
+    _DailyFoodCatalogItem(
+      id: 1071,
+      name: 'Chocolate Cookie',
+      caloriesKcal: 160,
+    ),
+    _DailyFoodCatalogItem(id: 1072, name: 'Granola Bar', caloriesKcal: 130),
+    _DailyFoodCatalogItem(id: 1073, name: 'Trail Mix', caloriesKcal: 173),
+    _DailyFoodCatalogItem(id: 1074, name: 'Masala Dosa', caloriesKcal: 126),
+    _DailyFoodCatalogItem(
+      id: 1075,
+      name: 'Masala Pudi Dosa',
+      caloriesKcal: 226,
+    ),
+    _DailyFoodCatalogItem(
+      id: 1076,
+      name: 'Masala Ghee Dosa',
+      caloriesKcal: 226,
+    ),
+    _DailyFoodCatalogItem(
+      id: 1077,
+      name: 'Masala Rava Dosa',
+      caloriesKcal: 226,
+    ),
+    _DailyFoodCatalogItem(id: 1078, name: 'Plain Dosa', caloriesKcal: 133),
+    _DailyFoodCatalogItem(id: 1079, name: 'Idli', caloriesKcal: 120),
+    _DailyFoodCatalogItem(id: 1080, name: 'Medu Vada', caloriesKcal: 97),
+    _DailyFoodCatalogItem(id: 1081, name: 'Uttapam', caloriesKcal: 180),
+    _DailyFoodCatalogItem(id: 1082, name: 'Poha', caloriesKcal: 200),
+    _DailyFoodCatalogItem(id: 1083, name: 'Upma', caloriesKcal: 230),
+    _DailyFoodCatalogItem(id: 1084, name: 'Rava Upma', caloriesKcal: 220),
+    _DailyFoodCatalogItem(id: 1085, name: 'Pongal', caloriesKcal: 240),
+    _DailyFoodCatalogItem(id: 1086, name: 'Aloo Paratha', caloriesKcal: 290),
+    _DailyFoodCatalogItem(id: 1087, name: 'Paratha', caloriesKcal: 200),
+    _DailyFoodCatalogItem(id: 1088, name: 'Chapati', caloriesKcal: 104),
+    _DailyFoodCatalogItem(id: 1089, name: 'Roti', caloriesKcal: 85),
+    _DailyFoodCatalogItem(id: 1090, name: 'Steamed Rice', caloriesKcal: 205),
+    _DailyFoodCatalogItem(id: 1091, name: 'Brown Rice', caloriesKcal: 216),
+    _DailyFoodCatalogItem(id: 1092, name: 'Jeera Rice', caloriesKcal: 290),
+    _DailyFoodCatalogItem(id: 1093, name: 'Lemon Rice', caloriesKcal: 280),
+    _DailyFoodCatalogItem(id: 1094, name: 'Tomato Rice', caloriesKcal: 300),
+    _DailyFoodCatalogItem(id: 1095, name: 'Curd Rice', caloriesKcal: 250),
+    _DailyFoodCatalogItem(id: 1096, name: 'Vegetable Pulao', caloriesKcal: 310),
+    _DailyFoodCatalogItem(id: 1097, name: 'Veg Biryani', caloriesKcal: 345),
+    _DailyFoodCatalogItem(id: 1098, name: 'Chicken Biryani', caloriesKcal: 380),
+    _DailyFoodCatalogItem(id: 1099, name: 'Egg Fried Rice', caloriesKcal: 356),
+    _DailyFoodCatalogItem(id: 1100, name: 'Veg Fried Rice', caloriesKcal: 330),
+    _DailyFoodCatalogItem(
+      id: 1101,
+      name: 'Chicken Fried Rice',
+      caloriesKcal: 410,
+    ),
+    _DailyFoodCatalogItem(id: 1102, name: 'Dal Tadka', caloriesKcal: 210),
+    _DailyFoodCatalogItem(id: 1103, name: 'Rajma', caloriesKcal: 230),
+    _DailyFoodCatalogItem(id: 1104, name: 'Chole', caloriesKcal: 240),
+    _DailyFoodCatalogItem(id: 1105, name: 'Sambar', caloriesKcal: 95),
+    _DailyFoodCatalogItem(id: 1106, name: 'Rasam', caloriesKcal: 45),
+    _DailyFoodCatalogItem(
+      id: 1107,
+      name: 'Paneer Butter Masala',
+      caloriesKcal: 325,
+    ),
+    _DailyFoodCatalogItem(id: 1108, name: 'Palak Paneer', caloriesKcal: 310),
+    _DailyFoodCatalogItem(id: 1109, name: 'Mix Veg Curry', caloriesKcal: 190),
+    _DailyFoodCatalogItem(id: 1110, name: 'Chicken Curry', caloriesKcal: 320),
+    _DailyFoodCatalogItem(id: 1111, name: 'Fish Curry', caloriesKcal: 280),
+    _DailyFoodCatalogItem(id: 1112, name: 'Mutton Curry', caloriesKcal: 350),
+    _DailyFoodCatalogItem(id: 1113, name: 'Khichdi', caloriesKcal: 260),
+    _DailyFoodCatalogItem(id: 1114, name: 'Oats Porridge', caloriesKcal: 180),
+    _DailyFoodCatalogItem(id: 1115, name: 'Avocado Toast', caloriesKcal: 240),
+    _DailyFoodCatalogItem(
+      id: 1116,
+      name: 'Peanut Butter Sandwich',
+      caloriesKcal: 270,
+    ),
+    _DailyFoodCatalogItem(
+      id: 1117,
+      name: 'Chicken Sandwich',
+      caloriesKcal: 456,
+    ),
+    _DailyFoodCatalogItem(
+      id: 1118,
+      name: 'Vegetable Sandwich',
+      caloriesKcal: 320,
+    ),
+    _DailyFoodCatalogItem(id: 1119, name: 'Tofu Stir Fry', caloriesKcal: 220),
+    _DailyFoodCatalogItem(id: 1120, name: 'Grilled Chicken', caloriesKcal: 220),
+    _DailyFoodCatalogItem(id: 1121, name: 'Grilled Fish', caloriesKcal: 210),
+    _DailyFoodCatalogItem(id: 1122, name: 'Salmon Fillet', caloriesKcal: 280),
+    _DailyFoodCatalogItem(id: 1123, name: 'Tuna Salad', caloriesKcal: 240),
+    _DailyFoodCatalogItem(id: 1124, name: 'Mixed Salad', caloriesKcal: 140),
+    _DailyFoodCatalogItem(id: 1125, name: 'Caesar Salad', caloriesKcal: 190),
+    _DailyFoodCatalogItem(
+      id: 1126,
+      name: 'Broccoli Stir Fry',
+      caloriesKcal: 90,
+    ),
+    _DailyFoodCatalogItem(id: 1127, name: 'Sauteed Spinach', caloriesKcal: 75),
+    _DailyFoodCatalogItem(
+      id: 1128,
+      name: 'Boiled Chickpeas',
+      caloriesKcal: 269,
+    ),
+    _DailyFoodCatalogItem(id: 1129, name: 'Lentil Soup', caloriesKcal: 170),
+    _DailyFoodCatalogItem(id: 1130, name: 'Quinoa Bowl', caloriesKcal: 260),
+    _DailyFoodCatalogItem(id: 1131, name: 'Veg Burger', caloriesKcal: 290),
+    _DailyFoodCatalogItem(id: 1132, name: 'Chicken Burger', caloriesKcal: 370),
+    _DailyFoodCatalogItem(
+      id: 1133,
+      name: 'Pizza Margherita Slice',
+      caloriesKcal: 285,
+    ),
+    _DailyFoodCatalogItem(
+      id: 1134,
+      name: 'Pizza Pepperoni Slice',
+      caloriesKcal: 313,
+    ),
+    _DailyFoodCatalogItem(id: 1135, name: 'Chicken Nuggets', caloriesKcal: 300),
+    _DailyFoodCatalogItem(id: 1136, name: 'Samosa', caloriesKcal: 262),
+    _DailyFoodCatalogItem(id: 1137, name: 'Veg Puff', caloriesKcal: 290),
+    _DailyFoodCatalogItem(
+      id: 1138,
+      name: 'Chocolate Brownie',
+      caloriesKcal: 311,
+    ),
+    _DailyFoodCatalogItem(
+      id: 1139,
+      name: 'Vanilla Ice Cream',
+      caloriesKcal: 207,
+    ),
+    _DailyFoodCatalogItem(id: 1140, name: 'Gulab Jamun', caloriesKcal: 175),
+  ];
+
+  static List<_DailyFoodCatalogItem> _applyFavoriteFlags(
+    List<_DailyFoodCatalogItem> foods,
+  ) {
+    return foods
+        .map(
+          (food) =>
+              food.copyWith(isFavorite: _favoriteFoodIds.contains(food.id)),
+        )
+        .toList(growable: false);
+  }
+
+  static Future<List<_DailyFoodCatalogItem>?> _searchRemoteFoods(
+    String query,
+  ) async {
+    if (_triedRemoteSearch && !_remoteSearchAvailable) {
+      return null;
+    }
+    _triedRemoteSearch = true;
+    try {
+      final response = await Supabase.instance.client
+          .from('daily_food_catalog')
+          .select('id,name,calories_kcal')
+          .ilike('name', '%$query%')
+          .limit(120);
+
+      final foods = <_DailyFoodCatalogItem>[];
+      for (int i = 0; i < response.length; i++) {
+        final row = response[i];
+        final dynamic idRaw = row['id'];
+        final dynamic nameRaw = row['name'];
+        final dynamic caloriesRaw = row['calories_kcal'] ?? row['calories'];
+        final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? (2000 + i);
+        final name = '$nameRaw'.trim();
+        final calories = caloriesRaw is int
+            ? caloriesRaw
+            : int.tryParse('$caloriesRaw') ?? 0;
+        if (name.isEmpty) {
+          continue;
+        }
+        foods.add(
+          _DailyFoodCatalogItem(id: id, name: name, caloriesKcal: calories),
+        );
+      }
+
+      if (foods.isEmpty) {
+        return <_DailyFoodCatalogItem>[];
+      }
+
+      foods.sort((a, b) => a.name.compareTo(b.name));
+      _remoteSearchAvailable = true;
+      return _applyFavoriteFlags(foods);
+    } catch (_) {
+      _remoteSearchAvailable = false;
+      return null;
+    }
+  }
+
+  static List<_DailyFoodCatalogItem> _searchLocalFoods(String query) {
+    final normalized = query.trim().toLowerCase();
+    final foods = _localFoods
+        .where((food) => food.name.toLowerCase().contains(normalized))
+        .toList(growable: false);
+    final sorted = [...foods]..sort((a, b) => a.name.compareTo(b.name));
+    return _applyFavoriteFlags(sorted);
+  }
+
+  static Future<List<_DailyFoodCatalogItem>> searchFoods(String query) async {
+    final normalized = query.trim();
+    if (normalized.isEmpty) {
+      return <_DailyFoodCatalogItem>[];
+    }
+
+    final remoteResults = await _searchRemoteFoods(normalized);
+    if (remoteResults != null && remoteResults.isNotEmpty) {
+      return remoteResults;
+    }
+
+    return _searchLocalFoods(normalized);
+  }
+
+  static void setFavorite(int foodId, bool isFavorite) {
+    if (isFavorite) {
+      _favoriteFoodIds.add(foodId);
+      return;
+    }
+    _favoriteFoodIds.remove(foodId);
+  }
+
+  static bool isFavorite(int foodId) => _favoriteFoodIds.contains(foodId);
+}
+
 class _AccountWeightSelection {
   const _AccountWeightSelection({
     required this.weightKg,
@@ -7904,6 +8338,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
             _goToAccountPage();
             return;
           }
+          if (index == 3) {
+            Navigator.of(context).pushReplacement(
+              _buildNoTransitionRoute(screen: const TodaysEntryScreen()),
+            );
+            return;
+          }
           setState(() {
             _selectedBottomNavIndex = index;
           });
@@ -8391,6 +8831,4858 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
   }
 }
 
+class TodaysEntryScreen extends StatefulWidget {
+  const TodaysEntryScreen({super.key});
+
+  @override
+  State<TodaysEntryScreen> createState() => _TodaysEntryScreenState();
+}
+
+class _TodaysEntryScreenState extends State<TodaysEntryScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  int _selectedWaterAmountIndex = 0;
+  double _waterIntakeLiters = 0.0;
+  bool _waterEditedManually = false;
+  bool _isCustomWaterEntrySelected = false;
+  TimeOfDay _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+  late final TextEditingController _waterController;
+  late final TextEditingController _hourController;
+  late final TextEditingController _minuteController;
+  late final FocusNode _waterFocusNode;
+  late final FocusNode _hourFocusNode;
+  late final FocusNode _minuteFocusNode;
+  final GlobalKey _waterFieldKey = GlobalKey();
+  final GlobalKey _hourFieldKey = GlobalKey();
+  final GlobalKey _minuteFieldKey = GlobalKey();
+
+  static const List<String> _waterAmounts = <String>[
+    '0.250 l',
+    '0.500 l',
+    '1 l',
+  ];
+
+  bool get _isAmSelected => _selectedTime.period == DayPeriod.am;
+
+  String get _timeHourText {
+    final hour = _selectedTime.hourOfPeriod;
+    final displayHour = hour == 0 ? 12 : hour;
+    return displayHour.toString().padLeft(2, '0');
+  }
+
+  String get _timeMinuteText => _selectedTime.minute.toString().padLeft(2, '0');
+
+  String _formatWaterLiters(double liters) {
+    if (liters <= 0) {
+      return '0';
+    }
+    return liters
+        .toStringAsFixed(3)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  double _parseWaterAmountLabel(String label) {
+    final parsed = double.tryParse(
+      label.replaceAll('l', '').replaceAll('L', '').trim(),
+    );
+    return parsed ?? 0.0;
+  }
+
+  int _waterAmountIndexForValue(double liters) {
+    for (int i = 0; i < _waterAmounts.length; i++) {
+      final amount = _parseWaterAmountLabel(_waterAmounts[i]);
+      if ((amount - liters).abs() <= 0.0005) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  void _ensureFieldVisible(GlobalKey fieldKey) {
+    final fieldContext = fieldKey.currentContext;
+    if (fieldContext == null || !mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        fieldContext,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: 0.25,
+      );
+    });
+  }
+
+  void _ensureFieldVisibleAfterKeyboard({
+    required GlobalKey fieldKey,
+    required FocusNode focusNode,
+  }) {
+    _ensureFieldVisible(fieldKey);
+    Future<void>.delayed(const Duration(milliseconds: 280), () {
+      if (!mounted || !focusNode.hasFocus) {
+        return;
+      }
+      _ensureFieldVisible(fieldKey);
+    });
+  }
+
+  void _commitWaterFromController() {
+    final parsed = double.tryParse(
+      _waterController.text.trim().replaceAll(' ', '').replaceAll(',', '.'),
+    );
+    if (parsed == null || parsed < 0) {
+      setState(() {
+        _waterController.text = _formatWaterLiters(_waterIntakeLiters);
+      });
+      return;
+    }
+    setState(() {
+      _waterIntakeLiters = parsed;
+      _selectedWaterAmountIndex = _waterEditedManually
+          ? -1
+          : _waterAmountIndexForValue(parsed);
+      if (_waterEditedManually) {
+        _isCustomWaterEntrySelected = true;
+      }
+      _waterController.text = _formatWaterLiters(_waterIntakeLiters);
+      _waterController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _waterController.text.length),
+      );
+    });
+  }
+
+  void _commitHourFromController() {
+    final parsed = int.tryParse(_hourController.text.trim());
+    if (parsed != null && parsed >= 1 && parsed <= 12) {
+      var nextHour = parsed % 12;
+      if (!_isAmSelected) {
+        nextHour += 12;
+      }
+      setState(() {
+        _selectedTime = _selectedTime.replacing(hour: nextHour);
+      });
+    }
+    setState(() {
+      _hourController.text = _timeHourText;
+      _minuteController.text = _timeMinuteText;
+    });
+  }
+
+  void _commitMinuteFromController() {
+    final parsed = int.tryParse(_minuteController.text.trim());
+    if (parsed != null && parsed >= 0 && parsed <= 59) {
+      setState(() {
+        _selectedTime = _selectedTime.replacing(minute: parsed);
+      });
+    }
+    setState(() {
+      _hourController.text = _timeHourText;
+      _minuteController.text = _timeMinuteText;
+    });
+  }
+
+  void _setAmPm(bool useAm) {
+    final hour = _selectedTime.hour;
+    int nextHour = hour;
+    if (useAm && hour >= 12) {
+      nextHour = hour - 12;
+    } else if (!useAm && hour < 12) {
+      nextHour = hour + 12;
+    }
+    if (nextHour == hour) {
+      return;
+    }
+    setState(() {
+      _selectedTime = _selectedTime.replacing(hour: nextHour);
+      _hourController.text = _timeHourText;
+      _minuteController.text = _timeMinuteText;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _waterController = TextEditingController(text: _formatWaterLiters(0));
+    _hourController = TextEditingController(text: _timeHourText);
+    _minuteController = TextEditingController(text: _timeMinuteText);
+    _waterFocusNode = FocusNode()
+      ..addListener(() {
+        if (_waterFocusNode.hasFocus) {
+          if (mounted) {
+            setState(() {});
+          }
+          _ensureFieldVisible(_waterFieldKey);
+          return;
+        }
+        _commitWaterFromController();
+      });
+    _hourFocusNode = FocusNode()
+      ..addListener(() {
+        if (_hourFocusNode.hasFocus) {
+          if (mounted) {
+            setState(() {});
+          }
+          _ensureFieldVisibleAfterKeyboard(
+            fieldKey: _hourFieldKey,
+            focusNode: _hourFocusNode,
+          );
+          return;
+        }
+        _commitHourFromController();
+      });
+    _minuteFocusNode = FocusNode()
+      ..addListener(() {
+        if (_minuteFocusNode.hasFocus) {
+          if (mounted) {
+            setState(() {});
+          }
+          _ensureFieldVisibleAfterKeyboard(
+            fieldKey: _minuteFieldKey,
+            focusNode: _minuteFocusNode,
+          );
+          return;
+        }
+        _commitMinuteFromController();
+      });
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _waterFocusNode.dispose();
+    _hourFocusNode.dispose();
+    _minuteFocusNode.dispose();
+    _waterController.dispose();
+    _hourController.dispose();
+    _minuteController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goToDailyProgressTab(int tabIndex) {
+    if (!mounted) {
+      return;
+    }
+    if (tabIndex == 3) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(
+        screen: DailyProgressScreen(initialSelectedBottomNavIndex: tabIndex),
+      ),
+    );
+  }
+
+  void _openCustomEntriesScreen() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(_buildNoTransitionRoute(screen: const CustomEntriesScreen()));
+  }
+
+  void _openNewCustomEntryScreen() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(_buildNoTransitionRoute(screen: const NewCustomEntryScreen()));
+  }
+
+  void _openFavoritesScreen() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(_buildNoTransitionRoute(screen: const FavoritesScreen()));
+  }
+
+  void _openSearchFoodScreen() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(_buildNoTransitionRoute(screen: const SearchFoodScreen()));
+  }
+
+  void _goToAccountPage() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(
+        screen: AccountScreen(
+          skippedBudgetSection: _OnboardingSkipFlags.skippedBudgetSection,
+          skippedWaterSection: _OnboardingSkipFlags.skippedWaterSection,
+        ),
+      ),
+    );
+  }
+
+  Widget _bottomNavIconButton({
+    required double scale,
+    required String assetPath,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: 48 * scale,
+      height: 48 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 15 * scale,
+          fillColor: isSelected ? Colors.white : const Color(0x52FFFFFF),
+          padding: EdgeInsets.zero,
+          expandToBounds: true,
+          boxShadow: isSelected
+              ? const [
+                  BoxShadow(
+                    color: Color(0xFFFF0000),
+                    blurRadius: 4,
+                    blurStyle: BlurStyle.outer,
+                  ),
+                ]
+              : const <BoxShadow>[],
+          enableBlur: !isSelected,
+          child: Center(
+            child: SizedBox(
+              width: 30 * scale,
+              height: 30 * scale,
+              child: SvgPicture.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                colorFilter: ColorFilter.mode(
+                  isSelected ? _bottomNavActiveIconColor : Colors.black,
+                  BlendMode.srcIn,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _waterAmountChip({
+    required double scale,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return _TodaysEntryWaterAmountChip(
+      scale: scale,
+      label: label,
+      isSelected: selected,
+      onTap: onTap,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+          final isKeyboardVisible = keyboardInset > 0;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final contentTop = metrics.padding.top + (16 * scale);
+          final isIPhone =
+              !kIsWeb &&
+              defaultTargetPlatform == TargetPlatform.iOS &&
+              math.min(metrics.width, metrics.height) < 600;
+          final controlsBottom = isIPhone
+              ? metrics.padding.bottom
+              : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
+          final navHeight = 64 * scale;
+          final blurPanelHeight = (navHeight - (8 * scale)) + controlsBottom;
+          final effectiveBottomOverlayHeight = isKeyboardVisible
+              ? 0.0
+              : blurPanelHeight;
+          final scrollBottomPadding =
+              effectiveBottomOverlayHeight + keyboardInset + (24 * scale);
+
+          return Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: contentTop,
+                bottom: 0,
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                    contentLeft,
+                    0,
+                    contentLeft,
+                    scrollBottomPadding,
+                  ),
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Today’s Entry',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Borel',
+                            fontSize: (32 * scale).clamp(24.0, 40.0),
+                            color: Colors.white,
+                            height: 0.99,
+                          ),
+                        ),
+                        SizedBox(height: 16 * scale),
+                        Container(
+                          padding: EdgeInsets.all(8 * scale),
+                          decoration: BoxDecoration(
+                            color: const Color(0x29FFFFFF),
+                            borderRadius: BorderRadius.circular(32 * scale),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  height: 56 * scale,
+                                  borderRadius: 32 * scale,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16 * scale,
+                                  ),
+                                  onTap: _openSearchFoodScreen,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Search Food',
+                                        style: TextStyle(
+                                          fontFamily:
+                                              _defaultNonBorelFontFamily,
+                                          fontSize: (16 * scale).clamp(
+                                            14.0,
+                                            20.0,
+                                          ),
+                                          color: const Color(0x52000000),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 16 * scale,
+                                        height: 16 * scale,
+                                        child: SvgPicture.asset(
+                                          'assets/Serach_food.svg',
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 16 * scale),
+                              _TodaysEntryGlassTile(
+                                scale: scale,
+                                width: 56 * scale,
+                                height: 56 * scale,
+                                borderRadius: 32 * scale,
+                                onTap: _openFavoritesScreen,
+                                child: Icon(
+                                  Icons.favorite,
+                                  color: const Color(0xFFFF0000),
+                                  size: (24 * scale).clamp(20.0, 28.0),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 16 * scale),
+                        Container(
+                          padding: EdgeInsets.all(8 * scale),
+                          decoration: BoxDecoration(
+                            color: const Color(0x29FFFFFF),
+                            borderRadius: BorderRadius.circular(32 * scale),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  height: 56 * scale,
+                                  borderRadius: 32 * scale,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16 * scale,
+                                  ),
+                                  onTap: _openNewCustomEntryScreen,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Custom Food Entry',
+                                        style: TextStyle(
+                                          fontFamily:
+                                              _defaultNonBorelFontFamily,
+                                          fontSize: (16 * scale).clamp(
+                                            14.0,
+                                            20.0,
+                                          ),
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.add_circle_outline,
+                                        color: Colors.black,
+                                        size: (24 * scale).clamp(20.0, 28.0),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 16 * scale),
+                              _TodaysEntryGlassTile(
+                                scale: scale,
+                                width: 56 * scale,
+                                height: 56 * scale,
+                                borderRadius: 32 * scale,
+                                onTap: _openCustomEntriesScreen,
+                                child: Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.white,
+                                  size: (34 * scale).clamp(24.0, 38.0),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 24),
+                        Text(
+                          'Water Intake',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'Borel',
+                            fontSize: (32 * scale).clamp(24.0, 40.0),
+                            color: Colors.white,
+                            height: 0.99,
+                          ),
+                        ),
+                        SizedBox(height: 16 * scale),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0x29FFFFFF),
+                            borderRadius: BorderRadius.circular(16 * scale),
+                          ),
+                          padding: EdgeInsets.all(8 * scale),
+                          child: Column(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0x3DFFFFFF),
+                                  borderRadius: BorderRadius.circular(
+                                    16 * scale,
+                                  ),
+                                ),
+                                padding: EdgeInsets.all(8 * scale),
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      padding: EdgeInsets.all(16 * scale),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0x3DFFFFFF),
+                                        borderRadius: BorderRadius.circular(
+                                          16 * scale,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            'Water',
+                                            style: TextStyle(
+                                              fontFamily:
+                                                  _defaultNonBorelFontFamily,
+                                              fontSize: (16 * scale).clamp(
+                                                14.0,
+                                                20.0,
+                                              ),
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Row(
+                                            children: [
+                                              _TodaysEntryGlassTile(
+                                                scale: scale,
+                                                width: (140 * scale).clamp(
+                                                  120.0,
+                                                  168.0,
+                                                ),
+                                                borderRadius: 15 * scale,
+                                                padding: EdgeInsets.symmetric(
+                                                  horizontal: 16 * scale,
+                                                  vertical: 8 * scale,
+                                                ),
+                                                inactiveFillColor: const Color(
+                                                  0x3DFFFFFF,
+                                                ),
+                                                selectedFillColor: Colors.white,
+                                                isSelected:
+                                                    _waterFocusNode.hasFocus ||
+                                                    _isCustomWaterEntrySelected,
+                                                onTap: () => _waterFocusNode
+                                                    .requestFocus(),
+                                                child: Center(
+                                                  child: SizedBox(
+                                                    key: _waterFieldKey,
+                                                    width: double.infinity,
+                                                    child: TextField(
+                                                      controller:
+                                                          _waterController,
+                                                      focusNode:
+                                                          _waterFocusNode,
+                                                      scrollPadding:
+                                                          EdgeInsets.zero,
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      keyboardType:
+                                                          const TextInputType.numberWithOptions(
+                                                            decimal: true,
+                                                          ),
+                                                      inputFormatters: [
+                                                        FilteringTextInputFormatter.allow(
+                                                          RegExp(r'[0-9.,]'),
+                                                        ),
+                                                      ],
+                                                      onChanged: (_) {
+                                                        if (!mounted) {
+                                                          return;
+                                                        }
+                                                        setState(() {
+                                                          _waterEditedManually =
+                                                              true;
+                                                          _isCustomWaterEntrySelected =
+                                                              true;
+                                                          _selectedWaterAmountIndex =
+                                                              -1;
+                                                        });
+                                                      },
+                                                      textInputAction:
+                                                          TextInputAction.done,
+                                                      onSubmitted: (_) =>
+                                                          _waterFocusNode
+                                                              .unfocus(),
+                                                      onTapOutside: (_) =>
+                                                          _waterFocusNode
+                                                              .unfocus(),
+                                                      decoration:
+                                                          const InputDecoration.collapsed(
+                                                            hintText: '',
+                                                          ),
+                                                      style: TextStyle(
+                                                        fontFamily:
+                                                            _defaultNonBorelFontFamily,
+                                                        fontSize: (24 * scale)
+                                                            .clamp(18.0, 30.0),
+                                                        color: Colors.black,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              SizedBox(width: 8 * scale),
+                                              Text(
+                                                'Liters (l)',
+                                                style: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (14 * scale).clamp(
+                                                    12.0,
+                                                    18.0,
+                                                  ),
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(height: 16 * scale),
+                                    Row(
+                                      children: List<Widget>.generate(
+                                        _waterAmounts.length,
+                                        (index) => Padding(
+                                          padding: EdgeInsets.only(
+                                            right:
+                                                index ==
+                                                    _waterAmounts.length - 1
+                                                ? 0
+                                                : 16 * scale,
+                                          ),
+                                          child: _waterAmountChip(
+                                            scale: scale,
+                                            label: _waterAmounts[index],
+                                            selected:
+                                                _selectedWaterAmountIndex ==
+                                                index,
+                                            onTap: () {
+                                              if (!mounted) {
+                                                return;
+                                              }
+                                              final waterAmount =
+                                                  _parseWaterAmountLabel(
+                                                    _waterAmounts[index],
+                                                  );
+                                              setState(() {
+                                                _waterEditedManually = false;
+                                                _isCustomWaterEntrySelected =
+                                                    false;
+                                                _selectedWaterAmountIndex =
+                                                    index;
+                                                _waterIntakeLiters =
+                                                    waterAmount;
+                                                _waterController.text =
+                                                    _formatWaterLiters(
+                                                      _waterIntakeLiters,
+                                                    );
+                                                _waterController.selection =
+                                                    TextSelection.fromPosition(
+                                                      TextPosition(
+                                                        offset: _waterController
+                                                            .text
+                                                            .length,
+                                                      ),
+                                                    );
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(height: 16 * scale),
+                              Container(
+                                padding: EdgeInsets.all(16 * scale),
+                                decoration: BoxDecoration(
+                                  color: const Color(0x52FFFFFF),
+                                  borderRadius: BorderRadius.circular(
+                                    16 * scale,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      'Time',
+                                      style: TextStyle(
+                                        fontFamily: _defaultNonBorelFontFamily,
+                                        fontSize: (16 * scale).clamp(
+                                          14.0,
+                                          20.0,
+                                        ),
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Row(
+                                      children: [
+                                        _TodaysEntryGlassTile(
+                                          scale: scale,
+                                          width: 62 * scale,
+                                          height: 82 * scale,
+                                          borderRadius: 15 * scale,
+                                          inactiveFillColor: const Color(
+                                            0x52FFFFFF,
+                                          ),
+                                          selectedFillColor: Colors.white,
+                                          isSelected: _hourFocusNode.hasFocus,
+                                          onTap: () =>
+                                              _hourFocusNode.requestFocus(),
+                                          child: Center(
+                                            child: SizedBox(
+                                              key: _hourFieldKey,
+                                              width: double.infinity,
+                                              child: TextField(
+                                                controller: _hourController,
+                                                focusNode: _hourFocusNode,
+                                                scrollPadding: EdgeInsets.zero,
+                                                textAlign: TextAlign.center,
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                inputFormatters: [
+                                                  FilteringTextInputFormatter
+                                                      .digitsOnly,
+                                                ],
+                                                textInputAction:
+                                                    TextInputAction.done,
+                                                onSubmitted: (_) =>
+                                                    _hourFocusNode.unfocus(),
+                                                onTapOutside: (_) =>
+                                                    _hourFocusNode.unfocus(),
+                                                decoration:
+                                                    const InputDecoration.collapsed(
+                                                      hintText: '',
+                                                    ),
+                                                style: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (24 * scale).clamp(
+                                                    18.0,
+                                                    30.0,
+                                                  ),
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(width: 8 * scale),
+                                        Text(
+                                          ':',
+                                          style: TextStyle(
+                                            fontFamily:
+                                                _defaultNonBorelFontFamily,
+                                            fontSize: (30 * scale).clamp(
+                                              22.0,
+                                              34.0,
+                                            ),
+                                            color: const Color(0x80FFFFFF),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        SizedBox(width: 8 * scale),
+                                        _TodaysEntryGlassTile(
+                                          scale: scale,
+                                          width: 62 * scale,
+                                          height: 82 * scale,
+                                          borderRadius: 15 * scale,
+                                          inactiveFillColor: const Color(
+                                            0x52FFFFFF,
+                                          ),
+                                          selectedFillColor: Colors.white,
+                                          isSelected: _minuteFocusNode.hasFocus,
+                                          onTap: () =>
+                                              _minuteFocusNode.requestFocus(),
+                                          child: Center(
+                                            child: SizedBox(
+                                              key: _minuteFieldKey,
+                                              width: double.infinity,
+                                              child: TextField(
+                                                controller: _minuteController,
+                                                focusNode: _minuteFocusNode,
+                                                scrollPadding: EdgeInsets.zero,
+                                                textAlign: TextAlign.center,
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                inputFormatters: [
+                                                  FilteringTextInputFormatter
+                                                      .digitsOnly,
+                                                ],
+                                                textInputAction:
+                                                    TextInputAction.done,
+                                                onSubmitted: (_) =>
+                                                    _minuteFocusNode.unfocus(),
+                                                onTapOutside: (_) =>
+                                                    _minuteFocusNode.unfocus(),
+                                                decoration:
+                                                    const InputDecoration.collapsed(
+                                                      hintText: '',
+                                                    ),
+                                                style: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (24 * scale).clamp(
+                                                    18.0,
+                                                    30.0,
+                                                  ),
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(width: 8 * scale),
+                                        Column(
+                                          children: [
+                                            _TodaysEntryGlassTile(
+                                              scale: scale,
+                                              borderRadius: 15 * scale,
+                                              padding: EdgeInsets.all(
+                                                8 * scale,
+                                              ),
+                                              isSelected: _isAmSelected,
+                                              onTap: () => _setAmPm(true),
+                                              child: Text(
+                                                'AM',
+                                                style: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (16 * scale).clamp(
+                                                    14.0,
+                                                    20.0,
+                                                  ),
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                            SizedBox(height: 8 * scale),
+                                            _TodaysEntryGlassTile(
+                                              scale: scale,
+                                              borderRadius: 15 * scale,
+                                              padding: EdgeInsets.all(
+                                                8 * scale,
+                                              ),
+                                              isSelected: !_isAmSelected,
+                                              onTap: () => _setAmPm(false),
+                                              child: Text(
+                                                'PM',
+                                                style: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (16 * scale).clamp(
+                                                    14.0,
+                                                    20.0,
+                                                  ),
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(height: 16 * scale),
+                              _TodaysEntryGlassTile(
+                                scale: scale,
+                                height: 56 * scale,
+                                borderRadius: 32 * scale,
+                                inactiveFillColor: const Color(0x29FFD206),
+                                selectedFillColor: const Color(0x29FFD206),
+                                onTap: () {},
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Add',
+                                      style: TextStyle(
+                                        fontFamily: _defaultNonBorelFontFamily,
+                                        fontSize: (20 * scale).clamp(
+                                          16.0,
+                                          24.0,
+                                        ),
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    SizedBox(width: 16 * scale),
+                                    Icon(
+                                      Icons.add,
+                                      color: Colors.white,
+                                      size: (34 * scale).clamp(24.0, 38.0),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (!isKeyboardVisible)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: blurPanelHeight,
+                  child: _buildBottomBlurFadeOverlay(),
+                ),
+              if (!isKeyboardVisible)
+                Positioned(
+                  left: contentLeft,
+                  width: contentWidth,
+                  bottom: controlsBottom,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16 * scale),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(
+                              sigmaX: _dailyProgressMenuBarBlurSigma,
+                              sigmaY: _dailyProgressMenuBarBlurSigma,
+                            ),
+                            child: Container(
+                              height: navHeight,
+                              decoration: BoxDecoration(
+                                color: _menuBarBlockFillColor,
+                                borderRadius: BorderRadius.circular(16 * scale),
+                              ),
+                              padding: EdgeInsets.all(8 * scale),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _bottomNavIconButton(
+                                    scale: scale,
+                                    assetPath: 'assets/Home_in.svg',
+                                    isSelected: false,
+                                    onTap: () => _goToDailyProgressTab(0),
+                                  ),
+                                  _bottomNavIconButton(
+                                    scale: scale,
+                                    assetPath: 'assets/Notification_in.svg',
+                                    isSelected: false,
+                                    onTap: () => _goToDailyProgressTab(1),
+                                  ),
+                                  _bottomNavIconButton(
+                                    scale: scale,
+                                    assetPath: 'assets/Account_in.svg',
+                                    isSelected: false,
+                                    onTap: _goToAccountPage,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 16 * scale),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16 * scale),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(
+                            sigmaX: _dailyProgressMenuBarBlurSigma,
+                            sigmaY: _dailyProgressMenuBarBlurSigma,
+                          ),
+                          child: Container(
+                            width: navHeight,
+                            height: navHeight,
+                            decoration: BoxDecoration(
+                              color: _menuBarBlockFillColor,
+                              borderRadius: BorderRadius.circular(16 * scale),
+                            ),
+                            padding: EdgeInsets.all(8 * scale),
+                            child: _bottomNavIconButton(
+                              scale: scale,
+                              assetPath: 'assets/Add_new.svg',
+                              isSelected: true,
+                              onTap: () {},
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class SearchFoodScreen extends StatefulWidget {
+  const SearchFoodScreen({super.key});
+
+  @override
+  State<SearchFoodScreen> createState() => _SearchFoodScreenState();
+}
+
+class _SearchFoodScreenState extends State<SearchFoodScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
+
+  Timer? _searchDebounce;
+  int _searchRequestToken = 0;
+  bool _isLoadingResults = false;
+  List<_DailyFoodCatalogItem> _searchResults = const <_DailyFoodCatalogItem>[];
+
+  String get _trimmedQuery => _searchController.text.trim();
+  bool get _hasQuery => _trimmedQuery.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _searchFocusNode = FocusNode();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+
+    _searchController.addListener(_handleQueryChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _searchFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController
+      ..removeListener(_handleQueryChanged)
+      ..dispose();
+    _searchFocusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleQueryChanged() {
+    _searchDebounce?.cancel();
+    if (!_hasQuery) {
+      _searchRequestToken++;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoadingResults = false;
+        _searchResults = const <_DailyFoodCatalogItem>[];
+      });
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 220), () {
+      _runFoodSearch(_trimmedQuery);
+    });
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _runFoodSearch(String query) async {
+    final requestToken = ++_searchRequestToken;
+    if (mounted) {
+      setState(() {
+        _isLoadingResults = true;
+      });
+    }
+
+    final results = await _DailyFoodDatabase.searchFoods(query);
+    if (!mounted || requestToken != _searchRequestToken) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingResults = false;
+      _searchResults = results;
+    });
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _goToDailyProgressTab(int tabIndex) {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(
+        screen: DailyProgressScreen(initialSelectedBottomNavIndex: tabIndex),
+      ),
+    );
+  }
+
+  void _goToAccountPage() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(
+        screen: AccountScreen(
+          skippedBudgetSection: _OnboardingSkipFlags.skippedBudgetSection,
+          skippedWaterSection: _OnboardingSkipFlags.skippedWaterSection,
+        ),
+      ),
+    );
+  }
+
+  void _toggleFavorite(_DailyFoodCatalogItem item) {
+    if (!mounted) {
+      return;
+    }
+    final nextFavorite = !item.isFavorite;
+    _DailyFoodDatabase.setFavorite(item.id, nextFavorite);
+    setState(() {
+      _searchResults = _searchResults
+          .map(
+            (food) => food.id == item.id
+                ? food.copyWith(isFavorite: nextFavorite)
+                : food,
+          )
+          .toList(growable: false);
+    });
+  }
+
+  Future<void> _openFoodItemDetails(_DailyFoodCatalogItem item) async {
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push(
+      _buildNoTransitionRoute(screen: _SearchFoodItemDetailsScreen(item: item)),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _searchResults = _searchResults
+          .map(
+            (food) => food.copyWith(
+              isFavorite: _DailyFoodDatabase.isFavorite(food.id),
+            ),
+          )
+          .toList(growable: false);
+    });
+  }
+
+  Widget _bottomNavIconButton({
+    required double scale,
+    required String assetPath,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: 48 * scale,
+      height: 48 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 15 * scale,
+          fillColor: isSelected ? Colors.white : const Color(0x52FFFFFF),
+          padding: EdgeInsets.zero,
+          expandToBounds: true,
+          boxShadow: isSelected
+              ? const [
+                  BoxShadow(
+                    color: Color(0xFFFF0000),
+                    blurRadius: 4,
+                    blurStyle: BlurStyle.outer,
+                  ),
+                ]
+              : const <BoxShadow>[],
+          enableBlur: !isSelected,
+          child: Center(
+            child: SizedBox(
+              width: 30 * scale,
+              height: 30 * scale,
+              child: SvgPicture.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                colorFilter: ColorFilter.mode(
+                  isSelected ? _bottomNavActiveIconColor : Colors.black,
+                  BlendMode.srcIn,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchResultCard({
+    required _DailyFoodCatalogItem item,
+    required double scale,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openFoodItemDetails(item),
+      child: Container(
+        padding: EdgeInsets.all(16 * scale),
+        decoration: BoxDecoration(
+          color: const Color(0x52FFFFFF),
+          borderRadius: BorderRadius.circular(16 * scale),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 62 * scale,
+              height: 62 * scale,
+              child: _RotatingGlassPanel(
+                scale: scale,
+                borderRadius: 16 * scale,
+                fillColor: const Color(0x52FFFFFF),
+                padding: EdgeInsets.all(12 * scale),
+                expandToBounds: true,
+                boxShadow: const <BoxShadow>[],
+                child: SvgPicture.asset('assets/Food.svg', fit: BoxFit.contain),
+              ),
+            ),
+            SizedBox(width: 16 * scale),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    item.name,
+                    style: TextStyle(
+                      fontFamily: _defaultNonBorelFontFamily,
+                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                      color: Colors.black,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8 * scale),
+                  Text(
+                    '${item.caloriesKcal} kcal',
+                    style: TextStyle(
+                      fontFamily: _defaultNonBorelFontFamily,
+                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                      color: Colors.black,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _toggleFavorite(item),
+              child: Padding(
+                padding: EdgeInsets.all(4 * scale),
+                child: Icon(
+                  item.isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: item.isFavorite
+                      ? const Color(0xFFFF0000)
+                      : Colors.white,
+                  size: (24 * scale).clamp(20.0, 28.0),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+          final isKeyboardVisible = keyboardInset > 0;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final contentTop = metrics.padding.top + (16 * scale);
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
+          final navHeight = 64 * scale;
+          final backButtonHeight = 56 * scale;
+          final showBackOnlyControls = _hasQuery && !isKeyboardVisible;
+          final controlsRowHeight = showBackOnlyControls
+              ? backButtonHeight
+              : navHeight;
+          final blurPanelHeight =
+              (controlsRowHeight - (showBackOnlyControls ? 0 : (8 * scale))) +
+              controlsBottom;
+          final scrollBottomPadding =
+              blurPanelHeight + keyboardInset + (24 * scale);
+
+          return Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: contentTop,
+                bottom: 0,
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                    contentLeft,
+                    0,
+                    contentLeft,
+                    scrollBottomPadding,
+                  ),
+                  children: [
+                    Text(
+                      'Today’s Entry',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Borel',
+                        fontSize: (32 * scale).clamp(24.0, 40.0),
+                        color: Colors.white,
+                        height: 0.99,
+                      ),
+                    ),
+                    SizedBox(height: 16 * scale),
+                    Container(
+                      padding: EdgeInsets.all(8 * scale),
+                      decoration: BoxDecoration(
+                        color: const Color(0x29FFFFFF),
+                        borderRadius: BorderRadius.circular(32 * scale),
+                      ),
+                      child: Container(
+                        height: 56 * scale,
+                        padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                        decoration: BoxDecoration(
+                          color: const Color(0x52FFFFFF),
+                          borderRadius: BorderRadius.circular(32 * scale),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                focusNode: _searchFocusNode,
+                                textInputAction: TextInputAction.search,
+                                style: TextStyle(
+                                  fontFamily: _defaultNonBorelFontFamily,
+                                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                decoration: InputDecoration(
+                                  isCollapsed: true,
+                                  border: InputBorder.none,
+                                  hintText: 'Search Food',
+                                  hintStyle: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: const Color(0x52000000),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 16 * scale,
+                              height: 16 * scale,
+                              child: SvgPicture.asset(
+                                'assets/Serach_food.svg',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_hasQuery) ...[
+                      SizedBox(height: 18 * scale),
+                      if (_isLoadingResults)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20 * scale),
+                          child: Center(
+                            child: SizedBox(
+                              width: (24 * scale).clamp(20.0, 30.0),
+                              height: (24 * scale).clamp(20.0, 30.0),
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (_searchResults.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20 * scale),
+                          child: Center(
+                            child: Text(
+                              'No Foods Found',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: _defaultNonBorelFontFamily,
+                                fontSize: (20 * scale).clamp(16.0, 24.0),
+                                color: Colors.black,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        ...List<Widget>.generate(_searchResults.length, (
+                          index,
+                        ) {
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: index == _searchResults.length - 1
+                                  ? 0
+                                  : 18 * scale,
+                            ),
+                            child: _buildSearchResultCard(
+                              item: _searchResults[index],
+                              scale: scale,
+                            ),
+                          );
+                        }),
+                    ],
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: blurPanelHeight,
+                child: _buildBottomBlurFadeOverlay(),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: showBackOnlyControls
+                    ? _TodaysEntryGlassTile(
+                        scale: scale,
+                        height: backButtonHeight,
+                        borderRadius: 32 * scale,
+                        inactiveFillColor: Colors.white,
+                        selectedFillColor: Colors.white,
+                        onTap: _goBack,
+                        child: Center(
+                          child: Icon(
+                            Icons.arrow_back,
+                            color: const Color(0xFFFFD206),
+                            size: (26 * scale).clamp(20.0, 30.0),
+                          ),
+                        ),
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16 * scale),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(
+                                  sigmaX: _dailyProgressMenuBarBlurSigma,
+                                  sigmaY: _dailyProgressMenuBarBlurSigma,
+                                ),
+                                child: Container(
+                                  height: navHeight,
+                                  decoration: BoxDecoration(
+                                    color: _menuBarBlockFillColor,
+                                    borderRadius: BorderRadius.circular(
+                                      16 * scale,
+                                    ),
+                                  ),
+                                  padding: EdgeInsets.all(8 * scale),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      _bottomNavIconButton(
+                                        scale: scale,
+                                        assetPath: 'assets/Home_in.svg',
+                                        isSelected: false,
+                                        onTap: () => _goToDailyProgressTab(0),
+                                      ),
+                                      _bottomNavIconButton(
+                                        scale: scale,
+                                        assetPath: 'assets/Notification_in.svg',
+                                        isSelected: false,
+                                        onTap: () => _goToDailyProgressTab(1),
+                                      ),
+                                      _bottomNavIconButton(
+                                        scale: scale,
+                                        assetPath: 'assets/Account_in.svg',
+                                        isSelected: false,
+                                        onTap: _goToAccountPage,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 16 * scale),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16 * scale),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: _dailyProgressMenuBarBlurSigma,
+                                sigmaY: _dailyProgressMenuBarBlurSigma,
+                              ),
+                              child: Container(
+                                width: navHeight,
+                                height: navHeight,
+                                decoration: BoxDecoration(
+                                  color: _menuBarBlockFillColor,
+                                  borderRadius: BorderRadius.circular(
+                                    16 * scale,
+                                  ),
+                                ),
+                                padding: EdgeInsets.all(8 * scale),
+                                child: _bottomNavIconButton(
+                                  scale: scale,
+                                  assetPath: 'assets/Add_new.svg',
+                                  isSelected: true,
+                                  onTap: () {},
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SearchFoodItemDetailsScreen extends StatefulWidget {
+  const _SearchFoodItemDetailsScreen({required this.item});
+
+  final _DailyFoodCatalogItem item;
+
+  @override
+  State<_SearchFoodItemDetailsScreen> createState() =>
+      _SearchFoodItemDetailsScreenState();
+}
+
+class _SearchFoodItemDetailsScreenState
+    extends State<_SearchFoodItemDetailsScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late TimeOfDay _selectedTime;
+  bool _isAdvanceOpen = false;
+  bool _isFavorite = false;
+
+  late final TextEditingController _itemNameController;
+  late final TextEditingController _hourController;
+  late final TextEditingController _minuteController;
+  late final TextEditingController _caloriesController;
+  late final TextEditingController _proteinController;
+  late final TextEditingController _carbsController;
+  late final TextEditingController _fatController;
+  late final TextEditingController _fiberController;
+  late final TextEditingController _sugarController;
+  late final TextEditingController _sodiumController;
+
+  late final FocusNode _itemNameFocusNode;
+  late final FocusNode _hourFocusNode;
+  late final FocusNode _minuteFocusNode;
+  late final FocusNode _caloriesFocusNode;
+  late final FocusNode _proteinFocusNode;
+  late final FocusNode _carbsFocusNode;
+  late final FocusNode _fatFocusNode;
+  late final FocusNode _fiberFocusNode;
+  late final FocusNode _sugarFocusNode;
+  late final FocusNode _sodiumFocusNode;
+
+  final GlobalKey _itemNameFieldKey = GlobalKey();
+  final GlobalKey _hourFieldKey = GlobalKey();
+  final GlobalKey _minuteFieldKey = GlobalKey();
+  final GlobalKey _caloriesFieldKey = GlobalKey();
+  final GlobalKey _proteinFieldKey = GlobalKey();
+  final GlobalKey _carbsFieldKey = GlobalKey();
+  final GlobalKey _fatFieldKey = GlobalKey();
+  final GlobalKey _fiberFieldKey = GlobalKey();
+  final GlobalKey _sugarFieldKey = GlobalKey();
+  final GlobalKey _sodiumFieldKey = GlobalKey();
+
+  late String _initialName;
+  late String _initialCalories;
+  late String _initialProtein;
+  late String _initialCarbs;
+  late String _initialFat;
+  late String _initialFiber;
+  late String _initialSugar;
+  late String _initialSodium;
+  late int _initialHour24;
+  late int _initialMinute;
+  late bool _initialFavorite;
+
+  bool get _isAmSelected => _selectedTime.hour < 12;
+
+  String get _timeHourText {
+    final hour = _selectedTime.hourOfPeriod == 0
+        ? 12
+        : _selectedTime.hourOfPeriod;
+    return hour.toString().padLeft(2, '0');
+  }
+
+  String get _timeMinuteText => _selectedTime.minute.toString().padLeft(2, '0');
+
+  String _normalizeItemName(String raw) => raw.trim();
+
+  String _normalizedNumericText(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return '0';
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null) {
+      return '0';
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _captureInitialState() {
+    _initialName = _normalizeItemName(_itemNameController.text);
+    _initialCalories = _normalizedNumericText(_caloriesController.text);
+    _initialProtein = _normalizedNumericText(_proteinController.text);
+    _initialCarbs = _normalizedNumericText(_carbsController.text);
+    _initialFat = _normalizedNumericText(_fatController.text);
+    _initialFiber = _normalizedNumericText(_fiberController.text);
+    _initialSugar = _normalizedNumericText(_sugarController.text);
+    _initialSodium = _normalizedNumericText(_sodiumController.text);
+    _initialHour24 = _selectedTime.hour;
+    _initialMinute = _selectedTime.minute;
+    _initialFavorite = _isFavorite;
+  }
+
+  bool get _canAddToCustom {
+    return _normalizeItemName(_itemNameController.text) != _initialName ||
+        _normalizedNumericText(_caloriesController.text) != _initialCalories ||
+        _normalizedNumericText(_proteinController.text) != _initialProtein ||
+        _normalizedNumericText(_carbsController.text) != _initialCarbs ||
+        _normalizedNumericText(_fatController.text) != _initialFat ||
+        _normalizedNumericText(_fiberController.text) != _initialFiber ||
+        _normalizedNumericText(_sugarController.text) != _initialSugar ||
+        _normalizedNumericText(_sodiumController.text) != _initialSodium ||
+        _selectedTime.hour != _initialHour24 ||
+        _selectedTime.minute != _initialMinute ||
+        _isFavorite != _initialFavorite;
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop(widget.item.copyWith(isFavorite: _isFavorite));
+  }
+
+  void _ensureFieldVisible(GlobalKey fieldKey) {
+    final fieldContext = fieldKey.currentContext;
+    if (fieldContext == null || !mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        fieldContext,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: 0.25,
+      );
+    });
+  }
+
+  void _ensureFieldVisibleAfterKeyboard({
+    required GlobalKey fieldKey,
+    required FocusNode focusNode,
+  }) {
+    _ensureFieldVisible(fieldKey);
+    Future<void>.delayed(const Duration(milliseconds: 280), () {
+      if (!mounted || !focusNode.hasFocus) {
+        return;
+      }
+      _ensureFieldVisible(fieldKey);
+    });
+  }
+
+  void _commitHourFromController() {
+    final parsed = int.tryParse(_hourController.text.trim());
+    if (parsed != null && parsed >= 1 && parsed <= 12) {
+      var nextHour = parsed % 12;
+      if (!_isAmSelected) {
+        nextHour += 12;
+      }
+      setState(() {
+        _selectedTime = _selectedTime.replacing(hour: nextHour);
+      });
+    }
+    _hourController.text = _timeHourText;
+    _minuteController.text = _timeMinuteText;
+  }
+
+  void _commitMinuteFromController() {
+    final parsed = int.tryParse(_minuteController.text.trim());
+    if (parsed != null && parsed >= 0 && parsed <= 59) {
+      setState(() {
+        _selectedTime = _selectedTime.replacing(minute: parsed);
+      });
+    }
+    _hourController.text = _timeHourText;
+    _minuteController.text = _timeMinuteText;
+  }
+
+  void _setAmPm(bool useAm) {
+    final hour = _selectedTime.hour;
+    int nextHour = hour;
+    if (useAm && hour >= 12) {
+      nextHour = hour - 12;
+    } else if (!useAm && hour < 12) {
+      nextHour = hour + 12;
+    }
+    if (nextHour == hour) {
+      return;
+    }
+    setState(() {
+      _selectedTime = _selectedTime.replacing(hour: nextHour);
+      _hourController.text = _timeHourText;
+      _minuteController.text = _timeMinuteText;
+    });
+  }
+
+  void _bindFieldFocus({
+    required FocusNode focusNode,
+    required GlobalKey fieldKey,
+    VoidCallback? onFocusLost,
+  }) {
+    focusNode.addListener(() {
+      if (focusNode.hasFocus) {
+        if (mounted) {
+          setState(() {});
+        }
+        _ensureFieldVisibleAfterKeyboard(
+          fieldKey: fieldKey,
+          focusNode: focusNode,
+        );
+      } else {
+        if (mounted) {
+          setState(() {});
+        }
+        onFocusLost?.call();
+      }
+    });
+  }
+
+  void _toggleFavorite() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
+    _DailyFoodDatabase.setFavorite(widget.item.id, _isFavorite);
+  }
+
+  void _addToCustomEntries() {
+    if (!_canAddToCustom) {
+      return;
+    }
+    final entry = _CustomFoodEntryStore.create(
+      name: _normalizeItemName(_itemNameController.text),
+      caloriesText: _normalizedNumericText(_caloriesController.text),
+      timeText:
+          '$_timeHourText:$_timeMinuteText ${_isAmSelected ? 'AM' : 'PM'}',
+      proteinText: _normalizedNumericText(_proteinController.text),
+      carbohydratesText: _normalizedNumericText(_carbsController.text),
+      fatText: _normalizedNumericText(_fatController.text),
+      fiberText: _normalizedNumericText(_fiberController.text),
+      sugarText: _normalizedNumericText(_sugarController.text),
+      sodiumText: _normalizedNumericText(_sodiumController.text),
+      isFavorite: _isFavorite,
+    );
+    _CustomFoodEntryStore.add(entry);
+    _captureInitialState();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Widget _nutritionCard({
+    required double scale,
+    required String label,
+    required String unit,
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required GlobalKey fieldKey,
+  }) {
+    return Container(
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x52FFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (16 * scale).clamp(14.0, 20.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          _TodaysEntryGlassTile(
+            scale: scale,
+            width: (140 * scale).clamp(120.0, 168.0),
+            height: 47 * scale,
+            borderRadius: 15 * scale,
+            padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+            inactiveFillColor: const Color(0x52FFFFFF),
+            selectedFillColor: Colors.white,
+            isSelected: focusNode.hasFocus,
+            onTap: () => focusNode.requestFocus(),
+            child: Center(
+              child: SizedBox(
+                key: fieldKey,
+                width: double.infinity,
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  scrollPadding: EdgeInsets.zero,
+                  textAlign: TextAlign.center,
+                  textAlignVertical: TextAlignVertical.center,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                  ],
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => focusNode.unfocus(),
+                  onTapOutside: (_) => focusNode.unfocus(),
+                  decoration: const InputDecoration.collapsed(hintText: '0'),
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (24 * scale).clamp(18.0, 30.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8 * scale),
+          SizedBox(
+            width: 28 * scale,
+            child: Text(
+              unit,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (14 * scale).clamp(12.0, 18.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final calories = widget.item.caloriesKcal;
+    final defaultProtein = (calories * 0.15 / 4).round();
+    final defaultCarbs = (calories * 0.55 / 4).round();
+    final defaultFat = (calories * 0.30 / 9).round();
+
+    _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+    _isFavorite = widget.item.isFavorite;
+
+    _itemNameController = TextEditingController(text: widget.item.name);
+    _hourController = TextEditingController(text: _timeHourText);
+    _minuteController = TextEditingController(text: _timeMinuteText);
+    _caloriesController = TextEditingController(text: calories.toString());
+    _proteinController = TextEditingController(
+      text: defaultProtein.clamp(0, 9999).toString(),
+    );
+    _carbsController = TextEditingController(
+      text: defaultCarbs.clamp(0, 9999).toString(),
+    );
+    _fatController = TextEditingController(
+      text: defaultFat.clamp(0, 9999).toString(),
+    );
+    _fiberController = TextEditingController(text: '0');
+    _sugarController = TextEditingController(text: '0');
+    _sodiumController = TextEditingController(text: '0');
+
+    _itemNameFocusNode = FocusNode();
+    _hourFocusNode = FocusNode();
+    _minuteFocusNode = FocusNode();
+    _caloriesFocusNode = FocusNode();
+    _proteinFocusNode = FocusNode();
+    _carbsFocusNode = FocusNode();
+    _fatFocusNode = FocusNode();
+    _fiberFocusNode = FocusNode();
+    _sugarFocusNode = FocusNode();
+    _sodiumFocusNode = FocusNode();
+
+    _bindFieldFocus(focusNode: _itemNameFocusNode, fieldKey: _itemNameFieldKey);
+    _bindFieldFocus(
+      focusNode: _hourFocusNode,
+      fieldKey: _hourFieldKey,
+      onFocusLost: _commitHourFromController,
+    );
+    _bindFieldFocus(
+      focusNode: _minuteFocusNode,
+      fieldKey: _minuteFieldKey,
+      onFocusLost: _commitMinuteFromController,
+    );
+    _bindFieldFocus(focusNode: _caloriesFocusNode, fieldKey: _caloriesFieldKey);
+    _bindFieldFocus(focusNode: _proteinFocusNode, fieldKey: _proteinFieldKey);
+    _bindFieldFocus(focusNode: _carbsFocusNode, fieldKey: _carbsFieldKey);
+    _bindFieldFocus(focusNode: _fatFocusNode, fieldKey: _fatFieldKey);
+    _bindFieldFocus(focusNode: _fiberFocusNode, fieldKey: _fiberFieldKey);
+    _bindFieldFocus(focusNode: _sugarFocusNode, fieldKey: _sugarFieldKey);
+    _bindFieldFocus(focusNode: _sodiumFocusNode, fieldKey: _sodiumFieldKey);
+
+    for (final controller in <TextEditingController>[
+      _itemNameController,
+      _caloriesController,
+      _proteinController,
+      _carbsController,
+      _fatController,
+      _fiberController,
+      _sugarController,
+      _sodiumController,
+    ]) {
+      controller.addListener(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
+
+    _captureInitialState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _itemNameFocusNode.dispose();
+    _hourFocusNode.dispose();
+    _minuteFocusNode.dispose();
+    _caloriesFocusNode.dispose();
+    _proteinFocusNode.dispose();
+    _carbsFocusNode.dispose();
+    _fatFocusNode.dispose();
+    _fiberFocusNode.dispose();
+    _sugarFocusNode.dispose();
+    _sodiumFocusNode.dispose();
+
+    _itemNameController.dispose();
+    _hourController.dispose();
+    _minuteController.dispose();
+    _caloriesController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatController.dispose();
+    _fiberController.dispose();
+    _sugarController.dispose();
+    _sodiumController.dispose();
+
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final titleTop = metrics.padding.top + (18 * scale);
+          final contentTop = titleTop + (58 * scale);
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
+          final bottomRowHeight = 56 * scale;
+          final blurPanelHeight = bottomRowHeight + controlsBottom;
+          final scrollBottomPadding =
+              blurPanelHeight + keyboardInset + (24 * scale);
+
+          return Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: contentTop,
+                bottom: 0,
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                    contentLeft,
+                    0,
+                    contentLeft,
+                    scrollBottomPadding,
+                  ),
+                  children: [
+                    Text(
+                      'Item Name',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 16 * scale),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _TodaysEntryGlassTile(
+                            scale: scale,
+                            height: 56 * scale,
+                            borderRadius: 16 * scale,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8 * scale,
+                              vertical: 16 * scale,
+                            ),
+                            inactiveFillColor: const Color(0x52FFFFFF),
+                            selectedFillColor: Colors.white,
+                            isSelected: _itemNameFocusNode.hasFocus,
+                            onTap: () => _itemNameFocusNode.requestFocus(),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: SizedBox(
+                                key: _itemNameFieldKey,
+                                width: double.infinity,
+                                child: TextField(
+                                  controller: _itemNameController,
+                                  focusNode: _itemNameFocusNode,
+                                  scrollPadding: EdgeInsets.zero,
+                                  textAlign: TextAlign.left,
+                                  keyboardType: TextInputType.text,
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) =>
+                                      _itemNameFocusNode.unfocus(),
+                                  onTapOutside: (_) =>
+                                      _itemNameFocusNode.unfocus(),
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: 'Item Name',
+                                  ),
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 16 * scale),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _toggleFavorite,
+                          child: Icon(
+                            _isFavorite
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: _isFavorite
+                                ? const Color(0xFFFF0000)
+                                : Colors.white,
+                            size: (28 * scale).clamp(22.0, 32.0),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 24 * scale),
+                    Text(
+                      'Meal Time',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 16 * scale),
+                    Container(
+                      padding: EdgeInsets.all(16 * scale),
+                      decoration: BoxDecoration(
+                        color: const Color(0x52FFFFFF),
+                        borderRadius: BorderRadius.circular(16 * scale),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _TodaysEntryGlassTile(
+                            scale: scale,
+                            width: 62 * scale,
+                            height: 82 * scale,
+                            borderRadius: 15 * scale,
+                            inactiveFillColor: const Color(0x52FFFFFF),
+                            selectedFillColor: Colors.white,
+                            isSelected: _hourFocusNode.hasFocus,
+                            onTap: () => _hourFocusNode.requestFocus(),
+                            child: Center(
+                              child: SizedBox(
+                                key: _hourFieldKey,
+                                width: double.infinity,
+                                child: TextField(
+                                  controller: _hourController,
+                                  focusNode: _hourFocusNode,
+                                  scrollPadding: EdgeInsets.zero,
+                                  textAlign: TextAlign.center,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) => _hourFocusNode.unfocus(),
+                                  onTapOutside: (_) => _hourFocusNode.unfocus(),
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: '',
+                                  ),
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (24 * scale).clamp(18.0, 30.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8 * scale),
+                          Text(
+                            ':',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (30 * scale).clamp(22.0, 34.0),
+                              color: const Color(0x80FFFFFF),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: 8 * scale),
+                          _TodaysEntryGlassTile(
+                            scale: scale,
+                            width: 62 * scale,
+                            height: 82 * scale,
+                            borderRadius: 15 * scale,
+                            inactiveFillColor: const Color(0x52FFFFFF),
+                            selectedFillColor: Colors.white,
+                            isSelected: _minuteFocusNode.hasFocus,
+                            onTap: () => _minuteFocusNode.requestFocus(),
+                            child: Center(
+                              child: SizedBox(
+                                key: _minuteFieldKey,
+                                width: double.infinity,
+                                child: TextField(
+                                  controller: _minuteController,
+                                  focusNode: _minuteFocusNode,
+                                  scrollPadding: EdgeInsets.zero,
+                                  textAlign: TextAlign.center,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) =>
+                                      _minuteFocusNode.unfocus(),
+                                  onTapOutside: (_) =>
+                                      _minuteFocusNode.unfocus(),
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: '',
+                                  ),
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (24 * scale).clamp(18.0, 30.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8 * scale),
+                          Column(
+                            children: [
+                              _TodaysEntryGlassTile(
+                                scale: scale,
+                                borderRadius: 15 * scale,
+                                padding: EdgeInsets.all(8 * scale),
+                                isSelected: _isAmSelected,
+                                onTap: () => _setAmPm(true),
+                                child: Text(
+                                  'AM',
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 8 * scale),
+                              _TodaysEntryGlassTile(
+                                scale: scale,
+                                borderRadius: 15 * scale,
+                                padding: EdgeInsets.all(8 * scale),
+                                isSelected: !_isAmSelected,
+                                onTap: () => _setAmPm(false),
+                                child: Text(
+                                  'PM',
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 24 * scale),
+                    Text(
+                      'Nutritional Value',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 18 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Calories',
+                      unit: 'kcal',
+                      controller: _caloriesController,
+                      focusNode: _caloriesFocusNode,
+                      fieldKey: _caloriesFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Protein',
+                      unit: 'g',
+                      controller: _proteinController,
+                      focusNode: _proteinFocusNode,
+                      fieldKey: _proteinFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Carbohydrates',
+                      unit: 'g',
+                      controller: _carbsController,
+                      focusNode: _carbsFocusNode,
+                      fieldKey: _carbsFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Fat',
+                      unit: 'g',
+                      controller: _fatController,
+                      focusNode: _fatFocusNode,
+                      fieldKey: _fatFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        if (!mounted) {
+                          return;
+                        }
+                        setState(() {
+                          _isAdvanceOpen = !_isAdvanceOpen;
+                        });
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Advance',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (20 * scale).clamp(16.0, 24.0),
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: 10 * scale),
+                          Icon(
+                            _isAdvanceOpen
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: Colors.white,
+                            size: (26 * scale).clamp(20.0, 30.0),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_isAdvanceOpen) ...[
+                      SizedBox(height: 16 * scale),
+                      _nutritionCard(
+                        scale: scale,
+                        label: 'Fiber',
+                        unit: 'g',
+                        controller: _fiberController,
+                        focusNode: _fiberFocusNode,
+                        fieldKey: _fiberFieldKey,
+                      ),
+                      SizedBox(height: 16 * scale),
+                      _nutritionCard(
+                        scale: scale,
+                        label: 'Sugar',
+                        unit: 'g',
+                        controller: _sugarController,
+                        focusNode: _sugarFocusNode,
+                        fieldKey: _sugarFieldKey,
+                      ),
+                      SizedBox(height: 16 * scale),
+                      _nutritionCard(
+                        scale: scale,
+                        label: 'Sodium',
+                        unit: 'mg',
+                        controller: _sodiumController,
+                        focusNode: _sodiumFocusNode,
+                        fieldKey: _sodiumFieldKey,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: SizedBox(
+                    height: 48 * scale,
+                    child: Center(
+                      child: Text(
+                        'Item Details',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Borel',
+                          fontSize: (32 * scale).clamp(24.0, 42.0),
+                          color: Colors.white,
+                          height: 0.99,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: blurPanelHeight,
+                child: _buildBottomBlurFadeOverlay(),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 56 * scale,
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: bottomRowHeight,
+                        borderRadius: 32 * scale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _goBack,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (26 * scale).clamp(20.0, 30.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    SizedBox(
+                      width: (150 * scale).clamp(120.0, 170.0),
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: bottomRowHeight,
+                        borderRadius: 32 * scale,
+                        fillColor: _canAddToCustom
+                            ? const Color(0x9400B2FF)
+                            : const Color(0x2E00B2FF),
+                        enablePressShadeFeedback: _canAddToCustom,
+                        onTap: _canAddToCustom ? _addToCustomEntries : () {},
+                        child: Text(
+                          'Add to Custom',
+                          style: TextStyle(
+                            fontFamily: _defaultNonBorelFontFamily,
+                            fontSize: (34 * scale / 1.7).clamp(18.0, 26.0),
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    Expanded(
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: bottomRowHeight,
+                        borderRadius: 32 * scale,
+                        fillColor: const Color(0x52FFD206),
+                        enablePressShadeFeedback: false,
+                        onTap: () {},
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Add',
+                              style: TextStyle(
+                                fontFamily: _defaultNonBorelFontFamily,
+                                fontSize: (34 * scale / 1.7).clamp(18.0, 26.0),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 8 * scale),
+                            Icon(
+                              Icons.add,
+                              color: Colors.white,
+                              size: (24 * scale).clamp(20.0, 30.0),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class FavoritesScreen extends StatefulWidget {
+  const FavoritesScreen({super.key});
+
+  @override
+  State<FavoritesScreen> createState() => _FavoritesScreenState();
+}
+
+class _FavoritesScreenState extends State<FavoritesScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _openNewCustomEntryScreen() async {
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(
+      context,
+    ).push(_buildNoTransitionRoute(screen: const NewCustomEntryScreen()));
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final titleTop = metrics.padding.top + (18 * scale);
+          final searchTop = titleTop + (62 * scale);
+          final listTop = searchTop + (30 * scale);
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
+          final bottomRowHeight = 56 * scale;
+          final bottomPanelTopPadding = 0.0;
+          final bottomPanelHeight =
+              bottomRowHeight +
+              bottomPanelTopPadding +
+              math.max(metrics.padding.bottom, 24 * scale);
+          final contentBottomInset =
+              bottomPanelHeight + controlsBottom + (24 * scale);
+          final allFavorites = _CustomFoodEntryStore.entries
+              .where((entry) => entry.isFavorite)
+              .toList(growable: false);
+          final hasFavorites = allFavorites.isNotEmpty;
+          final searchQuery = _searchController.text.trim().toLowerCase();
+          final visibleFavorites = searchQuery.isEmpty
+              ? allFavorites
+              : allFavorites
+                    .where(
+                      (entry) => entry.name.toLowerCase().contains(searchQuery),
+                    )
+                    .toList();
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleTop,
+                left: 16 * scale,
+                right: 16 * scale,
+                child: IgnorePointer(
+                  child: SizedBox(
+                    height: 48 * scale,
+                    child: Center(
+                      child: Text(
+                        'Favorites',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Borel',
+                          fontSize: (32 * scale).clamp(24.0, 42.0),
+                          color: Colors.white,
+                          height: 0.99,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (hasFavorites)
+                Positioned(
+                  top: searchTop,
+                  left: 16 * scale,
+                  right: 16 * scale,
+                  child: Container(
+                    height: 56 * scale,
+                    padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                    decoration: BoxDecoration(
+                      color: const Color(0x52FFFFFF),
+                      borderRadius: BorderRadius.circular(32 * scale),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (_) {
+                              if (mounted) {
+                                setState(() {});
+                              }
+                            },
+                            textInputAction: TextInputAction.search,
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (16 * scale).clamp(14.0, 20.0),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              hintText: 'Search Favorites',
+                              hintStyle: TextStyle(
+                                fontFamily: _defaultNonBorelFontFamily,
+                                fontSize: (16 * scale).clamp(14.0, 20.0),
+                                color: const Color(0x52000000),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.search,
+                          color: Colors.black,
+                          size: (24 * scale).clamp(20.0, 28.0),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (hasFavorites)
+                Positioned(
+                  left: 16 * scale,
+                  right: 16 * scale,
+                  top: listTop,
+                  bottom: contentBottomInset,
+                  child: visibleFavorites.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No Favorites Added',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (24 * scale).clamp(18.0, 30.0),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: visibleFavorites.length,
+                          separatorBuilder: (_, index) =>
+                              SizedBox(height: 16 * scale),
+                          itemBuilder: (context, index) {
+                            final entry = visibleFavorites[index];
+                            return Container(
+                              padding: EdgeInsets.all(16 * scale),
+                              decoration: BoxDecoration(
+                                color: const Color(0x52FFFFFF),
+                                borderRadius: BorderRadius.circular(16 * scale),
+                              ),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 62 * scale,
+                                    height: 62 * scale,
+                                    child: _RotatingGlassPanel(
+                                      scale: scale,
+                                      borderRadius: 16 * scale,
+                                      fillColor: const Color(0x52FFFFFF),
+                                      padding: EdgeInsets.all(12 * scale),
+                                      expandToBounds: true,
+                                      boxShadow: const <BoxShadow>[],
+                                      child: SvgPicture.asset(
+                                        'assets/Food.svg',
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 16 * scale),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          entry.name,
+                                          style: TextStyle(
+                                            fontFamily:
+                                                _defaultNonBorelFontFamily,
+                                            fontSize: (16 * scale).clamp(
+                                              14.0,
+                                              20.0,
+                                            ),
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        SizedBox(height: 8 * scale),
+                                        Text(
+                                          '${entry.caloriesText} kcal',
+                                          style: TextStyle(
+                                            fontFamily:
+                                                _defaultNonBorelFontFamily,
+                                            fontSize: (16 * scale).clamp(
+                                              14.0,
+                                              20.0,
+                                            ),
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.favorite,
+                                    color: const Color(0xFFFF0000),
+                                    size: (24 * scale).clamp(20.0, 28.0),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              if (!hasFavorites)
+                Positioned(
+                  left: 16 * scale,
+                  right: 16 * scale,
+                  top: titleTop + (86 * scale),
+                  bottom: contentBottomInset,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          'assets/No_Favorites.png',
+                          width: (168 * scale).clamp(120.0, 220.0),
+                          height: (255 * scale).clamp(182.0, 320.0),
+                          fit: BoxFit.contain,
+                        ),
+                        SizedBox(height: 20 * scale),
+                        Text(
+                          'No Favorites Added',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: _defaultNonBorelFontFamily,
+                            fontSize: (24 * scale).clamp(18.0, 30.0),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: _buildBottomBlurFadeOverlay()),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        10 * scale,
+                        bottomPanelTopPadding,
+                        10 * scale,
+                        0,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 79 * scale,
+                                child: _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  height: bottomRowHeight,
+                                  borderRadius: 32 * scale,
+                                  inactiveFillColor: Colors.white,
+                                  selectedFillColor: Colors.white,
+                                  onTap: _goBack,
+                                  child: Icon(
+                                    Icons.arrow_back,
+                                    color: const Color(0xFFFFD206),
+                                    size: (26 * scale).clamp(20.0, 30.0),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 16 * scale),
+                              Expanded(
+                                child: _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  height: bottomRowHeight,
+                                  borderRadius: 32 * scale,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16 * scale,
+                                  ),
+                                  inactiveFillColor: const Color(0x52FFFFFF),
+                                  selectedFillColor: Colors.white,
+                                  onTap: _openNewCustomEntryScreen,
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Custom Food Entry',
+                                        style: TextStyle(
+                                          fontFamily:
+                                              _defaultNonBorelFontFamily,
+                                          fontSize: (16 * scale).clamp(
+                                            14.0,
+                                            20.0,
+                                          ),
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.add_circle_outline,
+                                        color: Colors.black,
+                                        size: (24 * scale).clamp(20.0, 28.0),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(
+                            height: math.max(
+                              metrics.padding.bottom,
+                              24 * scale,
+                            ),
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: Container(
+                                margin: EdgeInsets.only(top: 8 * scale),
+                                width: 134 * scale,
+                                height: (5 * scale).clamp(3.5, 6.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(
+                                    100 * scale,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class CustomEntriesScreen extends StatefulWidget {
+  const CustomEntriesScreen({super.key});
+
+  @override
+  State<CustomEntriesScreen> createState() => _CustomEntriesScreenState();
+}
+
+class _CustomEntriesScreenState extends State<CustomEntriesScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final TextEditingController _searchController;
+  bool _isSelectMode = false;
+  final Set<int> _selectedEntryIds = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _toggleSelectMode() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSelectMode = !_isSelectMode;
+      _selectedEntryIds.clear();
+    });
+  }
+
+  void _toggleEntrySelection(int entryId) {
+    if (!mounted || !_isSelectMode) {
+      return;
+    }
+    setState(() {
+      if (!_selectedEntryIds.add(entryId)) {
+        _selectedEntryIds.remove(entryId);
+      }
+    });
+  }
+
+  void _toggleEntryFavorite(_CustomFoodEntry entry) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _CustomFoodEntryStore.setFavoriteById(entry.id, !entry.isFavorite);
+    });
+  }
+
+  bool get _canDeleteSelectedEntries => _selectedEntryIds.isNotEmpty;
+
+  void _deleteSelectedEntries() {
+    if (!_canDeleteSelectedEntries || !mounted) {
+      return;
+    }
+    setState(() {
+      final idsToDelete = _selectedEntryIds.toList(growable: false);
+      for (final id in idsToDelete) {
+        _CustomFoodEntryStore.removeById(id);
+      }
+      _selectedEntryIds.clear();
+      _isSelectMode = false;
+    });
+  }
+
+  Future<void> _openNewCustomEntryScreen() async {
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(
+      context,
+    ).push(_buildNoTransitionRoute(screen: const NewCustomEntryScreen()));
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final titleTop = metrics.padding.top + (18 * scale);
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
+          final titleRowTop = titleTop;
+          final searchTop = titleRowTop + (62 * scale);
+          final listTop = searchTop + (30 * scale);
+          final bottomRowHeight = 56 * scale;
+          final bottomPanelTopPadding = 0.0;
+          final bottomPanelHeight =
+              bottomRowHeight +
+              bottomPanelTopPadding +
+              math.max(metrics.padding.bottom, 24 * scale);
+          final searchQuery = _searchController.text.trim().toLowerCase();
+          final allEntries = _CustomFoodEntryStore.entries;
+          final visibleEntries = searchQuery.isEmpty
+              ? allEntries
+              : allEntries
+                    .where(
+                      (entry) => entry.name.toLowerCase().contains(searchQuery),
+                    )
+                    .toList();
+
+          return Stack(
+            children: [
+              Positioned(
+                top: titleRowTop,
+                left: 16 * scale,
+                right: 16 * scale,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Transform.translate(
+                      offset: Offset(0, 13 * scale),
+                      child: Text(
+                        'Custom Entries',
+                        style: TextStyle(
+                          fontFamily: 'Borel',
+                          fontSize: (32 * scale).clamp(24.0, 42.0),
+                          color: Colors.white,
+                          height: 0.99,
+                        ),
+                      ),
+                    ),
+                    _isSelectMode
+                        ? _TodaysEntryGlassTile(
+                            scale: scale,
+                            width: 65 * scale,
+                            height: 37 * scale,
+                            borderRadius: 15 * scale,
+                            padding: EdgeInsets.zero,
+                            inactiveFillColor: Colors.white,
+                            selectedFillColor: Colors.white,
+                            onTap: _toggleSelectMode,
+                            child: Icon(
+                              Icons.close,
+                              color: Colors.black,
+                              size: (24 * scale).clamp(18.0, 28.0),
+                            ),
+                          )
+                        : _TodaysEntryGlassTile(
+                            scale: scale,
+                            borderRadius: 15 * scale,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12 * scale,
+                              vertical: 8 * scale,
+                            ),
+                            inactiveFillColor: const Color(0x52FFFFFF),
+                            selectedFillColor: Colors.white,
+                            onTap: _toggleSelectMode,
+                            child: Text(
+                              'Select',
+                              style: TextStyle(
+                                fontFamily: _defaultNonBorelFontFamily,
+                                fontSize: (16 * scale).clamp(14.0, 20.0),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+              Positioned(
+                top: searchTop,
+                left: 16 * scale,
+                right: 16 * scale,
+                child: Container(
+                  height: 56 * scale,
+                  padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                  decoration: BoxDecoration(
+                    color: const Color(0x52FFFFFF),
+                    borderRadius: BorderRadius.circular(32 * scale),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (_) {
+                            if (mounted) {
+                              setState(() {});
+                            }
+                          },
+                          textInputAction: TextInputAction.search,
+                          style: TextStyle(
+                            fontFamily: _defaultNonBorelFontFamily,
+                            fontSize: (16 * scale).clamp(14.0, 20.0),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          decoration: InputDecoration(
+                            isCollapsed: true,
+                            border: InputBorder.none,
+                            hintText: 'Search Custom Entries',
+                            hintStyle: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (16 * scale).clamp(14.0, 20.0),
+                              color: const Color(0x52000000),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.search,
+                        color: Colors.black,
+                        size: (24 * scale).clamp(20.0, 28.0),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 16 * scale,
+                right: 16 * scale,
+                top: listTop,
+                bottom: bottomPanelHeight + controlsBottom + (24 * scale),
+                child: visibleEntries.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No Custom Food Entries',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: _defaultNonBorelFontFamily,
+                            fontSize: (24 * scale).clamp(18.0, 30.0),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: visibleEntries.length,
+                        separatorBuilder: (_, index) =>
+                            SizedBox(height: 16 * scale),
+                        itemBuilder: (context, index) {
+                          final entry = visibleEntries[index];
+                          if (_isSelectMode) {
+                            return _CustomEntrySelectableTile(
+                              key: ValueKey<int>(entry.id),
+                              scale: scale,
+                              entry: entry,
+                              isSelected: _selectedEntryIds.contains(entry.id),
+                              onTap: () => _toggleEntrySelection(entry.id),
+                              onToggleFavorite: () =>
+                                  _toggleEntryFavorite(entry),
+                            );
+                          }
+                          return _CustomEntrySwipeTile(
+                            key: ValueKey<int>(entry.id),
+                            scale: scale,
+                            entry: entry,
+                            onToggleFavorite: () => _toggleEntryFavorite(entry),
+                            onDelete: () {
+                              if (!mounted) {
+                                return;
+                              }
+                              setState(() {
+                                _CustomFoodEntryStore.removeById(entry.id);
+                              });
+                            },
+                          );
+                        },
+                      ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomPanelHeight,
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: _buildBottomBlurFadeOverlay()),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        10 * scale,
+                        bottomPanelTopPadding,
+                        10 * scale,
+                        0,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 79 * scale,
+                                child: _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  height: bottomRowHeight,
+                                  borderRadius: 32 * scale,
+                                  inactiveFillColor: Colors.white,
+                                  selectedFillColor: Colors.white,
+                                  onTap: _goBack,
+                                  child: Icon(
+                                    Icons.arrow_back,
+                                    color: const Color(0xFFFFD206),
+                                    size: (26 * scale).clamp(20.0, 30.0),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 16 * scale),
+                              Expanded(
+                                child: _isSelectMode
+                                    ? _RotatingGlassButton(
+                                        scale: scale,
+                                        height: bottomRowHeight,
+                                        borderRadius: 32 * scale,
+                                        fillColor: _canDeleteSelectedEntries
+                                            ? const Color(0x8FFF0606)
+                                            : const Color(0x14FF0606),
+                                        enablePressShadeFeedback:
+                                            _canDeleteSelectedEntries,
+                                        onTap: _canDeleteSelectedEntries
+                                            ? _deleteSelectedEntries
+                                            : () {},
+                                        child: Text(
+                                          'Delete Entries',
+                                          style: TextStyle(
+                                            fontFamily:
+                                                _defaultNonBorelFontFamily,
+                                            fontSize: (34 * scale / 1.7).clamp(
+                                              18.0,
+                                              28.0,
+                                            ),
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      )
+                                    : _TodaysEntryGlassTile(
+                                        scale: scale,
+                                        height: bottomRowHeight,
+                                        borderRadius: 32 * scale,
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 16 * scale,
+                                        ),
+                                        inactiveFillColor: const Color(
+                                          0x52FFFFFF,
+                                        ),
+                                        selectedFillColor: Colors.white,
+                                        onTap: _openNewCustomEntryScreen,
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              'Custom Food Entry',
+                                              style: TextStyle(
+                                                fontFamily:
+                                                    _defaultNonBorelFontFamily,
+                                                fontSize: (16 * scale).clamp(
+                                                  14.0,
+                                                  20.0,
+                                                ),
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            Icon(
+                                              Icons.add_circle_outline,
+                                              color: Colors.black,
+                                              size: (24 * scale).clamp(
+                                                20.0,
+                                                28.0,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(
+                            height: math.max(
+                              metrics.padding.bottom,
+                              24 * scale,
+                            ),
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: Container(
+                                margin: EdgeInsets.only(top: 8 * scale),
+                                width: 134 * scale,
+                                height: (5 * scale).clamp(3.5, 6.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(
+                                    100 * scale,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CustomEntrySwipeTile extends StatefulWidget {
+  const _CustomEntrySwipeTile({
+    super.key,
+    required this.scale,
+    required this.entry,
+    required this.onToggleFavorite,
+    required this.onDelete,
+  });
+
+  final double scale;
+  final _CustomFoodEntry entry;
+  final VoidCallback onToggleFavorite;
+  final VoidCallback onDelete;
+
+  @override
+  State<_CustomEntrySwipeTile> createState() => _CustomEntrySwipeTileState();
+}
+
+class _CustomEntrySwipeTileState extends State<_CustomEntrySwipeTile> {
+  static const Duration _slideDuration = Duration(milliseconds: 220);
+  static const Curve _slideCurve = Curves.easeOutCubic;
+
+  bool _isDragging = false;
+  double _dragOffsetX = 0;
+  double _targetOffsetX = 0;
+
+  double get _maxRevealOffset => (62 + 24) * widget.scale;
+
+  void _closeDeleteAction() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isDragging = false;
+      _dragOffsetX = 0;
+      _targetOffsetX = 0;
+    });
+  }
+
+  void _openDeleteAction() {
+    if (!mounted) {
+      return;
+    }
+    final revealOffset = -_maxRevealOffset;
+    setState(() {
+      _isDragging = false;
+      _dragOffsetX = revealOffset;
+      _targetOffsetX = revealOffset;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final entry = widget.entry;
+    final revealOffset = -_maxRevealOffset;
+    final currentOffsetX = _isDragging ? _dragOffsetX : _targetOffsetX;
+    final revealProgress = ((-currentOffsetX) / _maxRevealOffset).clamp(
+      0.0,
+      1.0,
+    );
+    final deleteSlideOffsetX = (1 - revealProgress) * (74 * scale);
+    final backgroundButton = SizedBox(
+      width: 62 * scale,
+      height: 62 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onDelete,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: const Color(0x52FFFFFF),
+          padding: EdgeInsets.all(15 * scale),
+          expandToBounds: true,
+          boxShadow: const <BoxShadow>[],
+          child: SvgPicture.asset('assets/Delete.svg', fit: BoxFit.contain),
+        ),
+      ),
+    );
+
+    final foregroundCard = Container(
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x52FFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 62 * scale,
+            height: 62 * scale,
+            child: _RotatingGlassPanel(
+              scale: scale,
+              borderRadius: 16 * scale,
+              fillColor: const Color(0x52FFFFFF),
+              padding: EdgeInsets.all(12 * scale),
+              expandToBounds: true,
+              boxShadow: const <BoxShadow>[],
+              child: SvgPicture.asset('assets/Food.svg', fit: BoxFit.contain),
+            ),
+          ),
+          SizedBox(width: 16 * scale),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  entry.name,
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8 * scale),
+                Text(
+                  '${entry.caloriesText} kcal',
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onToggleFavorite,
+            child: Padding(
+              padding: EdgeInsets.all(4 * scale),
+              child: Icon(
+                entry.isFavorite ? Icons.favorite : Icons.favorite_border,
+                color: entry.isFavorite
+                    ? const Color(0xFFFF0000)
+                    : Colors.white,
+                size: (24 * scale).clamp(20.0, 28.0),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final foreground = _isDragging
+        ? Transform.translate(
+            offset: Offset(_dragOffsetX, 0),
+            child: foregroundCard,
+          )
+        : AnimatedContainer(
+            duration: _slideDuration,
+            curve: _slideCurve,
+            transform: Matrix4.translationValues(_targetOffsetX, 0, 0),
+            child: foregroundCard,
+          );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        if (_targetOffsetX != 0 || _isDragging) {
+          _closeDeleteAction();
+        }
+      },
+      onHorizontalDragStart: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isDragging = true;
+          _dragOffsetX = _targetOffsetX;
+        });
+      },
+      onHorizontalDragUpdate: (details) {
+        if (!mounted) {
+          return;
+        }
+        final nextOffset = (_dragOffsetX + details.delta.dx).clamp(
+          revealOffset,
+          0.0,
+        );
+        setState(() {
+          _dragOffsetX = nextOffset;
+        });
+      },
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        final draggedRatio = revealOffset == 0
+            ? 0.0
+            : (_dragOffsetX.abs() / revealOffset.abs());
+        final shouldOpen = velocity < -320 || draggedRatio >= 0.45;
+        if (shouldOpen) {
+          _openDeleteAction();
+          return;
+        }
+        _closeDeleteAction();
+      },
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: IgnorePointer(
+                ignoring: revealProgress <= 0.01,
+                child: Opacity(
+                  opacity: revealProgress,
+                  child: Transform.translate(
+                    offset: Offset(deleteSlideOffsetX, 0),
+                    child: backgroundButton,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          foreground,
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomEntrySelectableTile extends StatelessWidget {
+  const _CustomEntrySelectableTile({
+    super.key,
+    required this.scale,
+    required this.entry,
+    required this.isSelected,
+    required this.onTap,
+    required this.onToggleFavorite,
+  });
+
+  final double scale;
+  final _CustomFoodEntry entry;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onToggleFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(16 * scale),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : const Color(0x52FFFFFF),
+          borderRadius: BorderRadius.circular(16 * scale),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 62 * scale,
+              height: 62 * scale,
+              child: _RotatingGlassPanel(
+                scale: scale,
+                borderRadius: 16 * scale,
+                fillColor: const Color(0x52FFFFFF),
+                padding: EdgeInsets.all(12 * scale),
+                expandToBounds: true,
+                boxShadow: const <BoxShadow>[],
+                child: SvgPicture.asset('assets/Food.svg', fit: BoxFit.contain),
+              ),
+            ),
+            SizedBox(width: 16 * scale),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    entry.name,
+                    style: TextStyle(
+                      fontFamily: _defaultNonBorelFontFamily,
+                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                      color: Colors.black,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8 * scale),
+                  Text(
+                    '${entry.caloriesText} kcal',
+                    style: TextStyle(
+                      fontFamily: _defaultNonBorelFontFamily,
+                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                      color: Colors.black,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onToggleFavorite,
+              child: Padding(
+                padding: EdgeInsets.all(4 * scale),
+                child: Icon(
+                  entry.isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: entry.isFavorite
+                      ? const Color(0xFFFF0000)
+                      : Colors.white,
+                  size: (24 * scale).clamp(20.0, 28.0),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class NewCustomEntryScreen extends StatefulWidget {
+  const NewCustomEntryScreen({super.key});
+
+  @override
+  State<NewCustomEntryScreen> createState() => _NewCustomEntryScreenState();
+}
+
+class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  TimeOfDay _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+  bool _isAdvanceOpen = false;
+  bool _isFavorite = false;
+
+  late final TextEditingController _itemNameController;
+  late final TextEditingController _hourController;
+  late final TextEditingController _minuteController;
+  late final TextEditingController _caloriesController;
+  late final TextEditingController _proteinController;
+  late final TextEditingController _carbsController;
+  late final TextEditingController _fatController;
+  late final TextEditingController _fiberController;
+  late final TextEditingController _sugarController;
+  late final TextEditingController _sodiumController;
+
+  late final FocusNode _itemNameFocusNode;
+  late final FocusNode _hourFocusNode;
+  late final FocusNode _minuteFocusNode;
+  late final FocusNode _caloriesFocusNode;
+  late final FocusNode _proteinFocusNode;
+  late final FocusNode _carbsFocusNode;
+  late final FocusNode _fatFocusNode;
+  late final FocusNode _fiberFocusNode;
+  late final FocusNode _sugarFocusNode;
+  late final FocusNode _sodiumFocusNode;
+
+  final GlobalKey _itemNameFieldKey = GlobalKey();
+  final GlobalKey _hourFieldKey = GlobalKey();
+  final GlobalKey _minuteFieldKey = GlobalKey();
+  final GlobalKey _caloriesFieldKey = GlobalKey();
+  final GlobalKey _proteinFieldKey = GlobalKey();
+  final GlobalKey _carbsFieldKey = GlobalKey();
+  final GlobalKey _fatFieldKey = GlobalKey();
+  final GlobalKey _fiberFieldKey = GlobalKey();
+  final GlobalKey _sugarFieldKey = GlobalKey();
+  final GlobalKey _sodiumFieldKey = GlobalKey();
+
+  bool get _isAmSelected => _selectedTime.hour < 12;
+
+  String get _timeHourText {
+    final hour = _selectedTime.hourOfPeriod == 0
+        ? 12
+        : _selectedTime.hourOfPeriod;
+    return hour.toString().padLeft(2, '0');
+  }
+
+  String get _timeMinuteText => _selectedTime.minute.toString().padLeft(2, '0');
+
+  void _goBack() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _ensureFieldVisible(GlobalKey fieldKey) {
+    final fieldContext = fieldKey.currentContext;
+    if (fieldContext == null || !mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        fieldContext,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: 0.25,
+      );
+    });
+  }
+
+  void _ensureFieldVisibleAfterKeyboard({
+    required GlobalKey fieldKey,
+    required FocusNode focusNode,
+  }) {
+    _ensureFieldVisible(fieldKey);
+    Future<void>.delayed(const Duration(milliseconds: 280), () {
+      if (!mounted || !focusNode.hasFocus) {
+        return;
+      }
+      _ensureFieldVisible(fieldKey);
+    });
+  }
+
+  void _commitHourFromController() {
+    final parsed = int.tryParse(_hourController.text.trim());
+    if (parsed != null && parsed >= 1 && parsed <= 12) {
+      var nextHour = parsed % 12;
+      if (!_isAmSelected) {
+        nextHour += 12;
+      }
+      setState(() {
+        _selectedTime = _selectedTime.replacing(hour: nextHour);
+      });
+    }
+    _hourController.text = _timeHourText;
+    _minuteController.text = _timeMinuteText;
+  }
+
+  void _commitMinuteFromController() {
+    final parsed = int.tryParse(_minuteController.text.trim());
+    if (parsed != null && parsed >= 0 && parsed <= 59) {
+      setState(() {
+        _selectedTime = _selectedTime.replacing(minute: parsed);
+      });
+    }
+    _hourController.text = _timeHourText;
+    _minuteController.text = _timeMinuteText;
+  }
+
+  void _setAmPm(bool useAm) {
+    final hour = _selectedTime.hour;
+    int nextHour = hour;
+    if (useAm && hour >= 12) {
+      nextHour = hour - 12;
+    } else if (!useAm && hour < 12) {
+      nextHour = hour + 12;
+    }
+    if (nextHour == hour) {
+      return;
+    }
+    setState(() {
+      _selectedTime = _selectedTime.replacing(hour: nextHour);
+      _hourController.text = _timeHourText;
+      _minuteController.text = _timeMinuteText;
+    });
+  }
+
+  String _normalizedNumericText(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return '0';
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null) {
+      return '0';
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  bool get _canAddEntry {
+    return _itemNameController.text.trim().isNotEmpty;
+  }
+
+  void _resetAfterAdd() {
+    setState(() {
+      _itemNameController.text = '';
+      _caloriesController.text = '0';
+      _proteinController.text = '0';
+      _carbsController.text = '0';
+      _fatController.text = '0';
+      _fiberController.text = '0';
+      _sugarController.text = '0';
+      _sodiumController.text = '0';
+      _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+      _hourController.text = _timeHourText;
+      _minuteController.text = _timeMinuteText;
+      _isFavorite = false;
+      _isAdvanceOpen = false;
+    });
+  }
+
+  void _addCustomEntry() {
+    if (!_canAddEntry) {
+      return;
+    }
+    final entry = _CustomFoodEntryStore.create(
+      name: _itemNameController.text.trim(),
+      caloriesText: _normalizedNumericText(_caloriesController.text),
+      timeText:
+          '$_timeHourText:$_timeMinuteText ${_isAmSelected ? 'AM' : 'PM'}',
+      proteinText: _normalizedNumericText(_proteinController.text),
+      carbohydratesText: _normalizedNumericText(_carbsController.text),
+      fatText: _normalizedNumericText(_fatController.text),
+      fiberText: _normalizedNumericText(_fiberController.text),
+      sugarText: _normalizedNumericText(_sugarController.text),
+      sodiumText: _normalizedNumericText(_sodiumController.text),
+      isFavorite: _isFavorite,
+    );
+    _CustomFoodEntryStore.add(entry);
+    _resetAfterAdd();
+  }
+
+  void _bindFieldFocus({
+    required FocusNode focusNode,
+    required GlobalKey fieldKey,
+    VoidCallback? onFocusLost,
+  }) {
+    focusNode.addListener(() {
+      if (focusNode.hasFocus) {
+        if (mounted) {
+          setState(() {});
+        }
+        _ensureFieldVisibleAfterKeyboard(
+          fieldKey: fieldKey,
+          focusNode: focusNode,
+        );
+      } else {
+        if (mounted) {
+          setState(() {});
+        }
+        onFocusLost?.call();
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _itemNameController = TextEditingController(text: '');
+    _hourController = TextEditingController(text: _timeHourText);
+    _minuteController = TextEditingController(text: _timeMinuteText);
+    _caloriesController = TextEditingController(text: '0');
+    _proteinController = TextEditingController(text: '0');
+    _carbsController = TextEditingController(text: '0');
+    _fatController = TextEditingController(text: '0');
+    _fiberController = TextEditingController(text: '0');
+    _sugarController = TextEditingController(text: '0');
+    _sodiumController = TextEditingController(text: '0');
+
+    _itemNameFocusNode = FocusNode();
+    _hourFocusNode = FocusNode();
+    _minuteFocusNode = FocusNode();
+    _caloriesFocusNode = FocusNode();
+    _proteinFocusNode = FocusNode();
+    _carbsFocusNode = FocusNode();
+    _fatFocusNode = FocusNode();
+    _fiberFocusNode = FocusNode();
+    _sugarFocusNode = FocusNode();
+    _sodiumFocusNode = FocusNode();
+
+    _bindFieldFocus(focusNode: _itemNameFocusNode, fieldKey: _itemNameFieldKey);
+    _bindFieldFocus(
+      focusNode: _hourFocusNode,
+      fieldKey: _hourFieldKey,
+      onFocusLost: _commitHourFromController,
+    );
+    _bindFieldFocus(
+      focusNode: _minuteFocusNode,
+      fieldKey: _minuteFieldKey,
+      onFocusLost: _commitMinuteFromController,
+    );
+    _bindFieldFocus(focusNode: _caloriesFocusNode, fieldKey: _caloriesFieldKey);
+    _bindFieldFocus(focusNode: _proteinFocusNode, fieldKey: _proteinFieldKey);
+    _bindFieldFocus(focusNode: _carbsFocusNode, fieldKey: _carbsFieldKey);
+    _bindFieldFocus(focusNode: _fatFocusNode, fieldKey: _fatFieldKey);
+    _bindFieldFocus(focusNode: _fiberFocusNode, fieldKey: _fiberFieldKey);
+    _bindFieldFocus(focusNode: _sugarFocusNode, fieldKey: _sugarFieldKey);
+    _bindFieldFocus(focusNode: _sodiumFocusNode, fieldKey: _sodiumFieldKey);
+
+    for (final controller in <TextEditingController>[
+      _itemNameController,
+      _caloriesController,
+      _proteinController,
+      _carbsController,
+      _fatController,
+      _fiberController,
+      _sugarController,
+      _sodiumController,
+    ]) {
+      controller.addListener(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _itemNameFocusNode.dispose();
+    _hourFocusNode.dispose();
+    _minuteFocusNode.dispose();
+    _caloriesFocusNode.dispose();
+    _proteinFocusNode.dispose();
+    _carbsFocusNode.dispose();
+    _fatFocusNode.dispose();
+    _fiberFocusNode.dispose();
+    _sugarFocusNode.dispose();
+    _sodiumFocusNode.dispose();
+    _itemNameController.dispose();
+    _hourController.dispose();
+    _minuteController.dispose();
+    _caloriesController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatController.dispose();
+    _fiberController.dispose();
+    _sugarController.dispose();
+    _sodiumController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _nutritionCard({
+    required double scale,
+    required String label,
+    required String unit,
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required GlobalKey fieldKey,
+  }) {
+    return Container(
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x52FFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (16 * scale).clamp(14.0, 20.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          _TodaysEntryGlassTile(
+            scale: scale,
+            width: (140 * scale).clamp(120.0, 168.0),
+            height: 47 * scale,
+            borderRadius: 15 * scale,
+            padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+            inactiveFillColor: const Color(0x52FFFFFF),
+            selectedFillColor: Colors.white,
+            isSelected: focusNode.hasFocus,
+            onTap: () => focusNode.requestFocus(),
+            child: Center(
+              child: SizedBox(
+                key: fieldKey,
+                width: double.infinity,
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  scrollPadding: EdgeInsets.zero,
+                  textAlign: TextAlign.center,
+                  textAlignVertical: TextAlignVertical.center,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                  ],
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => focusNode.unfocus(),
+                  onTapOutside: (_) => focusNode.unfocus(),
+                  decoration: const InputDecoration.collapsed(hintText: '0'),
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (24 * scale).clamp(18.0, 30.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8 * scale),
+          SizedBox(
+            width: 28 * scale,
+            child: Text(
+              unit,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (14 * scale).clamp(12.0, 18.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: _AnimatedGradientScene(
+        animation: _controller,
+        contentBuilder: (context, metrics) {
+          final scale = metrics.designScale;
+          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+          final contentWidth = math.min(
+            358 * scale,
+            metrics.width - (32 * scale),
+          );
+          final contentLeft = (metrics.width - contentWidth) / 2;
+          final titleTop = metrics.padding.top + (18 * scale);
+          final contentTop = titleTop + (58 * scale);
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
+          final bottomRowHeight = 56 * scale;
+          final blurPanelHeight = bottomRowHeight + controlsBottom;
+          final scrollBottomPadding =
+              blurPanelHeight + keyboardInset + (24 * scale);
+
+          return Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: contentTop,
+                bottom: 0,
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                    contentLeft,
+                    0,
+                    contentLeft,
+                    scrollBottomPadding,
+                  ),
+                  children: [
+                    Text(
+                      'Item Name',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 16 * scale),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _TodaysEntryGlassTile(
+                            scale: scale,
+                            height: 56 * scale,
+                            borderRadius: 16 * scale,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8 * scale,
+                              vertical: 16 * scale,
+                            ),
+                            inactiveFillColor: const Color(0x52FFFFFF),
+                            selectedFillColor: Colors.white,
+                            isSelected: _itemNameFocusNode.hasFocus,
+                            onTap: () => _itemNameFocusNode.requestFocus(),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: SizedBox(
+                                key: _itemNameFieldKey,
+                                width: double.infinity,
+                                child: TextField(
+                                  controller: _itemNameController,
+                                  focusNode: _itemNameFocusNode,
+                                  scrollPadding: EdgeInsets.zero,
+                                  textAlign: TextAlign.left,
+                                  keyboardType: TextInputType.text,
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) =>
+                                      _itemNameFocusNode.unfocus(),
+                                  onTapOutside: (_) =>
+                                      _itemNameFocusNode.unfocus(),
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: 'Item Name',
+                                  ),
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 16 * scale),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(() {
+                              _isFavorite = !_isFavorite;
+                            });
+                          },
+                          child: Icon(
+                            _isFavorite
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: _isFavorite
+                                ? const Color(0xFFFF0000)
+                                : Colors.white,
+                            size: (28 * scale).clamp(22.0, 32.0),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 24 * scale),
+                    Text(
+                      'Meal Time',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 16 * scale),
+                    Container(
+                      padding: EdgeInsets.all(16 * scale),
+                      decoration: BoxDecoration(
+                        color: const Color(0x52FFFFFF),
+                        borderRadius: BorderRadius.circular(16 * scale),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _TodaysEntryGlassTile(
+                            scale: scale,
+                            width: 62 * scale,
+                            height: 82 * scale,
+                            borderRadius: 15 * scale,
+                            inactiveFillColor: const Color(0x52FFFFFF),
+                            selectedFillColor: Colors.white,
+                            isSelected: _hourFocusNode.hasFocus,
+                            onTap: () => _hourFocusNode.requestFocus(),
+                            child: Center(
+                              child: SizedBox(
+                                key: _hourFieldKey,
+                                width: double.infinity,
+                                child: TextField(
+                                  controller: _hourController,
+                                  focusNode: _hourFocusNode,
+                                  scrollPadding: EdgeInsets.zero,
+                                  textAlign: TextAlign.center,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) => _hourFocusNode.unfocus(),
+                                  onTapOutside: (_) => _hourFocusNode.unfocus(),
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: '',
+                                  ),
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (24 * scale).clamp(18.0, 30.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8 * scale),
+                          Text(
+                            ':',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (30 * scale).clamp(22.0, 34.0),
+                              color: const Color(0x80FFFFFF),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: 8 * scale),
+                          _TodaysEntryGlassTile(
+                            scale: scale,
+                            width: 62 * scale,
+                            height: 82 * scale,
+                            borderRadius: 15 * scale,
+                            inactiveFillColor: const Color(0x52FFFFFF),
+                            selectedFillColor: Colors.white,
+                            isSelected: _minuteFocusNode.hasFocus,
+                            onTap: () => _minuteFocusNode.requestFocus(),
+                            child: Center(
+                              child: SizedBox(
+                                key: _minuteFieldKey,
+                                width: double.infinity,
+                                child: TextField(
+                                  controller: _minuteController,
+                                  focusNode: _minuteFocusNode,
+                                  scrollPadding: EdgeInsets.zero,
+                                  textAlign: TextAlign.center,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) =>
+                                      _minuteFocusNode.unfocus(),
+                                  onTapOutside: (_) =>
+                                      _minuteFocusNode.unfocus(),
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: '',
+                                  ),
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (24 * scale).clamp(18.0, 30.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8 * scale),
+                          Column(
+                            children: [
+                              _TodaysEntryGlassTile(
+                                scale: scale,
+                                borderRadius: 15 * scale,
+                                padding: EdgeInsets.all(8 * scale),
+                                isSelected: _isAmSelected,
+                                onTap: () => _setAmPm(true),
+                                child: Text(
+                                  'AM',
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 8 * scale),
+                              _TodaysEntryGlassTile(
+                                scale: scale,
+                                borderRadius: 15 * scale,
+                                padding: EdgeInsets.all(8 * scale),
+                                isSelected: !_isAmSelected,
+                                onTap: () => _setAmPm(false),
+                                child: Text(
+                                  'PM',
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 24 * scale),
+                    Text(
+                      'Nutritional Value',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 18 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Calories',
+                      unit: 'kcal',
+                      controller: _caloriesController,
+                      focusNode: _caloriesFocusNode,
+                      fieldKey: _caloriesFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Protein',
+                      unit: 'g',
+                      controller: _proteinController,
+                      focusNode: _proteinFocusNode,
+                      fieldKey: _proteinFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Carbohydrates',
+                      unit: 'g',
+                      controller: _carbsController,
+                      focusNode: _carbsFocusNode,
+                      fieldKey: _carbsFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    _nutritionCard(
+                      scale: scale,
+                      label: 'Fat',
+                      unit: 'g',
+                      controller: _fatController,
+                      focusNode: _fatFocusNode,
+                      fieldKey: _fatFieldKey,
+                    ),
+                    SizedBox(height: 16 * scale),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        if (!mounted) {
+                          return;
+                        }
+                        setState(() {
+                          _isAdvanceOpen = !_isAdvanceOpen;
+                        });
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Advance',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (20 * scale).clamp(16.0, 24.0),
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: 16 * scale),
+                          Icon(
+                            _isAdvanceOpen
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: Colors.white,
+                            size: (26 * scale).clamp(20.0, 30.0),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_isAdvanceOpen) ...[
+                      SizedBox(height: 16 * scale),
+                      _nutritionCard(
+                        scale: scale,
+                        label: 'Fiber',
+                        unit: 'g',
+                        controller: _fiberController,
+                        focusNode: _fiberFocusNode,
+                        fieldKey: _fiberFieldKey,
+                      ),
+                      SizedBox(height: 16 * scale),
+                      _nutritionCard(
+                        scale: scale,
+                        label: 'Sugar',
+                        unit: 'g',
+                        controller: _sugarController,
+                        focusNode: _sugarFocusNode,
+                        fieldKey: _sugarFieldKey,
+                      ),
+                      SizedBox(height: 16 * scale),
+                      _nutritionCard(
+                        scale: scale,
+                        label: 'Sodium',
+                        unit: 'mg',
+                        controller: _sodiumController,
+                        focusNode: _sodiumFocusNode,
+                        fieldKey: _sodiumFieldKey,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Positioned(
+                top: titleTop,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: SizedBox(
+                    height: 48 * scale,
+                    child: Center(
+                      child: Text(
+                        'New Custom Entry',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Borel',
+                          fontSize: (32 * scale).clamp(24.0, 42.0),
+                          color: Colors.white,
+                          height: 0.99,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: blurPanelHeight,
+                child: _buildBottomBlurFadeOverlay(),
+              ),
+              Positioned(
+                left: contentLeft,
+                width: contentWidth,
+                bottom: controlsBottom,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 79 * scale,
+                      child: _TodaysEntryGlassTile(
+                        scale: scale,
+                        height: bottomRowHeight,
+                        borderRadius: 32 * scale,
+                        inactiveFillColor: Colors.white,
+                        selectedFillColor: Colors.white,
+                        onTap: _goBack,
+                        child: Icon(
+                          Icons.arrow_back,
+                          color: const Color(0xFFFFD206),
+                          size: (26 * scale).clamp(20.0, 30.0),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 16 * scale),
+                    Expanded(
+                      child: _RotatingGlassButton(
+                        scale: scale,
+                        height: bottomRowHeight,
+                        borderRadius: 32 * scale,
+                        fillColor: _canAddEntry
+                            ? const Color(0x8FFFD206)
+                            : const Color(0x14FFD206),
+                        enablePressShadeFeedback: _canAddEntry,
+                        onTap: _canAddEntry ? _addCustomEntry : () {},
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Add',
+                              style: TextStyle(
+                                fontFamily: _defaultNonBorelFontFamily,
+                                fontSize: (36 * scale / 1.7).clamp(18.0, 28.0),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(width: 16 * scale),
+                            Icon(
+                              Icons.add,
+                              color: Colors.white,
+                              size: (34 * scale).clamp(24.0, 38.0),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TodaysEntryWaterAmountChip extends StatefulWidget {
+  const _TodaysEntryWaterAmountChip({
+    required this.scale,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final double scale;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  State<_TodaysEntryWaterAmountChip> createState() =>
+      _TodaysEntryWaterAmountChipState();
+}
+
+class _TodaysEntryWaterAmountChipState
+    extends State<_TodaysEntryWaterAmountChip> {
+  bool _isLongPressed = false;
+  bool _isClicked = false;
+
+  @override
+  void didUpdateWidget(covariant _TodaysEntryWaterAmountChip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isSelected && _isClicked && !_isLongPressed) {
+      setState(() {
+        _isClicked = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final isActive = _isClicked || widget.isSelected;
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (isActive ? Colors.white : const Color(0x52FFFFFF));
+    final hasShadow = _isLongPressed || isActive;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: (_) {
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressStart: (_) {
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressEnd: (_) {
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        setState(() {
+          _isClicked = true;
+          _isLongPressed = false;
+        });
+        widget.onTap();
+      },
+      child: SizedBox(
+        width: 98,
+        height: 47,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 15 * scale,
+          fillColor: fillColor,
+          padding: EdgeInsets.zero,
+          expandToBounds: true,
+          boxShadow: shadows,
+          enableBlur: !(_isLongPressed || isActive),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (24 * scale).clamp(18.0, 28.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TodaysEntryGlassTile extends StatefulWidget {
+  const _TodaysEntryGlassTile({
+    required this.scale,
+    required this.borderRadius,
+    required this.child,
+    required this.onTap,
+    this.width,
+    this.height,
+    this.padding,
+    this.isSelected = false,
+    this.inactiveFillColor = const Color(0x52FFFFFF),
+    this.selectedFillColor = Colors.white,
+  });
+
+  final double scale;
+  final double borderRadius;
+  final Widget child;
+  final VoidCallback onTap;
+  final double? width;
+  final double? height;
+  final EdgeInsetsGeometry? padding;
+  final bool isSelected;
+  final Color inactiveFillColor;
+  final Color selectedFillColor;
+
+  @override
+  State<_TodaysEntryGlassTile> createState() => _TodaysEntryGlassTileState();
+}
+
+class _TodaysEntryGlassTileState extends State<_TodaysEntryGlassTile> {
+  bool _isLongPressed = false;
+  bool _isClicked = false;
+
+  @override
+  void didUpdateWidget(covariant _TodaysEntryGlassTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isSelected && _isClicked && !_isLongPressed) {
+      setState(() {
+        _isClicked = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = _isClicked || widget.isSelected;
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (isActive ? widget.selectedFillColor : widget.inactiveFillColor);
+    final hasShadow = _isLongPressed || isActive;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
+    Widget tile = _RotatingGlassPanel(
+      scale: widget.scale,
+      borderRadius: widget.borderRadius,
+      fillColor: fillColor,
+      padding: widget.padding ?? EdgeInsets.zero,
+      // Fill vertical size when height is provided, but avoid width-only
+      // expansion (which can create infinite-height constraints in rows).
+      expandToBounds: widget.height != null,
+      boxShadow: shadows,
+      enableBlur: !(_isLongPressed || isActive),
+      child: widget.child,
+    );
+
+    if (widget.width != null || widget.height != null) {
+      tile = SizedBox(width: widget.width, height: widget.height, child: tile);
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: (_) {
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressStart: (_) {
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressEnd: (_) {
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        setState(() {
+          _isClicked = true;
+          _isLongPressed = false;
+        });
+        widget.onTap();
+      },
+      child: tile,
+    );
+  }
+}
+
 class AccountScreen extends StatefulWidget {
   const AccountScreen({
     super.key,
@@ -8508,7 +13800,9 @@ class _AccountScreenState extends State<AccountScreen>
     }
     Navigator.of(context).pushReplacement(
       _buildNoTransitionRoute(
-        screen: DailyProgressScreen(initialSelectedBottomNavIndex: tabIndex),
+        screen: tabIndex == 3
+            ? const TodaysEntryScreen()
+            : DailyProgressScreen(initialSelectedBottomNavIndex: tabIndex),
       ),
     );
   }
@@ -10726,7 +16020,6 @@ class _RotatingGlassPanelState extends State<_RotatingGlassPanel>
         final rotatingAngle =
             (math.pi / 4) + (_lightController.value * math.pi * 2);
         final panelContent = Container(
-          width: double.infinity,
           padding: widget.padding,
           decoration: BoxDecoration(
             color: widget.fillColor,

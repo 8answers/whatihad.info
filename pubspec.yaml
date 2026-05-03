@@ -81,7 +81,12 @@ flutter:
     - assets/Add_new.svg
     - assets/Chat.svg
     - assets/Add.png
+    - assets/Food.svg
+    - assets/Serach_food.svg
+    - assets/Delete.svg
     - assets/Bellyo_ai.png
+    - assets/No_custom_entries.png
+    - assets/No_Favorites.png
 
   fonts:
     - family: Borel
