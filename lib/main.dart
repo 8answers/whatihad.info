@@ -103,6 +103,19 @@ const List<String> _onboardingGenderLabels = <String>[
   'Other',
   'Prefer not to respond',
 ];
+const List<String> _bellyoAssistantPromptSuggestions = <String>[
+  'Suggest meal under ₹150',
+  'High protein food',
+  'What should I eat today?',
+  'Recovery foods',
+  'Quick meal idea',
+  'Low calorie dinner',
+  'Cheap muscle meal',
+  'Quick healthy snack',
+  'Breakfast Ideas',
+  'Lunch Ideas',
+  'Dinner Ideas',
+];
 const int _maleGenderIndex = 0;
 const int _unselectedGenderIndex = -1;
 
@@ -9410,6 +9423,15 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     );
   }
 
+  void _openBellyoAiScreen() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(_buildNoTransitionRoute(screen: const BellyoAssistantScreen()));
+  }
+
   Widget _sectionTitle(String title, double scale) {
     return Text(
       title,
@@ -10524,19 +10546,23 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 Positioned(
                   right: 16 * scale,
                   bottom: controlsBottom + (74 * scale),
-                  child: SizedBox(
-                    width: 72 * scale,
-                    height: 99 * scale,
-                    child: Image.asset(
-                      'assets/Bellyo_ai.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Icon(
-                          Icons.image_not_supported_outlined,
-                          color: const Color(0x80000000),
-                          size: 36 * scale,
-                        );
-                      },
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _openBellyoAiScreen,
+                    child: SizedBox(
+                      width: 72 * scale,
+                      height: 99 * scale,
+                      child: Image.asset(
+                        'assets/Bellyo_ai.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Icon(
+                            Icons.image_not_supported_outlined,
+                            color: const Color(0x80000000),
+                            size: 36 * scale,
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -10637,6 +10663,381 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class BellyoAssistantScreen extends StatefulWidget {
+  const BellyoAssistantScreen({super.key});
+
+  @override
+  State<BellyoAssistantScreen> createState() => _BellyoAssistantScreenState();
+}
+
+class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
+  late final TextEditingController _promptController;
+
+  @override
+  void initState() {
+    super.initState();
+    _promptController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _promptController.dispose();
+    super.dispose();
+  }
+
+  void _applyPromptSuggestion(String suggestion) {
+    _promptController.value = TextEditingValue(
+      text: suggestion,
+      selection: TextSelection.collapsed(offset: suggestion.length),
+    );
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Widget _buildSuggestionChip({
+    required double scale,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: 14 * scale,
+          vertical: 8 * scale,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0x52FFFFFF),
+          borderRadius: BorderRadius.circular(32 * scale),
+          border: Border.all(color: const Color(0x8FFFFFFF), width: 1 * scale),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: _defaultNonBorelFontFamily,
+            fontSize: (16 * scale).clamp(14.0, 18.0),
+            color: Colors.black,
+            fontWeight: FontWeight.w400,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestionRow({
+    required double scale,
+    required List<String> prompts,
+  }) {
+    return SizedBox(
+      height: 40 * scale,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: prompts.length,
+        separatorBuilder: (context, index) => SizedBox(width: 8 * scale),
+        itemBuilder: (context, index) {
+          final prompt = prompts[index];
+          return _buildSuggestionChip(
+            scale: scale,
+            label: prompt,
+            onTap: () => _applyPromptSuggestion(prompt),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final scale = (media.size.width / 390).clamp(0.82, 1.08);
+    final bottomInset = media.viewInsets.bottom;
+    final hasPromptInput = _promptController.text.trim().isNotEmpty;
+    final firstRowItemCount = (_bellyoAssistantPromptSuggestions.length / 2)
+        .ceil();
+    final firstRowPrompts = _bellyoAssistantPromptSuggestions
+        .take(firstRowItemCount)
+        .toList(growable: false);
+    final secondRowPrompts = _bellyoAssistantPromptSuggestions
+        .skip(firstRowItemCount)
+        .toList(growable: false);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        backgroundColor: const Color(0xFFFF8E92),
+        body: Stack(
+          children: [
+            Positioned.fill(child: Container(color: const Color(0xFFFF8E92))),
+            Positioned(
+              bottom: -84 * scale,
+              left: -30 * scale,
+              right: -30 * scale,
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(
+                  sigmaX: 100 * scale,
+                  sigmaY: 100 * scale,
+                ),
+                child: Container(
+                  height: 240 * scale,
+                  color: const Color(0xFFFFDC92),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 92 * scale,
+              left: -112 * scale,
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(
+                  sigmaX: 100 * scale,
+                  sigmaY: 100 * scale,
+                ),
+                child: Container(
+                  width: 196 * scale,
+                  height: 244 * scale,
+                  color: const Color(0xFF92EBFF),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 170 * scale,
+              right: -56 * scale,
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(
+                  sigmaX: 50 * scale,
+                  sigmaY: 50 * scale,
+                ),
+                child: Container(
+                  width: 195 * scale,
+                  height: 244 * scale,
+                  color: const Color(0xFFFF7375),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                child: SizedBox(
+                  height: 48 * scale,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Transform.translate(
+                        offset: Offset(0, 15 * scale),
+                        child: Text(
+                          'Bellyo',
+                          style: TextStyle(
+                            fontFamily: 'Borel',
+                            fontSize: (32 * scale).clamp(24.0, 38.0),
+                            color: Colors.white,
+                            height: 0.99,
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: 48 * scale,
+                          height: 48 * scale,
+                          child: _RotatingGlassButton(
+                            scale: scale,
+                            height: 48 * scale,
+                            borderRadius: 24 * scale,
+                            fillColor: Colors.white,
+                            enablePressShadeFeedback: true,
+                            onTap: () => Navigator.of(context).pop(),
+                            child: Icon(
+                              Icons.arrow_back_rounded,
+                              color: const Color(0xFFFFD206),
+                              size: (24 * scale).clamp(20.0, 28.0),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          width: 48 * scale,
+                          height: 48 * scale,
+                          decoration: BoxDecoration(
+                            color: const Color(0x29FFFFFF),
+                            borderRadius: BorderRadius.circular(16 * scale),
+                            border: Border.all(
+                              color: const Color(0x8FFFFFFF),
+                              width: 1 * scale,
+                            ),
+                          ),
+                          child: Center(
+                            child: SizedBox(
+                              width: 34 * scale,
+                              height: 25 * scale,
+                              child: SvgPicture.asset(
+                                'assets/New_chat.svg',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment(0, -0.10),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24 * scale),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 168 * scale,
+                      child: Image.asset(
+                        'assets/Bellyo_open_page.png',
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    ),
+                    SizedBox(height: 20 * scale),
+                    Text(
+                      'Ask me anything about food,\nmeals, calories, or what to eat next.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 18.0),
+                        color: Colors.black,
+                        fontWeight: FontWeight.w400,
+                        height: 1.42,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                padding: EdgeInsets.only(bottom: bottomInset),
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: 8 * scale,
+                      sigmaY: 8 * scale,
+                    ),
+                    child: Container(
+                      width: double.infinity,
+                      color: const Color(0x05FFFFFF),
+                      padding: EdgeInsets.fromLTRB(
+                        10 * scale,
+                        10 * scale,
+                        10 * scale,
+                        (8 * scale) + media.padding.bottom,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildSuggestionRow(
+                            scale: scale,
+                            prompts: firstRowPrompts,
+                          ),
+                          SizedBox(height: 8 * scale),
+                          _buildSuggestionRow(
+                            scale: scale,
+                            prompts: secondRowPrompts,
+                          ),
+                          SizedBox(height: 10 * scale),
+                          Container(
+                            height: 56 * scale,
+                            decoration: BoxDecoration(
+                              color: const Color(0x52FFFFFF),
+                              borderRadius: BorderRadius.circular(32 * scale),
+                              border: Border.all(
+                                color: const Color(0x8FFFFFFF),
+                                width: 1 * scale,
+                              ),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16 * scale,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _promptController,
+                                    textInputAction: TextInputAction.done,
+                                    onChanged: (_) {
+                                      if (mounted) {
+                                        setState(() {});
+                                      }
+                                    },
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (16 * scale).clamp(14.0, 18.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    cursorColor: Colors.black,
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      isCollapsed: true,
+                                      hintText: 'Ask',
+                                      hintStyle: TextStyle(
+                                        fontFamily: _defaultNonBorelFontFamily,
+                                        fontSize: (16 * scale).clamp(
+                                          14.0,
+                                          18.0,
+                                        ),
+                                        color: const Color(0x52000000),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                SizedBox(
+                                  width: 32 * scale,
+                                  height: 32 * scale,
+                                  child: _RotatingGlassButton(
+                                    scale: scale,
+                                    height: 32 * scale,
+                                    borderRadius: 16 * scale,
+                                    fillColor: hasPromptInput
+                                        ? Colors.white
+                                        : const Color(0x29FFFFFF),
+                                    enablePressShadeFeedback: true,
+                                    onTap: () {},
+                                    child: Icon(
+                                      Icons.arrow_upward,
+                                      color: Colors.black,
+                                      size: (18 * scale).clamp(14.0, 20.0),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
