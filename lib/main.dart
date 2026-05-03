@@ -312,6 +312,132 @@ class _CustomFoodEntryStore {
   }
 }
 
+class _MealTimelineEntry {
+  const _MealTimelineEntry({
+    required this.id,
+    required this.timeText,
+    required this.itemName,
+    required this.caloriesText,
+  });
+
+  final int id;
+  final String timeText;
+  final String itemName;
+  final String caloriesText;
+}
+
+class _MealsTimelineStore {
+  static int _nextId = 1;
+  static final List<_MealTimelineEntry> _entries = <_MealTimelineEntry>[];
+
+  static List<_MealTimelineEntry> get entries =>
+      List<_MealTimelineEntry>.unmodifiable(_entries);
+
+  static String normalizeTimeText(String raw) {
+    final match = RegExp(
+      r'^\s*(\d{1,2})\s*:\s*(\d{1,2})\s*([AaPp][Mm])\s*$',
+    ).firstMatch(raw);
+    if (match == null) {
+      return raw.trim();
+    }
+    var hour = int.tryParse(match.group(1) ?? '') ?? 12;
+    final minute = (int.tryParse(match.group(2) ?? '') ?? 0).clamp(0, 59);
+    final meridiem = (match.group(3) ?? 'AM').toUpperCase();
+    if (hour <= 0) {
+      hour = 12;
+    }
+    if (hour > 12) {
+      hour = ((hour - 1) % 12) + 1;
+    }
+    return '$hour:${minute.toString().padLeft(2, '0')} $meridiem';
+  }
+
+  static String timeTextFromTimeOfDay(TimeOfDay timeOfDay) {
+    final hour = timeOfDay.hourOfPeriod == 0 ? 12 : timeOfDay.hourOfPeriod;
+    final minute = timeOfDay.minute.toString().padLeft(2, '0');
+    final meridiem = timeOfDay.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $meridiem';
+  }
+
+  static String _normalizedCaloriesText(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return '0';
+    }
+    final parsed = double.tryParse(trimmed.replaceAll(',', '.'));
+    if (parsed == null) {
+      return '0';
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  static void add({
+    required String timeText,
+    required String itemName,
+    required String caloriesText,
+  }) {
+    final normalizedName = itemName.trim().isEmpty ? 'Meal' : itemName.trim();
+    _entries.add(
+      _MealTimelineEntry(
+        id: _nextId++,
+        timeText: normalizeTimeText(timeText),
+        itemName: normalizedName,
+        caloriesText: _normalizedCaloriesText(caloriesText),
+      ),
+    );
+  }
+
+  static bool replaceById({
+    required int id,
+    required String timeText,
+    required String itemName,
+    required String caloriesText,
+  }) {
+    final index = _entries.indexWhere((entry) => entry.id == id);
+    if (index < 0) {
+      return false;
+    }
+    final normalizedName = itemName.trim().isEmpty ? 'Meal' : itemName.trim();
+    _entries[index] = _MealTimelineEntry(
+      id: id,
+      timeText: normalizeTimeText(timeText),
+      itemName: normalizedName,
+      caloriesText: _normalizedCaloriesText(caloriesText),
+    );
+    return true;
+  }
+
+  static void addOrReplace({
+    int? entryId,
+    required String timeText,
+    required String itemName,
+    required String caloriesText,
+  }) {
+    if (entryId != null) {
+      final wasReplaced = replaceById(
+        id: entryId,
+        timeText: timeText,
+        itemName: itemName,
+        caloriesText: caloriesText,
+      );
+      if (wasReplaced) {
+        return;
+      }
+    }
+    add(timeText: timeText, itemName: itemName, caloriesText: caloriesText);
+  }
+
+  static void removeById(int id) {
+    _entries.removeWhere((entry) => entry.id == id);
+  }
+}
+
 class _DailyFoodCatalogItem {
   const _DailyFoodCatalogItem({
     required this.id,
@@ -6424,7 +6550,7 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
                 ),
                 padding: EdgeInsets.all(8 * scale),
                 decoration: BoxDecoration(
-                  color: const Color(0x52FFFFFF),
+                  color: const Color(0x3DFFFFFF),
                   borderRadius: BorderRadius.circular(16 * scale),
                   border: Border.all(
                     color: const Color(0x80FFFFFF),
@@ -8117,6 +8243,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
   late final AnimationController _controller;
   int _selectedBottomNavIndex = 0;
   bool _isAdvanceOpen = false;
+  bool _isMealsTimelineEditMode = false;
 
   @override
   void initState() {
@@ -8141,6 +8268,239 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     setState(() {
       _isAdvanceOpen = !_isAdvanceOpen;
     });
+  }
+
+  void _toggleMealsTimelineEditMode() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isMealsTimelineEditMode = !_isMealsTimelineEditMode;
+    });
+  }
+
+  void _deleteMealsTimelineEntry(int id) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _MealsTimelineStore.removeById(id);
+      if (_MealsTimelineStore.entries.isEmpty) {
+        _isMealsTimelineEditMode = false;
+      }
+    });
+  }
+
+  Future<void> _confirmDeleteMealsTimelineEntry(
+    _MealTimelineEntry entry,
+  ) async {
+    if (!mounted) {
+      return;
+    }
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.transparent,
+      useSafeArea: false,
+      builder: (dialogContext) {
+        final media = MediaQuery.of(dialogContext);
+        final dialogScale = (media.size.width / 393).clamp(0.82, 1.0);
+        final dialogTopGap = 30 * dialogScale;
+        final dialogBottomGap = 16 * dialogScale;
+        final dialogWidth = math.min(
+          322 * dialogScale,
+          media.size.width - (32 * dialogScale),
+        );
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: 24 * dialogScale,
+                      sigmaY: 24 * dialogScale,
+                    ),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: dialogWidth,
+                  padding: EdgeInsets.fromLTRB(
+                    16 * dialogScale,
+                    0,
+                    16 * dialogScale,
+                    0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0x8FFFFFFF),
+                    borderRadius: BorderRadius.circular(16 * dialogScale),
+                    border: Border.all(
+                      color: const Color(0x7AFFFFFF),
+                      width: (2 * dialogScale).clamp(1.0, 2.0),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(height: dialogTopGap),
+                      Text(
+                        'Delete Entry',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Borel',
+                          fontSize: (32 * dialogScale).clamp(24.0, 34.0),
+                          color: Colors.white,
+                          height: 0.99,
+                        ),
+                      ),
+                      SizedBox(height: 22 * dialogScale),
+                      Text(
+                        entry.timeText,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: _defaultNonBorelFontFamily,
+                          fontSize: (14 * dialogScale).clamp(12.0, 16.0),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 8 * dialogScale),
+                      Text(
+                        '${entry.itemName}\n( ${entry.caloriesText} Kcal )',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: _defaultNonBorelFontFamily,
+                          fontSize: (14 * dialogScale).clamp(12.0, 16.0),
+                          color: Colors.black,
+                          fontWeight: FontWeight.w500,
+                          height: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 16 * dialogScale),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _RotatingGlassButton(
+                              scale: dialogScale,
+                              height: 56 * dialogScale,
+                              borderRadius: 32 * dialogScale,
+                              fillColor: Colors.white,
+                              enablePressShadeFeedback: true,
+                              onTap: () =>
+                                  Navigator.of(dialogContext).pop(false),
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  fontFamily: _defaultNonBorelFontFamily,
+                                  color: const Color(0xFFFFD206),
+                                  fontSize: (34 * dialogScale / 1.7).clamp(
+                                    18.0,
+                                    24.0,
+                                  ),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10 * dialogScale),
+                          Expanded(
+                            child: _RotatingGlassButton(
+                              scale: dialogScale,
+                              height: 56 * dialogScale,
+                              borderRadius: 32 * dialogScale,
+                              fillColor: const Color(0x8FFF0606),
+                              enablePressShadeFeedback: true,
+                              onTap: () =>
+                                  Navigator.of(dialogContext).pop(true),
+                              child: Text(
+                                'Delete',
+                                style: TextStyle(
+                                  fontFamily: _defaultNonBorelFontFamily,
+                                  color: Colors.white,
+                                  fontSize: (34 * dialogScale / 1.7).clamp(
+                                    18.0,
+                                    24.0,
+                                  ),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: dialogBottomGap),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldDelete == true) {
+      _deleteMealsTimelineEntry(entry.id);
+    }
+  }
+
+  void _openExchangeEntryScreen(int mealEntryId) {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: TodaysEntryScreen(
+          isExchangeEntry: true,
+          exchangeTargetEntryId: mealEntryId,
+        ),
+      ),
+    );
+  }
+
+  int _parseMealCalories(String rawCalories) {
+    final parsed = double.tryParse(rawCalories.trim().replaceAll(',', '.'));
+    if (parsed == null || parsed.isNaN || parsed.isInfinite) {
+      return 0;
+    }
+    if (parsed < 0) {
+      return 0;
+    }
+    return parsed.round();
+  }
+
+  Future<void> _openMealsTimelineItemDetails(_MealTimelineEntry entry) async {
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: _SearchFoodItemDetailsScreen(
+          item: _DailyFoodCatalogItem(
+            id: -entry.id,
+            name: entry.itemName,
+            caloriesKcal: _parseMealCalories(entry.caloriesText),
+          ),
+          isExchangeEntry: true,
+          exchangeTargetEntryId: entry.id,
+          initialItemName: entry.itemName,
+          initialCaloriesText: entry.caloriesText,
+          initialTimeText: entry.timeText,
+          showAddToCustom: false,
+          timelineActionLabelOverride: 'Save',
+        ),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
   }
 
   void _goToAccountPage() {
@@ -8383,6 +8743,238 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     );
   }
 
+  Widget _buildMealsTimelineEditButton({required double scale}) {
+    return SizedBox(
+      width: 48 * scale,
+      height: 48 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggleMealsTimelineEditMode,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: const Color(0x4CFFFFFF),
+          padding: EdgeInsets.all(12 * scale),
+          expandToBounds: true,
+          boxShadow: const <BoxShadow>[],
+          child: SvgPicture.asset(
+            'assets/Edit_food.svg',
+            fit: BoxFit.contain,
+            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMealsTimelineActionButton({
+    required double scale,
+    required Widget child,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: 32 * scale,
+      height: 32 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 9 * scale,
+          fillColor: const Color(0x8FFFFFFF),
+          padding: EdgeInsets.all(6 * scale),
+          expandToBounds: true,
+          boxShadow: const <BoxShadow>[],
+          enableBlur: false,
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMealsTimelineViewEntries({
+    required double scale,
+    required List<_MealTimelineEntry> entries,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: List<Widget>.generate(entries.length, (index) {
+        final entry = entries[index];
+        final isLast = index == entries.length - 1;
+        return Padding(
+          padding: EdgeInsets.only(bottom: isLast ? 0 : 10 * scale),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.timeText,
+                style: TextStyle(
+                  fontFamily: _defaultNonBorelFontFamily,
+                  fontSize: (14 * scale).clamp(12.0, 16.0),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 4 * scale),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(top: 6 * scale, right: 8 * scale),
+                    child: Container(
+                      width: 6 * scale,
+                      height: 6 * scale,
+                      decoration: BoxDecoration(
+                        color: const Color(0x99FFFFFF),
+                        borderRadius: BorderRadius.circular(3 * scale),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.itemName,
+                          style: TextStyle(
+                            fontFamily: _defaultNonBorelFontFamily,
+                            fontSize: (14 * scale).clamp(12.0, 16.0),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '( ${entry.caloriesText} Kcal )',
+                          style: TextStyle(
+                            fontFamily: _defaultNonBorelFontFamily,
+                            fontSize: (14 * scale).clamp(12.0, 16.0),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildMealsTimelineEditEntries({
+    required double scale,
+    required List<_MealTimelineEntry> entries,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: List<Widget>.generate(entries.length, (index) {
+        final entry = entries[index];
+        final isLast = index == entries.length - 1;
+        return Padding(
+          padding: EdgeInsets.only(bottom: isLast ? 0 : 8 * scale),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: EdgeInsets.all(8 * scale),
+                decoration: BoxDecoration(
+                  color: const Color(0x52FFFFFF),
+                  borderRadius: BorderRadius.circular(16 * scale),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.timeText,
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (14 * scale).clamp(12.0, 16.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 4 * scale),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${entry.itemName}\n( ${entry.caloriesText} Kcal )',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (14 * scale).clamp(12.0, 16.0),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 8 * scale),
+                        Row(
+                          children: [
+                            _buildMealsTimelineActionButton(
+                              scale: scale,
+                              onTap: () => _openExchangeEntryScreen(entry.id),
+                              child: SizedBox(
+                                width: 24 * scale,
+                                height: 24 * scale,
+                                child: SvgPicture.asset(
+                                  'assets/Food_exchange.svg',
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 8 * scale),
+                            _buildMealsTimelineActionButton(
+                              scale: scale,
+                              onTap: () => _openMealsTimelineItemDetails(entry),
+                              child: SvgPicture.asset(
+                                'assets/Edit_food.svg',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            SizedBox(width: 8 * scale),
+                            _buildMealsTimelineActionButton(
+                              scale: scale,
+                              onTap: () =>
+                                  _confirmDeleteMealsTimelineEntry(entry),
+                              child: SvgPicture.asset(
+                                'assets/Delete.svg',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (!isLast)
+                Align(
+                  alignment: Alignment.center,
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 8 * scale),
+                    child: Container(
+                      width: 6 * scale,
+                      height: 6 * scale,
+                      decoration: BoxDecoration(
+                        color: const Color(0x99FFFFFF),
+                        borderRadius: BorderRadius.circular(3 * scale),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -8416,6 +9008,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           final hideBudgetSection = _OnboardingSkipFlags.skippedBudgetSection;
           final hideMealsTimelineSection =
               hideWaterSection || hideBudgetSection;
+          final mealsTimelineEntries = _MealsTimelineStore.entries;
 
           return Stack(
             children: [
@@ -8633,63 +9226,68 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                           ),
                           padding: const EdgeInsets.all(8),
                           child: Container(
-                            height: 88,
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: const Color(0x52FFFFFF),
+                              color: const Color(0x3DFFFFFF),
                               borderRadius: BorderRadius.circular(16 * scale),
                             ),
-                            child: SizedBox(
-                              height: 72,
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
+                            child: mealsTimelineEntries.isEmpty
+                                ? SizedBox(
+                                    height: 72,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: const BoxDecoration(
+                                                color: Color(0x66FFFFFF),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'No meals added yet',
+                                              style: TextStyle(
+                                                fontFamily: 'Nata Sans',
+                                                fontSize: 14,
+                                                height: 1,
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        _buildMealsTimelineEditButton(
+                                          scale: scale,
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : _isMealsTimelineEditMode
+                                ? _buildMealsTimelineEditEntries(
+                                    scale: scale,
+                                    entries: mealsTimelineEntries,
+                                  )
+                                : Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0x66FFFFFF),
-                                          shape: BoxShape.circle,
+                                      Expanded(
+                                        child: _buildMealsTimelineViewEntries(
+                                          scale: scale,
+                                          entries: mealsTimelineEntries,
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'No meals added yet',
-                                        style: TextStyle(
-                                          fontFamily: 'Nata Sans',
-                                          fontSize: 14,
-                                          height: 1,
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                      SizedBox(width: 8 * scale),
+                                      _buildMealsTimelineEditButton(
+                                        scale: scale,
                                       ),
                                     ],
                                   ),
-                                  Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0x4CFFFFFF),
-                                      borderRadius: BorderRadius.circular(
-                                        16 * scale,
-                                      ),
-                                      border: Border.all(
-                                        color: const Color(0x99FFFFFF),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: const Icon(
-                                      Icons.add_rounded,
-                                      color: Colors.white,
-                                      size: 36,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           ),
                         ),
                       ],
@@ -8832,7 +9430,14 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
 }
 
 class TodaysEntryScreen extends StatefulWidget {
-  const TodaysEntryScreen({super.key});
+  const TodaysEntryScreen({
+    super.key,
+    this.isExchangeEntry = false,
+    this.exchangeTargetEntryId,
+  });
+
+  final bool isExchangeEntry;
+  final int? exchangeTargetEntryId;
 
   @override
   State<TodaysEntryScreen> createState() => _TodaysEntryScreenState();
@@ -8861,6 +9466,16 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
     '0.500 l',
     '1 l',
   ];
+
+  bool get _isExchangeMode =>
+      widget.isExchangeEntry && widget.exchangeTargetEntryId != null;
+
+  String get _entryHeadingText =>
+      widget.isExchangeEntry ? 'Exchange Entry' : 'Today’s Entry';
+
+  String get _entryActionLabel => widget.isExchangeEntry ? 'Exchange' : 'Add';
+
+  bool get _showEntryActionIcon => !widget.isExchangeEntry;
 
   bool get _isAmSelected => _selectedTime.period == DayPeriod.am;
 
@@ -9003,6 +9618,20 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
     });
   }
 
+  void _addWaterEntryToTimeline() {
+    final waterText = _formatWaterLiters(_waterIntakeLiters);
+    final itemName = waterText == '0' ? 'Water' : 'Water ($waterText l)';
+    _MealsTimelineStore.addOrReplace(
+      entryId: _isExchangeMode ? widget.exchangeTargetEntryId : null,
+      timeText: _MealsTimelineStore.timeTextFromTimeOfDay(_selectedTime),
+      itemName: itemName,
+      caloriesText: '0',
+    );
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -9084,36 +9713,56 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
     if (!mounted) {
       return;
     }
-    Navigator.of(
-      context,
-    ).push(_buildNoTransitionRoute(screen: const CustomEntriesScreen()));
+    Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: CustomEntriesScreen(
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+        ),
+      ),
+    );
   }
 
   void _openNewCustomEntryScreen() {
     if (!mounted) {
       return;
     }
-    Navigator.of(
-      context,
-    ).push(_buildNoTransitionRoute(screen: const NewCustomEntryScreen()));
+    Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: NewCustomEntryScreen(
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+        ),
+      ),
+    );
   }
 
   void _openFavoritesScreen() {
     if (!mounted) {
       return;
     }
-    Navigator.of(
-      context,
-    ).push(_buildNoTransitionRoute(screen: const FavoritesScreen()));
+    Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: FavoritesScreen(
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+        ),
+      ),
+    );
   }
 
   void _openSearchFoodScreen() {
     if (!mounted) {
       return;
     }
-    Navigator.of(
-      context,
-    ).push(_buildNoTransitionRoute(screen: const SearchFoodScreen()));
+    Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: SearchFoodScreen(
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+        ),
+      ),
+    );
   }
 
   void _goToAccountPage() {
@@ -9244,7 +9893,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'Today’s Entry',
+                          _entryHeadingText,
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontFamily: 'Borel',
@@ -9791,12 +10440,12 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                 borderRadius: 32 * scale,
                                 inactiveFillColor: const Color(0x29FFD206),
                                 selectedFillColor: const Color(0x29FFD206),
-                                onTap: () {},
+                                onTap: _addWaterEntryToTimeline,
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      'Add',
+                                      _entryActionLabel,
                                       style: TextStyle(
                                         fontFamily: _defaultNonBorelFontFamily,
                                         fontSize: (20 * scale).clamp(
@@ -9807,12 +10456,14 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    SizedBox(width: 16 * scale),
-                                    Icon(
-                                      Icons.add,
-                                      color: Colors.white,
-                                      size: (34 * scale).clamp(24.0, 38.0),
-                                    ),
+                                    if (_showEntryActionIcon) ...[
+                                      SizedBox(width: 16 * scale),
+                                      Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: (34 * scale).clamp(24.0, 38.0),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -9919,7 +10570,14 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
 }
 
 class SearchFoodScreen extends StatefulWidget {
-  const SearchFoodScreen({super.key});
+  const SearchFoodScreen({
+    super.key,
+    this.isExchangeEntry = false,
+    this.exchangeTargetEntryId,
+  });
+
+  final bool isExchangeEntry;
+  final int? exchangeTargetEntryId;
 
   @override
   State<SearchFoodScreen> createState() => _SearchFoodScreenState();
@@ -9935,6 +10593,9 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
   int _searchRequestToken = 0;
   bool _isLoadingResults = false;
   List<_DailyFoodCatalogItem> _searchResults = const <_DailyFoodCatalogItem>[];
+
+  String get _entryHeadingText =>
+      widget.isExchangeEntry ? 'Exchange Entry' : 'Today’s Entry';
 
   String get _trimmedQuery => _searchController.text.trim();
   bool get _hasQuery => _trimmedQuery.isNotEmpty;
@@ -10064,7 +10725,13 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
       return;
     }
     await Navigator.of(context).push(
-      _buildNoTransitionRoute(screen: _SearchFoodItemDetailsScreen(item: item)),
+      _buildNoTransitionRoute(
+        screen: _SearchFoodItemDetailsScreen(
+          item: item,
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+        ),
+      ),
     );
     if (!mounted) {
       return;
@@ -10254,7 +10921,7 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
                   ),
                   children: [
                     Text(
-                      'Today’s Entry',
+                      _entryHeadingText,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'Borel',
@@ -10480,9 +11147,25 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
 }
 
 class _SearchFoodItemDetailsScreen extends StatefulWidget {
-  const _SearchFoodItemDetailsScreen({required this.item});
+  const _SearchFoodItemDetailsScreen({
+    required this.item,
+    this.isExchangeEntry = false,
+    this.exchangeTargetEntryId,
+    this.initialItemName,
+    this.initialCaloriesText,
+    this.initialTimeText,
+    this.showAddToCustom = true,
+    this.timelineActionLabelOverride,
+  });
 
   final _DailyFoodCatalogItem item;
+  final bool isExchangeEntry;
+  final int? exchangeTargetEntryId;
+  final String? initialItemName;
+  final String? initialCaloriesText;
+  final String? initialTimeText;
+  final bool showAddToCustom;
+  final String? timelineActionLabelOverride;
 
   @override
   State<_SearchFoodItemDetailsScreen> createState() =>
@@ -10542,6 +11225,15 @@ class _SearchFoodItemDetailsScreenState
   late int _initialMinute;
   late bool _initialFavorite;
 
+  bool get _isExchangeMode =>
+      widget.isExchangeEntry && widget.exchangeTargetEntryId != null;
+
+  String get _timelineActionLabel =>
+      widget.timelineActionLabelOverride ??
+      (widget.isExchangeEntry ? 'Exchange' : 'Add');
+
+  bool get _showTimelineActionIcon => !widget.isExchangeEntry;
+
   bool get _isAmSelected => _selectedTime.hour < 12;
 
   String get _timeHourText {
@@ -10552,6 +11244,28 @@ class _SearchFoodItemDetailsScreenState
   }
 
   String get _timeMinuteText => _selectedTime.minute.toString().padLeft(2, '0');
+
+  TimeOfDay _parseTimeTextOrDefault(String? rawText) {
+    final match = RegExp(
+      r'^\s*(\d{1,2})\s*:\s*(\d{1,2})\s*([AaPp][Mm])\s*$',
+    ).firstMatch(rawText ?? '');
+    if (match == null) {
+      return const TimeOfDay(hour: 6, minute: 45);
+    }
+    var hour = int.tryParse(match.group(1) ?? '') ?? 12;
+    var minute = int.tryParse(match.group(2) ?? '') ?? 0;
+    if (hour <= 0) {
+      hour = 12;
+    }
+    if (hour > 12) {
+      hour = ((hour - 1) % 12) + 1;
+    }
+    minute = minute.clamp(0, 59);
+    final meridiem = (match.group(3) ?? 'AM').toUpperCase();
+    final isPm = meridiem == 'PM';
+    final hour24 = (hour % 12) + (isPm ? 12 : 0);
+    return TimeOfDay(hour: hour24, minute: minute);
+  }
 
   String _normalizeItemName(String raw) => raw.trim();
 
@@ -10740,6 +11454,23 @@ class _SearchFoodItemDetailsScreenState
     }
   }
 
+  void _addToMealsTimeline() {
+    final itemName = _normalizeItemName(_itemNameController.text);
+    if (itemName.isEmpty) {
+      return;
+    }
+    _MealsTimelineStore.addOrReplace(
+      entryId: _isExchangeMode ? widget.exchangeTargetEntryId : null,
+      timeText:
+          '$_timeHourText:$_timeMinuteText ${_isAmSelected ? 'AM' : 'PM'}',
+      itemName: itemName,
+      caloriesText: _normalizedNumericText(_caloriesController.text),
+    );
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Widget _nutritionCard({
     required double scale,
     required String label,
@@ -10830,15 +11561,24 @@ class _SearchFoodItemDetailsScreenState
   @override
   void initState() {
     super.initState();
-    final calories = widget.item.caloriesKcal;
+    final initialName = widget.initialItemName?.trim();
+    final seededName = (initialName != null && initialName.isNotEmpty)
+        ? initialName
+        : widget.item.name;
+    final seededCalories =
+        double.tryParse(
+          (widget.initialCaloriesText ?? '').trim().replaceAll(',', '.'),
+        )?.round() ??
+        widget.item.caloriesKcal;
+    final calories = seededCalories.clamp(0, 99999);
     final defaultProtein = (calories * 0.15 / 4).round();
     final defaultCarbs = (calories * 0.55 / 4).round();
     final defaultFat = (calories * 0.30 / 9).round();
 
-    _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+    _selectedTime = _parseTimeTextOrDefault(widget.initialTimeText);
     _isFavorite = widget.item.isFavorite;
 
-    _itemNameController = TextEditingController(text: widget.item.name);
+    _itemNameController = TextEditingController(text: seededName);
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _caloriesController = TextEditingController(text: calories.toString());
@@ -11365,57 +12105,81 @@ class _SearchFoodItemDetailsScreenState
                         ),
                       ),
                     ),
-                    SizedBox(width: 16 * scale),
-                    SizedBox(
-                      width: (150 * scale).clamp(120.0, 170.0),
-                      child: _RotatingGlassButton(
-                        scale: scale,
-                        height: bottomRowHeight,
-                        borderRadius: 32 * scale,
-                        fillColor: _canAddToCustom
-                            ? const Color(0x9400B2FF)
-                            : const Color(0x2E00B2FF),
-                        enablePressShadeFeedback: _canAddToCustom,
-                        onTap: _canAddToCustom ? _addToCustomEntries : () {},
-                        child: Text(
-                          'Add to Custom',
-                          style: TextStyle(
-                            fontFamily: _defaultNonBorelFontFamily,
-                            fontSize: (34 * scale / 1.7).clamp(18.0, 26.0),
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
+                    if (widget.showAddToCustom) ...[
+                      SizedBox(width: 16 * scale),
+                      SizedBox(
+                        width: (150 * scale).clamp(120.0, 170.0),
+                        child: _RotatingGlassButton(
+                          scale: scale,
+                          height: bottomRowHeight,
+                          borderRadius: 32 * scale,
+                          fillColor: _canAddToCustom
+                              ? const Color(0x9400B2FF)
+                              : const Color(0x2E00B2FF),
+                          enablePressShadeFeedback: _canAddToCustom,
+                          onTap: _canAddToCustom ? _addToCustomEntries : () {},
+                          child: Center(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Add to Custom',
+                                maxLines: 1,
+                                softWrap: false,
+                                style: TextStyle(
+                                  fontFamily: _defaultNonBorelFontFamily,
+                                  fontSize: (34 * scale / 1.7).clamp(
+                                    18.0,
+                                    26.0,
+                                  ),
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                     SizedBox(width: 16 * scale),
                     Expanded(
                       child: _RotatingGlassButton(
                         scale: scale,
                         height: bottomRowHeight,
                         borderRadius: 32 * scale,
-                        fillColor: const Color(0x52FFD206),
-                        enablePressShadeFeedback: false,
-                        onTap: () {},
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Add',
-                              style: TextStyle(
-                                fontFamily: _defaultNonBorelFontFamily,
-                                fontSize: (34 * scale / 1.7).clamp(18.0, 26.0),
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
+                        fillColor: const Color(0x8FFFD206),
+                        enablePressShadeFeedback: true,
+                        onTap: _addToMealsTimeline,
+                        child: Center(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _timelineActionLabel,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (34 * scale / 1.7).clamp(
+                                      18.0,
+                                      26.0,
+                                    ),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                if (_showTimelineActionIcon) ...[
+                                  SizedBox(width: 8 * scale),
+                                  Icon(
+                                    Icons.add,
+                                    color: Colors.white,
+                                    size: (24 * scale).clamp(20.0, 30.0),
+                                  ),
+                                ],
+                              ],
                             ),
-                            SizedBox(width: 8 * scale),
-                            Icon(
-                              Icons.add,
-                              color: Colors.white,
-                              size: (24 * scale).clamp(20.0, 30.0),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -11431,7 +12195,14 @@ class _SearchFoodItemDetailsScreenState
 }
 
 class FavoritesScreen extends StatefulWidget {
-  const FavoritesScreen({super.key});
+  const FavoritesScreen({
+    super.key,
+    this.isExchangeEntry = false,
+    this.exchangeTargetEntryId,
+  });
+
+  final bool isExchangeEntry;
+  final int? exchangeTargetEntryId;
 
   @override
   State<FavoritesScreen> createState() => _FavoritesScreenState();
@@ -11470,9 +12241,14 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     if (!mounted) {
       return;
     }
-    await Navigator.of(
-      context,
-    ).push(_buildNoTransitionRoute(screen: const NewCustomEntryScreen()));
+    await Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: NewCustomEntryScreen(
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+        ),
+      ),
+    );
     if (mounted) {
       setState(() {});
     }
@@ -11830,7 +12606,14 @@ class _FavoritesScreenState extends State<FavoritesScreen>
 }
 
 class CustomEntriesScreen extends StatefulWidget {
-  const CustomEntriesScreen({super.key});
+  const CustomEntriesScreen({
+    super.key,
+    this.isExchangeEntry = false,
+    this.exchangeTargetEntryId,
+  });
+
+  final bool isExchangeEntry;
+  final int? exchangeTargetEntryId;
 
   @override
   State<CustomEntriesScreen> createState() => _CustomEntriesScreenState();
@@ -11917,9 +12700,14 @@ class _CustomEntriesScreenState extends State<CustomEntriesScreen>
     if (!mounted) {
       return;
     }
-    await Navigator.of(
-      context,
-    ).push(_buildNoTransitionRoute(screen: const NewCustomEntryScreen()));
+    await Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: NewCustomEntryScreen(
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+        ),
+      ),
+    );
     if (mounted) {
       setState(() {});
     }
@@ -12578,7 +13366,14 @@ class _CustomEntrySelectableTile extends StatelessWidget {
 }
 
 class NewCustomEntryScreen extends StatefulWidget {
-  const NewCustomEntryScreen({super.key});
+  const NewCustomEntryScreen({
+    super.key,
+    this.isExchangeEntry = false,
+    this.exchangeTargetEntryId,
+  });
+
+  final bool isExchangeEntry;
+  final int? exchangeTargetEntryId;
 
   @override
   State<NewCustomEntryScreen> createState() => _NewCustomEntryScreenState();
@@ -12623,6 +13418,14 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   final GlobalKey _fiberFieldKey = GlobalKey();
   final GlobalKey _sugarFieldKey = GlobalKey();
   final GlobalKey _sodiumFieldKey = GlobalKey();
+
+  bool get _isExchangeMode =>
+      widget.isExchangeEntry && widget.exchangeTargetEntryId != null;
+
+  String get _timelineActionLabel =>
+      widget.isExchangeEntry ? 'Exchange' : 'Add';
+
+  bool get _showTimelineActionIcon => !widget.isExchangeEntry;
 
   bool get _isAmSelected => _selectedTime.hour < 12;
 
@@ -12775,6 +13578,12 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       isFavorite: _isFavorite,
     );
     _CustomFoodEntryStore.add(entry);
+    _MealsTimelineStore.addOrReplace(
+      entryId: _isExchangeMode ? widget.exchangeTargetEntryId : null,
+      timeText: entry.timeText,
+      itemName: entry.name,
+      caloriesText: entry.caloriesText,
+    );
     _resetAfterAdd();
   }
 
@@ -13431,7 +14240,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Add',
+                              _timelineActionLabel,
                               style: TextStyle(
                                 fontFamily: _defaultNonBorelFontFamily,
                                 fontSize: (36 * scale / 1.7).clamp(18.0, 28.0),
@@ -13439,12 +14248,14 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            SizedBox(width: 16 * scale),
-                            Icon(
-                              Icons.add,
-                              color: Colors.white,
-                              size: (34 * scale).clamp(24.0, 38.0),
-                            ),
+                            if (_showTimelineActionIcon) ...[
+                              SizedBox(width: 16 * scale),
+                              Icon(
+                                Icons.add,
+                                color: Colors.white,
+                                size: (34 * scale).clamp(24.0, 38.0),
+                              ),
+                            ],
                           ],
                         ),
                       ),

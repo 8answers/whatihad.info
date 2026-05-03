@@ -82,8 +82,10 @@ flutter:
     - assets/Chat.svg
     - assets/Add.png
     - assets/Food.svg
+    - assets/Food_exchange.svg
     - assets/Serach_food.svg
     - assets/Delete.svg
+    - assets/Edit_food.svg
     - assets/Bellyo_ai.png
     - assets/No_custom_entries.png
     - assets/No_Favorites.png
