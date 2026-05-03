@@ -57,14 +57,22 @@ const ColorFilter _halfOpacityBackdropColorFilter = ColorFilter.matrix(<double>[
   0.5,
   0,
 ]);
-const Map<String, String> _defaultNutritionGoalValues = <String, String>{
-  'Calories': '2,330',
-  'Protein': '100',
-  'Carbohydrates': '100',
-  'Fat': '100',
-};
-const Map<String, String> _defaultAdvancedNutritionGoalValues =
-    <String, String>{'Fiber': '2,330', 'Sugar': '100', 'Sodium': '100'};
+final Map<String, String> _defaultNutritionGoalValues =
+    _computeNutritionRecommendation(
+      goalIndex: 2,
+      ageYears: 21,
+      weightKg: 66,
+      heightCm: 160,
+      activityIndex: 1,
+    ).goalValues;
+final Map<String, String> _defaultAdvancedNutritionGoalValues =
+    _computeNutritionRecommendation(
+      goalIndex: 2,
+      ageYears: 21,
+      weightKg: 66,
+      heightCm: 160,
+      activityIndex: 1,
+    ).advancedGoalValues;
 const Map<String, String> _budgetCurrencyGlyphByCode = <String, String>{
   'AED': 'د.إ',
   'AUD': r'$',
@@ -88,6 +96,306 @@ const List<_DietPreferenceOption> _dietPreferenceOptions =
       ),
       _DietPreferenceOption(label: 'Vegan', imagePath: 'assets/Vegan.png'),
     ];
+const List<String> _onboardingGenderLabels = <String>[
+  'Male',
+  'Female',
+  'Transgender',
+  'Other',
+  'Prefer not to respond',
+];
+const int _maleGenderIndex = 0;
+const int _unselectedGenderIndex = -1;
+
+enum _NutritionGoalType { loseWeight, maintain, gainWeight, gainMuscle }
+
+class _NutritionGoalRule {
+  const _NutritionGoalRule({
+    required this.calorieAdjustment,
+    required this.proteinPerKg,
+    required this.fatPercent,
+    required this.fiberPer1000Kcal,
+    required this.sugarPercent,
+    required this.sodiumMg,
+  });
+
+  final int calorieAdjustment;
+  final double proteinPerKg;
+  final double fatPercent;
+  final double fiberPer1000Kcal;
+  final double sugarPercent;
+  final int sodiumMg;
+}
+
+class _NutritionRecommendation {
+  const _NutritionRecommendation({
+    required this.bmr,
+    required this.tdee,
+    required this.caloriesKcal,
+    required this.proteinG,
+    required this.carbohydratesG,
+    required this.fatG,
+    required this.fiberG,
+    required this.sugarG,
+    required this.sodiumMg,
+  });
+
+  final double bmr;
+  final double tdee;
+  final int caloriesKcal;
+  final int proteinG;
+  final int carbohydratesG;
+  final int fatG;
+  final int fiberG;
+  final int sugarG;
+  final int sodiumMg;
+
+  Map<String, String> get goalValues => <String, String>{
+    'Calories': _formatGroupedWholeNumber(caloriesKcal),
+    'Protein': _formatGroupedWholeNumber(proteinG),
+    'Carbohydrates': _formatGroupedWholeNumber(carbohydratesG),
+    'Fat': _formatGroupedWholeNumber(fatG),
+  };
+
+  Map<String, String> get advancedGoalValues => <String, String>{
+    'Fiber': _formatGroupedWholeNumber(fiberG),
+    'Sugar': _formatGroupedWholeNumber(sugarG),
+    'Sodium': _formatGroupedWholeNumber(sodiumMg),
+  };
+}
+
+const List<double> _activityFactors = <double>[1.2, 1.375, 1.55, 1.725, 1.9];
+const double _mifflinStJeorMaleOffset = 5.0;
+const double _mifflinStJeorNonMaleOffset = -161.0;
+const _NutritionGoalRule _loseWeightNutritionRule = _NutritionGoalRule(
+  calorieAdjustment: -400,
+  proteinPerKg: 1.8,
+  fatPercent: 0.22,
+  fiberPer1000Kcal: 18,
+  sugarPercent: 0.05,
+  sodiumMg: 1800,
+);
+const _NutritionGoalRule _maintainNutritionRule = _NutritionGoalRule(
+  calorieAdjustment: 0,
+  proteinPerKg: 1.1,
+  fatPercent: 0.27,
+  fiberPer1000Kcal: 15,
+  sugarPercent: 0.08,
+  sodiumMg: 2000,
+);
+const _NutritionGoalRule _gainWeightNutritionRule = _NutritionGoalRule(
+  calorieAdjustment: 550,
+  proteinPerKg: 1.5,
+  fatPercent: 0.28,
+  fiberPer1000Kcal: 14,
+  sugarPercent: 0.15,
+  sodiumMg: 2400,
+);
+const _NutritionGoalRule _gainMuscleNutritionRule = _NutritionGoalRule(
+  calorieAdjustment: 300,
+  proteinPerKg: 1.9,
+  fatPercent: 0.22,
+  fiberPer1000Kcal: 16,
+  sugarPercent: 0.09,
+  sodiumMg: 2100,
+);
+
+_NutritionGoalType _nutritionGoalTypeFromIndex(int goalIndex) {
+  switch (goalIndex) {
+    case 0:
+      return _NutritionGoalType.loseWeight;
+    case 1:
+      return _NutritionGoalType.gainWeight;
+    case 2:
+      return _NutritionGoalType.gainMuscle;
+    case 3:
+      return _NutritionGoalType.maintain;
+    default:
+      return _NutritionGoalType.maintain;
+  }
+}
+
+_NutritionGoalRule _nutritionRuleForType(_NutritionGoalType goalType) {
+  switch (goalType) {
+    case _NutritionGoalType.loseWeight:
+      return _loseWeightNutritionRule;
+    case _NutritionGoalType.maintain:
+      return _maintainNutritionRule;
+    case _NutritionGoalType.gainWeight:
+      return _gainWeightNutritionRule;
+    case _NutritionGoalType.gainMuscle:
+      return _gainMuscleNutritionRule;
+  }
+}
+
+double _activityFactorFromIndex(int activityIndex) {
+  final safeIndex = activityIndex.clamp(0, _activityFactors.length - 1).toInt();
+  return _activityFactors[safeIndex];
+}
+
+double _mifflinStJeorOffsetFromGenderIndex(int genderIndex) {
+  return genderIndex == _maleGenderIndex
+      ? _mifflinStJeorMaleOffset
+      : _mifflinStJeorNonMaleOffset;
+}
+
+int _roundToNearestTen(double value) {
+  if (value.isNaN || value.isInfinite) {
+    return 0;
+  }
+  return (value / 10).round() * 10;
+}
+
+String _formatGroupedWholeNumber(int value) {
+  final absoluteDigits = value.abs().toString();
+  final grouped = absoluteDigits.replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (match) => '${match[1]},',
+  );
+  return value < 0 ? '-$grouped' : grouped;
+}
+
+_NutritionRecommendation _computeNutritionRecommendation({
+  required int goalIndex,
+  required int ageYears,
+  required int weightKg,
+  required int heightCm,
+  required int activityIndex,
+  int genderIndex = _unselectedGenderIndex,
+}) {
+  final goalType = _nutritionGoalTypeFromIndex(goalIndex);
+  final goalRule = _nutritionRuleForType(goalType);
+  final safeAge = ageYears.clamp(10, 110).toInt();
+  final safeWeight = weightKg.clamp(20, 300).toInt();
+  final safeHeight = heightCm.clamp(100, 240).toInt();
+  final activityFactor = _activityFactorFromIndex(activityIndex);
+  final bmrSexOffset = _mifflinStJeorOffsetFromGenderIndex(genderIndex);
+
+  final bmr =
+      (10 * safeWeight) + (6.25 * safeHeight) - (5 * safeAge) + bmrSexOffset;
+  final safeBmr = math.max(0.0, bmr);
+  final tdee = safeBmr * activityFactor;
+  final calories = _roundToNearestTen(
+    math.max(0.0, tdee + goalRule.calorieAdjustment),
+  );
+
+  final proteinG = math
+      .max(0, (safeWeight * goalRule.proteinPerKg).round())
+      .toInt();
+  final fatG = math
+      .max(0, ((calories * goalRule.fatPercent) / 9).round())
+      .toInt();
+  final carbsEnergy = calories - ((proteinG * 4) + (fatG * 9));
+  final carbohydratesG = math.max(0, (carbsEnergy / 4).round()).toInt();
+  final fiberG = math
+      .max(0, ((calories * goalRule.fiberPer1000Kcal) / 1000).round())
+      .toInt();
+  final sugarG = math
+      .max(0, ((calories * goalRule.sugarPercent) / 4).round())
+      .toInt();
+  final sodiumMg = goalRule.sodiumMg;
+
+  return _NutritionRecommendation(
+    bmr: safeBmr,
+    tdee: tdee,
+    caloriesKcal: calories,
+    proteinG: proteinG,
+    carbohydratesG: carbohydratesG,
+    fatG: fatG,
+    fiberG: fiberG,
+    sugarG: sugarG,
+    sodiumMg: sodiumMg,
+  );
+}
+
+_NutritionRecommendation _computeNutritionRecommendationFromProfile({
+  int? goalIndex,
+  int? ageYears,
+  int? weightKg,
+  int? heightCm,
+  int? activityIndex,
+  int? genderIndex,
+}) {
+  return _computeNutritionRecommendation(
+    goalIndex: goalIndex ?? _OnboardingProfileState.selectedGoalIndex,
+    ageYears: ageYears ?? _OnboardingProfileState.selectedAge,
+    weightKg: weightKg ?? _OnboardingProfileState.selectedWeightKg,
+    heightCm: heightCm ?? _OnboardingProfileState.selectedHeightCm,
+    activityIndex:
+        activityIndex ?? _OnboardingProfileState.selectedActivityIndex,
+    genderIndex: genderIndex ?? _OnboardingProfileState.selectedGenderIndex,
+  );
+}
+
+void _applyRecommendedNutritionToOnboardingProfile({
+  int? goalIndex,
+  int? ageYears,
+  int? weightKg,
+  int? heightCm,
+  int? activityIndex,
+  int? genderIndex,
+}) {
+  final recommendation = _computeNutritionRecommendationFromProfile(
+    goalIndex: goalIndex,
+    ageYears: ageYears,
+    weightKg: weightKg,
+    heightCm: heightCm,
+    activityIndex: activityIndex,
+    genderIndex: genderIndex,
+  );
+  _OnboardingProfileState.nutritionGoalValues = Map<String, String>.from(
+    recommendation.goalValues,
+  );
+  _OnboardingProfileState.advancedNutritionGoalValues =
+      Map<String, String>.from(recommendation.advancedGoalValues);
+}
+
+const List<double> _hydrationMlPerKgByActivity = <double>[30, 33, 36, 40, 45];
+
+double _computeHydrationRecommendationLiters({
+  required int weightKg,
+  required int activityIndex,
+}) {
+  final safeWeight = weightKg.clamp(20, 300);
+  final safeIndex = activityIndex
+      .clamp(0, _hydrationMlPerKgByActivity.length - 1)
+      .toInt();
+  final mlPerKg = _hydrationMlPerKgByActivity[safeIndex];
+  final liters = (safeWeight * mlPerKg) / 1000;
+  return math.max(0.1, liters);
+}
+
+String _formatHydrationGoalTextFromLiters(double liters) {
+  final roundedToOneDecimal = ((liters * 10).round() / 10);
+  final oneDecimalText = roundedToOneDecimal.toStringAsFixed(1);
+  if (oneDecimalText.endsWith('.0')) {
+    return oneDecimalText.substring(0, oneDecimalText.length - 2);
+  }
+  return oneDecimalText;
+}
+
+String _computeHydrationGoalTextFromProfile({
+  int? weightKg,
+  int? activityIndex,
+}) {
+  final liters = _computeHydrationRecommendationLiters(
+    weightKg: weightKg ?? _OnboardingProfileState.selectedWeightKg,
+    activityIndex:
+        activityIndex ?? _OnboardingProfileState.selectedActivityIndex,
+  );
+  return _formatHydrationGoalTextFromLiters(liters);
+}
+
+void _applyRecommendedHydrationToOnboardingProfile({
+  int? weightKg,
+  int? activityIndex,
+}) {
+  _OnboardingProfileState.hydrationGoalText =
+      _computeHydrationGoalTextFromProfile(
+        weightKg: weightKg,
+        activityIndex: activityIndex,
+      );
+  _OnboardingProfileState.isHydrationInLiters = true;
+}
 
 Widget _buildBottomBlurFadeOverlay() {
   // Progressive blur + 50% backdrop opacity, without extra overlay layer.
@@ -149,6 +457,50 @@ bool _isCompactIPhoneLayout(_SceneMetrics metrics) {
       math.min(metrics.width, metrics.height) < 600;
 }
 
+DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+
+bool _isSameDate(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+const List<String> _historyMonthNames = <String>[
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+String _daySuffix(int day) {
+  if (day >= 11 && day <= 13) {
+    return 'th';
+  }
+  switch (day % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
+String _formatHistoryDateLabel(DateTime date) {
+  final safeMonth = date.month.clamp(1, 12).toInt() - 1;
+  final monthName = _historyMonthNames[safeMonth];
+  final day = date.day;
+  return '$day${_daySuffix(day)} $monthName, ${date.year}';
+}
+
 double _actionControlsBottomInset({
   required _SceneMetrics metrics,
   required double scale,
@@ -171,6 +523,8 @@ class _OnboardingSkipFlags {
 }
 
 class _OnboardingProfileState {
+  static String selectedName = '';
+  static int selectedGenderIndex = _unselectedGenderIndex;
   static int selectedGoalIndex = 2;
   static int selectedAge = 21;
   static int selectedWeightKg = 66;
@@ -183,17 +537,35 @@ class _OnboardingProfileState {
   static int? selectedBudgetPerMeal = 200;
   static String customBudgetPerMeal = '';
   static bool isCustomBudgetPerMeal = false;
-  static Map<String, String> nutritionGoalValues = Map<String, String>.from(
-    _defaultNutritionGoalValues,
-  );
+  static Map<String, String> nutritionGoalValues =
+      _computeNutritionRecommendation(
+        goalIndex: selectedGoalIndex,
+        ageYears: selectedAge,
+        weightKg: selectedWeightKg,
+        heightCm: selectedHeightCm,
+        activityIndex: selectedActivityIndex,
+        genderIndex: selectedGenderIndex,
+      ).goalValues;
   static Map<String, String> advancedNutritionGoalValues =
-      Map<String, String>.from(_defaultAdvancedNutritionGoalValues);
+      _computeNutritionRecommendation(
+        goalIndex: selectedGoalIndex,
+        ageYears: selectedAge,
+        weightKg: selectedWeightKg,
+        heightCm: selectedHeightCm,
+        activityIndex: selectedActivityIndex,
+        genderIndex: selectedGenderIndex,
+      ).advancedGoalValues;
   static bool hydrationEnabled = true;
-  static String hydrationGoalText = '3';
+  static String hydrationGoalText = _computeHydrationGoalTextFromProfile(
+    weightKg: selectedWeightKg,
+    activityIndex: selectedActivityIndex,
+  );
   static bool isHydrationInLiters = true;
   static int selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
 
   static void reset() {
+    selectedName = '';
+    selectedGenderIndex = _unselectedGenderIndex;
     selectedGoalIndex = 2;
     selectedAge = 21;
     selectedWeightKg = 66;
@@ -206,12 +578,23 @@ class _OnboardingProfileState {
     selectedBudgetPerMeal = 200;
     customBudgetPerMeal = '';
     isCustomBudgetPerMeal = false;
-    nutritionGoalValues = Map<String, String>.from(_defaultNutritionGoalValues);
+    final recommendation = _computeNutritionRecommendation(
+      goalIndex: selectedGoalIndex,
+      ageYears: selectedAge,
+      weightKg: selectedWeightKg,
+      heightCm: selectedHeightCm,
+      activityIndex: selectedActivityIndex,
+      genderIndex: selectedGenderIndex,
+    );
+    nutritionGoalValues = Map<String, String>.from(recommendation.goalValues);
     advancedNutritionGoalValues = Map<String, String>.from(
-      _defaultAdvancedNutritionGoalValues,
+      recommendation.advancedGoalValues,
     );
     hydrationEnabled = true;
-    hydrationGoalText = '3';
+    hydrationGoalText = _computeHydrationGoalTextFromProfile(
+      weightKg: selectedWeightKg,
+      activityIndex: selectedActivityIndex,
+    );
     isHydrationInLiters = true;
     selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
   }
@@ -315,23 +698,50 @@ class _CustomFoodEntryStore {
 class _MealTimelineEntry {
   const _MealTimelineEntry({
     required this.id,
+    required this.entryDate,
     required this.timeText,
     required this.itemName,
     required this.caloriesText,
+    this.proteinText = '0',
+    this.carbohydratesText = '0',
+    this.fatText = '0',
+    this.fiberText = '0',
+    this.sugarText = '0',
+    this.sodiumText = '0',
+    this.waterLitersText = '0',
   });
 
   final int id;
+  final DateTime entryDate;
   final String timeText;
   final String itemName;
   final String caloriesText;
+  final String proteinText;
+  final String carbohydratesText;
+  final String fatText;
+  final String fiberText;
+  final String sugarText;
+  final String sodiumText;
+  final String waterLitersText;
 }
 
 class _MealsTimelineStore {
   static int _nextId = 1;
   static final List<_MealTimelineEntry> _entries = <_MealTimelineEntry>[];
 
+  static DateTime get today => _dateOnly(DateTime.now());
+
   static List<_MealTimelineEntry> get entries =>
       List<_MealTimelineEntry>.unmodifiable(_entries);
+
+  static List<_MealTimelineEntry> entriesForDate(DateTime date) {
+    final normalizedDate = _dateOnly(date);
+    return List<_MealTimelineEntry>.unmodifiable(
+      _entries.where(
+        (entry) => _isSameDate(_dateOnly(entry.entryDate), normalizedDate),
+      ),
+    );
+  }
 
   static String normalizeTimeText(String raw) {
     final match = RegExp(
@@ -359,7 +769,7 @@ class _MealsTimelineStore {
     return '$hour:$minute $meridiem';
   }
 
-  static String _normalizedCaloriesText(String raw) {
+  static String _normalizedAmountText(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) {
       return '0';
@@ -381,14 +791,30 @@ class _MealsTimelineStore {
     required String timeText,
     required String itemName,
     required String caloriesText,
+    DateTime? entryDate,
+    String proteinText = '0',
+    String carbohydratesText = '0',
+    String fatText = '0',
+    String fiberText = '0',
+    String sugarText = '0',
+    String sodiumText = '0',
+    String waterLitersText = '0',
   }) {
     final normalizedName = itemName.trim().isEmpty ? 'Meal' : itemName.trim();
     _entries.add(
       _MealTimelineEntry(
         id: _nextId++,
+        entryDate: _dateOnly(entryDate ?? DateTime.now()),
         timeText: normalizeTimeText(timeText),
         itemName: normalizedName,
-        caloriesText: _normalizedCaloriesText(caloriesText),
+        caloriesText: _normalizedAmountText(caloriesText),
+        proteinText: _normalizedAmountText(proteinText),
+        carbohydratesText: _normalizedAmountText(carbohydratesText),
+        fatText: _normalizedAmountText(fatText),
+        fiberText: _normalizedAmountText(fiberText),
+        sugarText: _normalizedAmountText(sugarText),
+        sodiumText: _normalizedAmountText(sodiumText),
+        waterLitersText: _normalizedAmountText(waterLitersText),
       ),
     );
   }
@@ -398,17 +824,34 @@ class _MealsTimelineStore {
     required String timeText,
     required String itemName,
     required String caloriesText,
+    DateTime? entryDate,
+    String proteinText = '0',
+    String carbohydratesText = '0',
+    String fatText = '0',
+    String fiberText = '0',
+    String sugarText = '0',
+    String sodiumText = '0',
+    String waterLitersText = '0',
   }) {
     final index = _entries.indexWhere((entry) => entry.id == id);
     if (index < 0) {
       return false;
     }
     final normalizedName = itemName.trim().isEmpty ? 'Meal' : itemName.trim();
+    final existingEntry = _entries[index];
     _entries[index] = _MealTimelineEntry(
       id: id,
+      entryDate: _dateOnly(entryDate ?? existingEntry.entryDate),
       timeText: normalizeTimeText(timeText),
       itemName: normalizedName,
-      caloriesText: _normalizedCaloriesText(caloriesText),
+      caloriesText: _normalizedAmountText(caloriesText),
+      proteinText: _normalizedAmountText(proteinText),
+      carbohydratesText: _normalizedAmountText(carbohydratesText),
+      fatText: _normalizedAmountText(fatText),
+      fiberText: _normalizedAmountText(fiberText),
+      sugarText: _normalizedAmountText(sugarText),
+      sodiumText: _normalizedAmountText(sodiumText),
+      waterLitersText: _normalizedAmountText(waterLitersText),
     );
     return true;
   }
@@ -418,6 +861,14 @@ class _MealsTimelineStore {
     required String timeText,
     required String itemName,
     required String caloriesText,
+    DateTime? entryDate,
+    String proteinText = '0',
+    String carbohydratesText = '0',
+    String fatText = '0',
+    String fiberText = '0',
+    String sugarText = '0',
+    String sodiumText = '0',
+    String waterLitersText = '0',
   }) {
     if (entryId != null) {
       final wasReplaced = replaceById(
@@ -425,12 +876,32 @@ class _MealsTimelineStore {
         timeText: timeText,
         itemName: itemName,
         caloriesText: caloriesText,
+        entryDate: entryDate,
+        proteinText: proteinText,
+        carbohydratesText: carbohydratesText,
+        fatText: fatText,
+        fiberText: fiberText,
+        sugarText: sugarText,
+        sodiumText: sodiumText,
+        waterLitersText: waterLitersText,
       );
       if (wasReplaced) {
         return;
       }
     }
-    add(timeText: timeText, itemName: itemName, caloriesText: caloriesText);
+    add(
+      timeText: timeText,
+      itemName: itemName,
+      caloriesText: caloriesText,
+      entryDate: entryDate,
+      proteinText: proteinText,
+      carbohydratesText: carbohydratesText,
+      fatText: fatText,
+      fiberText: fiberText,
+      sugarText: sugarText,
+      sodiumText: sodiumText,
+      waterLitersText: waterLitersText,
+    );
   }
 
   static void removeById(int id) {
@@ -2756,9 +3227,15 @@ class _NameScreenState extends State<NameScreen>
   late final AnimationController _controller;
   final TextEditingController _nameController = TextEditingController();
   final FocusNode _nameFocusNode = FocusNode();
+  int _selectedGenderIndex = _OnboardingProfileState.selectedGenderIndex;
   bool _isNameLongPressed = false;
   bool _isNameClicked = false;
   bool _didNavigateForward = false;
+
+  bool get _isFormValid =>
+      _nameController.text.trim().isNotEmpty &&
+      _selectedGenderIndex >= 0 &&
+      _selectedGenderIndex < _onboardingGenderLabels.length;
 
   void _setNameDefaultState() {
     _isNameLongPressed = false;
@@ -2778,6 +3255,8 @@ class _NameScreenState extends State<NameScreen>
   @override
   void initState() {
     super.initState();
+    _nameController.text = _OnboardingProfileState.selectedName;
+    _selectedGenderIndex = _OnboardingProfileState.selectedGenderIndex;
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -2807,10 +3286,14 @@ class _NameScreenState extends State<NameScreen>
   }
 
   void _goNext() {
-    final hasName = _nameController.text.trim().isNotEmpty;
-    if (!hasName || _didNavigateForward || !mounted) {
+    if (!_isFormValid || _didNavigateForward || !mounted) {
       return;
     }
+    _OnboardingProfileState.selectedName = _nameController.text.trim();
+    _OnboardingProfileState.selectedGenderIndex = _selectedGenderIndex;
+    _applyRecommendedNutritionToOnboardingProfile(
+      genderIndex: _selectedGenderIndex,
+    );
     _didNavigateForward = true;
     FocusScope.of(context).unfocus();
 
@@ -2842,7 +3325,10 @@ class _NameScreenState extends State<NameScreen>
           final backButtonWidth = 79 * metrics.designScale;
           final nextButtonWidth = 263 * metrics.designScale;
           final controlsGap = 16 * metrics.designScale;
-          final isNameValid = _nameController.text.trim().isNotEmpty;
+          final optionGap = 16 * metrics.designScale;
+          final optionWidth = (contentWidth - optionGap) / 2;
+          final optionHeight = 80 * metrics.designScale;
+          final isNameValid = _isFormValid;
 
           return Stack(
             children: [
@@ -2863,7 +3349,7 @@ class _NameScreenState extends State<NameScreen>
                         height: 0.99,
                       ),
                     ),
-                    SizedBox(height: 32 * metrics.designScale),
+                    SizedBox(height: 24 * metrics.designScale),
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onLongPressDown: (_) {
@@ -2983,6 +3469,110 @@ class _NameScreenState extends State<NameScreen>
                         ),
                       ),
                     ),
+                    SizedBox(height: 24 * metrics.designScale),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Gender',
+                        style: TextStyle(
+                          fontFamily: 'Borel',
+                          fontSize: (24 * metrics.designScale).clamp(
+                            18.0,
+                            30.0,
+                          ),
+                          color: Colors.white,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 12 * metrics.designScale),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: optionWidth,
+                          child: _NameGenderCard(
+                            scale: metrics.designScale,
+                            label: _onboardingGenderLabels[0],
+                            isSelected: _selectedGenderIndex == 0,
+                            height: optionHeight,
+                            onTap: () {
+                              FocusScope.of(context).unfocus();
+                              setState(() {
+                                _selectedGenderIndex = 0;
+                              });
+                            },
+                          ),
+                        ),
+                        SizedBox(width: optionGap),
+                        SizedBox(
+                          width: optionWidth,
+                          child: _NameGenderCard(
+                            scale: metrics.designScale,
+                            label: _onboardingGenderLabels[1],
+                            isSelected: _selectedGenderIndex == 1,
+                            height: optionHeight,
+                            onTap: () {
+                              FocusScope.of(context).unfocus();
+                              setState(() {
+                                _selectedGenderIndex = 1;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: optionGap),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: optionWidth,
+                          child: _NameGenderCard(
+                            scale: metrics.designScale,
+                            label: _onboardingGenderLabels[2],
+                            isSelected: _selectedGenderIndex == 2,
+                            height: optionHeight,
+                            onTap: () {
+                              FocusScope.of(context).unfocus();
+                              setState(() {
+                                _selectedGenderIndex = 2;
+                              });
+                            },
+                          ),
+                        ),
+                        SizedBox(width: optionGap),
+                        SizedBox(
+                          width: optionWidth,
+                          child: _NameGenderCard(
+                            scale: metrics.designScale,
+                            label: _onboardingGenderLabels[3],
+                            isSelected: _selectedGenderIndex == 3,
+                            height: optionHeight,
+                            onTap: () {
+                              FocusScope.of(context).unfocus();
+                              setState(() {
+                                _selectedGenderIndex = 3;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: optionGap),
+                    SizedBox(
+                      width: double.infinity,
+                      child: _NameGenderCard(
+                        scale: metrics.designScale,
+                        label: _onboardingGenderLabels[4],
+                        isSelected: _selectedGenderIndex == 4,
+                        height: optionHeight,
+                        onTap: () {
+                          FocusScope.of(context).unfocus();
+                          setState(() {
+                            _selectedGenderIndex = 4;
+                          });
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -3051,6 +3641,132 @@ class _NameScreenState extends State<NameScreen>
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _NameGenderCard extends StatefulWidget {
+  const _NameGenderCard({
+    required this.scale,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.height,
+  });
+
+  final double scale;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final double height;
+
+  @override
+  State<_NameGenderCard> createState() => _NameGenderCardState();
+}
+
+class _NameGenderCardState extends State<_NameGenderCard> {
+  bool _isLongPressed = false;
+  bool _isClicked = false;
+
+  @override
+  void didUpdateWidget(covariant _NameGenderCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isSelected && _isClicked && !_isLongPressed) {
+      setState(() {
+        _isClicked = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = widget.scale;
+    final isActive = _isClicked || widget.isSelected;
+    final fillColor = _isLongPressed
+        ? Colors.transparent
+        : (isActive ? Colors.white : const Color(0x52FFFFFF));
+    final hasShadow = _isLongPressed || isActive;
+    final shadows = hasShadow
+        ? const [
+            BoxShadow(
+              color: Color(0xFFFF0000),
+              blurRadius: 4,
+              blurStyle: BlurStyle.outer,
+            ),
+          ]
+        : const <BoxShadow>[];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressStart: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = true;
+          _isClicked = false;
+        });
+      },
+      onLongPressEnd: (_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onLongPressCancel: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLongPressed = false;
+        });
+      },
+      onTap: () {
+        if (mounted) {
+          setState(() {
+            _isClicked = true;
+            _isLongPressed = false;
+          });
+        }
+        widget.onTap();
+      },
+      child: SizedBox(
+        width: double.infinity,
+        height: widget.height,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: fillColor,
+          padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+          expandToBounds: true,
+          boxShadow: shadows,
+          enableBlur: !(_isLongPressed || isActive),
+          child: Center(
+            child: Text(
+              widget.label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              style: TextStyle(
+                fontSize: (16 * scale).clamp(14.0, 20.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+                height: 1.2,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -3650,6 +4366,8 @@ class _AccountNutritionCalculatingScreenState
   @override
   void initState() {
     super.initState();
+    _applyRecommendedNutritionToOnboardingProfile();
+    _applyRecommendedHydrationToOnboardingProfile();
     _backgroundController = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -3840,13 +4558,20 @@ class _AccountDailyNutritionGoalsScreenState
   @override
   void initState() {
     super.initState();
+    final recommended = _computeNutritionRecommendationFromProfile();
     _savedGoalValues = <String, String>{
       for (final item in _goalItems)
-        item.label: widget.initialGoalValues[item.label] ?? item.value,
+        item.label:
+            widget.initialGoalValues[item.label] ??
+            recommended.goalValues[item.label] ??
+            '0',
     };
     _savedAdvancedGoalValues = <String, String>{
       for (final item in _advancedGoalItems)
-        item.label: widget.initialAdvancedGoalValues[item.label] ?? item.value,
+        item.label:
+            widget.initialAdvancedGoalValues[item.label] ??
+            recommended.advancedGoalValues[item.label] ??
+            '0',
     };
     _goalValueControllers = <String, TextEditingController>{
       for (final item in [..._goalItems, ..._advancedGoalItems])
@@ -3925,13 +4650,16 @@ class _AccountDailyNutritionGoalsScreenState
     required Map<String, String> goalValues,
     required Map<String, String> advancedGoalValues,
   }) {
+    final recommended = _computeNutritionRecommendationFromProfile();
     for (final item in _goalItems) {
       _goalValueControllers[item.label]!.text =
-          goalValues[item.label] ?? item.value;
+          goalValues[item.label] ?? recommended.goalValues[item.label] ?? '0';
     }
     for (final item in _advancedGoalItems) {
       _goalValueControllers[item.label]!.text =
-          advancedGoalValues[item.label] ?? item.value;
+          advancedGoalValues[item.label] ??
+          recommended.advancedGoalValues[item.label] ??
+          '0';
     }
   }
 
@@ -3946,6 +4674,11 @@ class _AccountDailyNutritionGoalsScreenState
     if (!mounted) {
       return;
     }
+    final recommendation = _computeNutritionRecommendationFromProfile();
+    _applyValues(
+      goalValues: recommendation.goalValues,
+      advancedGoalValues: recommendation.advancedGoalValues,
+    );
     setState(() {
       _isShowingRecommended = true;
     });
@@ -7153,13 +7886,17 @@ class _DailyNutritionGoalsScreenState extends State<DailyNutritionGoalsScreen>
   @override
   void initState() {
     super.initState();
+    _applyRecommendedNutritionToOnboardingProfile();
+    final recommended = _computeNutritionRecommendationFromProfile();
     _goalValueControllers = <String, TextEditingController>{
       for (final item in [..._goalItems, ..._advancedGoalItems])
         item.label: TextEditingController(
           text:
               _OnboardingProfileState.nutritionGoalValues[item.label] ??
               _OnboardingProfileState.advancedNutritionGoalValues[item.label] ??
-              item.value,
+              recommended.goalValues[item.label] ??
+              recommended.advancedGoalValues[item.label] ??
+              '0',
         ),
     };
     _controller = AnimationController(
@@ -7501,6 +8238,7 @@ class _DailyHydrationGoalsScreenState extends State<DailyHydrationGoalsScreen>
   @override
   void initState() {
     super.initState();
+    _applyRecommendedHydrationToOnboardingProfile();
     _waterController = TextEditingController(
       text: _OnboardingProfileState.hydrationGoalText,
     );
@@ -8244,6 +8982,8 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
   int _selectedBottomNavIndex = 0;
   bool _isAdvanceOpen = false;
   bool _isMealsTimelineEditMode = false;
+  bool _isHistoryViewOpen = false;
+  DateTime _historySelectedDate = _MealsTimelineStore.today;
 
   @override
   void initState() {
@@ -8274,8 +9014,81 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     if (!mounted) {
       return;
     }
+    if (_isHistoryViewOpen && !_isHistoryDateEditable(_historySelectedDate)) {
+      return;
+    }
     setState(() {
       _isMealsTimelineEditMode = !_isMealsTimelineEditMode;
+    });
+  }
+
+  bool _isHistoryDateEditable(DateTime date) {
+    final earliestEditableDate = _MealsTimelineStore.today.subtract(
+      const Duration(days: 1),
+    );
+    return !_dateOnly(date).isBefore(_dateOnly(earliestEditableDate));
+  }
+
+  void _openHistoryView() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isHistoryViewOpen = true;
+      _historySelectedDate = _MealsTimelineStore.today;
+      _isMealsTimelineEditMode = false;
+    });
+  }
+
+  void _closeHistoryView() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isHistoryViewOpen = false;
+      _historySelectedDate = _MealsTimelineStore.today;
+      _isMealsTimelineEditMode = false;
+    });
+  }
+
+  void _shiftHistoryDateByDays(int dayDelta) {
+    if (!_isHistoryViewOpen || !mounted || dayDelta == 0) {
+      return;
+    }
+    final today = _MealsTimelineStore.today;
+    final shiftedDate = _dateOnly(
+      _historySelectedDate.add(Duration(days: dayDelta)),
+    );
+    final nextDate = shiftedDate.isAfter(today) ? today : shiftedDate;
+    setState(() {
+      _historySelectedDate = nextDate;
+      _isMealsTimelineEditMode = false;
+    });
+  }
+
+  Future<void> _openHistoryDatePicker() async {
+    if (!_isHistoryViewOpen || !mounted) {
+      return;
+    }
+    final today = _MealsTimelineStore.today;
+    final pickedDate = await showDialog<DateTime>(
+      context: context,
+      barrierColor: Colors.transparent,
+      useSafeArea: false,
+      builder: (dialogContext) {
+        return _HistoryCalendarDialog(
+          initialDate: _historySelectedDate,
+          firstDate: DateTime(today.year - 5, 1, 1),
+          lastDate: today,
+        );
+      },
+    );
+    if (pickedDate == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _historySelectedDate = _dateOnly(pickedDate);
+      _isMealsTimelineEditMode = false;
     });
   }
 
@@ -8475,6 +9288,80 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     return parsed.round();
   }
 
+  double _parseNumericText(String rawValue) {
+    final cleaned = rawValue.trim().replaceAll(',', '').replaceAll(' ', '');
+    if (cleaned.isEmpty) {
+      return 0;
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return 0;
+    }
+    return parsed;
+  }
+
+  String _formatWholeMetric(double value) {
+    final rounded = value.round();
+    if (rounded <= 0) {
+      return '0';
+    }
+    return _formatGroupedWholeNumber(rounded);
+  }
+
+  String _formatCompactDecimalMetric(double value, {int maxDecimals = 2}) {
+    if (value <= 0) {
+      return '0';
+    }
+    return value
+        .toStringAsFixed(maxDecimals)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  String _formatCurrencyAmount(double value) {
+    if (value <= 0) {
+      return '0';
+    }
+    final rounded = value.roundToDouble();
+    if ((value - rounded).abs() < 0.0001) {
+      return _formatGroupedWholeNumber(rounded.round());
+    }
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  double _waterLitersFromEntry(_MealTimelineEntry entry) {
+    final direct = _parseNumericText(entry.waterLitersText);
+    if (direct > 0) {
+      return direct;
+    }
+    final match = RegExp(
+      r'water\s*\(\s*([0-9]+(?:\.[0-9]+)?)\s*l\s*\)',
+      caseSensitive: false,
+    ).firstMatch(entry.itemName);
+    if (match == null) {
+      return 0;
+    }
+    return _parseNumericText(match.group(1) ?? '0');
+  }
+
+  String _percentText(double current, double target) {
+    if (target <= 0) {
+      return '0 %';
+    }
+    final percent = ((current / target) * 100).clamp(0, 999);
+    return '${percent.round()} %';
+  }
+
+  double _progressFraction(double current, double target) {
+    if (target <= 0) {
+      return 0;
+    }
+    return (current / target).clamp(0.0, 1.0);
+  }
+
   Future<void> _openMealsTimelineItemDetails(_MealTimelineEntry entry) async {
     if (!mounted) {
       return;
@@ -8491,6 +9378,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           exchangeTargetEntryId: entry.id,
           initialItemName: entry.itemName,
           initialCaloriesText: entry.caloriesText,
+          initialProteinText: entry.proteinText,
+          initialCarbohydratesText: entry.carbohydratesText,
+          initialFatText: entry.fatText,
+          initialFiberText: entry.fiberText,
+          initialSugarText: entry.sugarText,
+          initialSodiumText: entry.sodiumText,
           initialTimeText: entry.timeText,
           showAddToCustom: false,
           timelineActionLabelOverride: 'Save',
@@ -8566,10 +9459,13 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     required String label,
     required Color accentColor,
     required String totalValueText,
-    String percentText = '25 %',
-    String currentText = '200',
+    String percentText = '0 %',
+    String currentText = '0',
+    double progressFraction = 0.0,
     bool highlightCurrent = true,
   }) {
+    final clampedProgress = progressFraction.clamp(0.0, 1.0);
+    final transparentStart = (clampedProgress + 0.0001).clamp(0.0, 1.0);
     return _innerPanel(
       scale: scale,
       child: Column(
@@ -8607,7 +9503,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                stops: const [0.0, 0.22, 0.22001, 1.0],
+                stops: [0.0, clampedProgress, transparentStart, 1.0],
                 colors: [
                   accentColor,
                   accentColor,
@@ -8673,6 +9569,73 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
             icon,
             color: selected ? Colors.black : Colors.white,
             size: 28 * scale,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _historyArrowButton({
+    required double scale,
+    required String assetPath,
+    VoidCallback? onTap,
+  }) {
+    final isEnabled = onTap != null;
+    return SizedBox(
+      width: 56 * scale,
+      height: 56 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Opacity(
+          opacity: isEnabled ? 1.0 : 0.45,
+          child: _RotatingGlassPanel(
+            scale: scale,
+            borderRadius: 32 * scale,
+            fillColor: const Color(0x8FFFFFFF),
+            padding: EdgeInsets.zero,
+            expandToBounds: true,
+            enableBlur: false,
+            child: Center(
+              child: SizedBox(
+                width: 18 * scale,
+                height: 18 * scale,
+                child: SvgPicture.asset(assetPath, fit: BoxFit.contain),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _historyDatePill({
+    required double scale,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      height: 56 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 32 * scale,
+          fillColor: const Color(0x52FFFFFF),
+          padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+          expandToBounds: true,
+          child: Center(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (20 * scale).clamp(16.0, 24.0),
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
       ),
@@ -8989,7 +9952,8 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
           final titleTop = metrics.padding.top + (18 * scale);
-          final contentTop = titleTop + (58 * scale);
+          final contentTop =
+              titleTop + ((_isHistoryViewOpen ? 74 : 66) * scale);
           final isIPhone =
               !kIsWeb &&
               defaultTargetPlatform == TargetPlatform.iOS &&
@@ -8999,16 +9963,108 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
               : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
           final navHeight = 64 * scale;
           final blurPanelHeight = navHeight + controlsBottom;
+          final showFloatingBanana = !_isHistoryViewOpen;
           final bananaTopInset = controlsBottom + (74 * scale) + (99 * scale);
-          final scrollBottomPadding = math.max(
-            blurPanelHeight + (24 * scale),
-            bananaTopInset + (16 * scale),
-          );
+          final scrollTopPadding = (_isHistoryViewOpen ? 18 : 14) * scale;
+          final scrollBottomPadding = showFloatingBanana
+              ? math.max(
+                  blurPanelHeight + (24 * scale),
+                  bananaTopInset + (16 * scale),
+                )
+              : blurPanelHeight + (24 * scale);
           final hideWaterSection = _OnboardingSkipFlags.skippedWaterSection;
           final hideBudgetSection = _OnboardingSkipFlags.skippedBudgetSection;
           final hideMealsTimelineSection =
               hideWaterSection || hideBudgetSection;
-          final mealsTimelineEntries = _MealsTimelineStore.entries;
+          final todayDate = _MealsTimelineStore.today;
+          final selectedProgressDate = _isHistoryViewOpen
+              ? _historySelectedDate
+              : todayDate;
+          final isViewingToday = _isSameDate(selectedProgressDate, todayDate);
+          final progressSectionTitle = isViewingToday
+              ? 'Daily Progress'
+              : 'Progress';
+          final isHistoryDateEditable = _isHistoryDateEditable(
+            selectedProgressDate,
+          );
+          final mealsTimelineEntries = _MealsTimelineStore.entriesForDate(
+            selectedProgressDate,
+          );
+          final nutritionTargets = _OnboardingProfileState.nutritionGoalValues;
+          final advancedNutritionTargets =
+              _OnboardingProfileState.advancedNutritionGoalValues;
+          final targetCalories = _parseNumericText(
+            nutritionTargets['Calories'] ?? '0',
+          );
+          final targetProtein = _parseNumericText(
+            nutritionTargets['Protein'] ?? '0',
+          );
+          final targetCarbohydrates = _parseNumericText(
+            nutritionTargets['Carbohydrates'] ?? '0',
+          );
+          final targetFat = _parseNumericText(nutritionTargets['Fat'] ?? '0');
+          final targetFiber = _parseNumericText(
+            advancedNutritionTargets['Fiber'] ?? '0',
+          );
+          final targetSugar = _parseNumericText(
+            advancedNutritionTargets['Sugar'] ?? '0',
+          );
+          final targetSodium = _parseNumericText(
+            advancedNutritionTargets['Sodium'] ?? '0',
+          );
+          final hydrationUnitIsLiters =
+              _OnboardingProfileState.isHydrationInLiters;
+          final targetHydrationInputValue =
+              _OnboardingProfileState.hydrationEnabled
+              ? _parseNumericText(_OnboardingProfileState.hydrationGoalText)
+              : 0.0;
+          final targetWaterLiters = hydrationUnitIsLiters
+              ? targetHydrationInputValue
+              : (targetHydrationInputValue / 33.8140227018);
+          final budgetCurrencyGlyph =
+              _budgetCurrencyGlyphByCode[_OnboardingProfileState
+                  .budgetCurrencyCode] ??
+              _OnboardingProfileState.budgetCurrencyCode;
+          final chosenBudgetRaw = _OnboardingProfileState.isCustomBudgetPerMeal
+              ? _OnboardingProfileState.customBudgetPerMeal
+              : (_OnboardingProfileState.selectedBudgetPerMeal?.toString() ??
+                    '0');
+          final chosenBudgetTarget = _OnboardingProfileState.budgetEnabled
+              ? _parseNumericText(chosenBudgetRaw)
+              : 0.0;
+
+          double consumedCalories = 0;
+          double consumedProtein = 0;
+          double consumedCarbohydrates = 0;
+          double consumedFat = 0;
+          double consumedFiber = 0;
+          double consumedSugar = 0;
+          double consumedSodium = 0;
+          double consumedWaterLiters = 0;
+          for (final entry in mealsTimelineEntries) {
+            consumedCalories += _parseNumericText(entry.caloriesText);
+            consumedProtein += _parseNumericText(entry.proteinText);
+            consumedCarbohydrates += _parseNumericText(entry.carbohydratesText);
+            consumedFat += _parseNumericText(entry.fatText);
+            consumedFiber += _parseNumericText(entry.fiberText);
+            consumedSugar += _parseNumericText(entry.sugarText);
+            consumedSodium += _parseNumericText(entry.sodiumText);
+            consumedWaterLiters += _waterLitersFromEntry(entry);
+          }
+
+          final displayedWaterCurrent = hydrationUnitIsLiters
+              ? consumedWaterLiters
+              : consumedWaterLiters * 33.8140227018;
+          final displayedWaterTarget = hydrationUnitIsLiters
+              ? targetWaterLiters
+              : targetWaterLiters * 33.8140227018;
+          final waterUnitLabel = hydrationUnitIsLiters ? 'l' : 'oz';
+          final waterTotalText =
+              '${_formatCompactDecimalMetric(displayedWaterTarget, maxDecimals: 2)} $waterUnitLabel';
+          final waterCurrentText = _formatCompactDecimalMetric(
+            displayedWaterCurrent,
+            maxDecimals: 2,
+          );
 
           return Stack(
             children: [
@@ -9021,13 +10077,17 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    0,
+                    scrollTopPadding,
                     contentLeft,
                     scrollBottomPadding,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_isHistoryViewOpen) ...[
+                        _sectionTitle(progressSectionTitle, scale),
+                        SizedBox(height: 8 * scale),
+                      ],
                       _outerPanel(
                         scale: scale,
                         child: Column(
@@ -9037,8 +10097,16 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                 scale: scale,
                                 label: 'Water',
                                 accentColor: const Color(0xFFDEF4FC),
-                                totalValueText: '3 l',
-                                currentText: '0.2',
+                                totalValueText: waterTotalText,
+                                currentText: waterCurrentText,
+                                percentText: _percentText(
+                                  consumedWaterLiters,
+                                  targetWaterLiters,
+                                ),
+                                progressFraction: _progressFraction(
+                                  consumedWaterLiters,
+                                  targetWaterLiters,
+                                ),
                                 highlightCurrent: false,
                               ),
                               SizedBox(height: 8 * scale),
@@ -9050,7 +10118,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                     scale: scale,
                                     label: 'Calories',
                                     accentColor: const Color(0xFFFF8341),
-                                    totalValueText: '2045 Kcal',
+                                    totalValueText:
+                                        '${_formatWholeMetric(targetCalories)} Kcal',
+                                    currentText: _formatWholeMetric(
+                                      consumedCalories,
+                                    ),
+                                    percentText: _percentText(
+                                      consumedCalories,
+                                      targetCalories,
+                                    ),
+                                    progressFraction: _progressFraction(
+                                      consumedCalories,
+                                      targetCalories,
+                                    ),
                                   ),
                                 ),
                                 SizedBox(width: 8 * scale),
@@ -9059,7 +10139,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                     scale: scale,
                                     label: 'Protein',
                                     accentColor: const Color(0xFF41A0FF),
-                                    totalValueText: '2045 g',
+                                    totalValueText:
+                                        '${_formatWholeMetric(targetProtein)} g',
+                                    currentText: _formatWholeMetric(
+                                      consumedProtein,
+                                    ),
+                                    percentText: _percentText(
+                                      consumedProtein,
+                                      targetProtein,
+                                    ),
+                                    progressFraction: _progressFraction(
+                                      consumedProtein,
+                                      targetProtein,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -9072,7 +10164,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                     scale: scale,
                                     label: 'Carbohydrates',
                                     accentColor: const Color(0xFFC940FF),
-                                    totalValueText: '2045 g',
+                                    totalValueText:
+                                        '${_formatWholeMetric(targetCarbohydrates)} g',
+                                    currentText: _formatWholeMetric(
+                                      consumedCarbohydrates,
+                                    ),
+                                    percentText: _percentText(
+                                      consumedCarbohydrates,
+                                      targetCarbohydrates,
+                                    ),
+                                    progressFraction: _progressFraction(
+                                      consumedCarbohydrates,
+                                      targetCarbohydrates,
+                                    ),
                                   ),
                                 ),
                                 SizedBox(width: 8 * scale),
@@ -9081,7 +10185,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                     scale: scale,
                                     label: 'Fat',
                                     accentColor: const Color(0xFFFFE241),
-                                    totalValueText: '2045 g',
+                                    totalValueText:
+                                        '${_formatWholeMetric(targetFat)} g',
+                                    currentText: _formatWholeMetric(
+                                      consumedFat,
+                                    ),
+                                    percentText: _percentText(
+                                      consumedFat,
+                                      targetFat,
+                                    ),
+                                    progressFraction: _progressFraction(
+                                      consumedFat,
+                                      targetFat,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -9129,7 +10245,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       scale: scale,
                                       label: 'Fiber',
                                       accentColor: const Color(0xFFF3E5AB),
-                                      totalValueText: '2045 g',
+                                      totalValueText:
+                                          '${_formatWholeMetric(targetFiber)} g',
+                                      currentText: _formatWholeMetric(
+                                        consumedFiber,
+                                      ),
+                                      percentText: _percentText(
+                                        consumedFiber,
+                                        targetFiber,
+                                      ),
+                                      progressFraction: _progressFraction(
+                                        consumedFiber,
+                                        targetFiber,
+                                      ),
                                     ),
                                   ),
                                   SizedBox(width: 8 * scale),
@@ -9138,7 +10266,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       scale: scale,
                                       label: 'Sodium',
                                       accentColor: Colors.white,
-                                      totalValueText: '2045 mg',
+                                      totalValueText:
+                                          '${_formatWholeMetric(targetSodium)} mg',
+                                      currentText: _formatWholeMetric(
+                                        consumedSodium,
+                                      ),
+                                      percentText: _percentText(
+                                        consumedSodium,
+                                        targetSodium,
+                                      ),
+                                      progressFraction: _progressFraction(
+                                        consumedSodium,
+                                        targetSodium,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -9152,7 +10292,19 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                     scale: scale,
                                     label: 'Sugar',
                                     accentColor: const Color(0xFFFF4144),
-                                    totalValueText: '2045 g',
+                                    totalValueText:
+                                        '${_formatWholeMetric(targetSugar)} g',
+                                    currentText: _formatWholeMetric(
+                                      consumedSugar,
+                                    ),
+                                    percentText: _percentText(
+                                      consumedSugar,
+                                      targetSugar,
+                                    ),
+                                    progressFraction: _progressFraction(
+                                      consumedSugar,
+                                      targetSugar,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -9170,8 +10322,11 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                             scale: scale,
                             label: 'Spent Today',
                             accentColor: const Color(0xFF00A814),
-                            totalValueText: '₹ 1000',
-                            currentText: '₹ 200',
+                            totalValueText:
+                                '$budgetCurrencyGlyph ${_formatCurrencyAmount(chosenBudgetTarget)}',
+                            currentText: '$budgetCurrencyGlyph 0',
+                            percentText: '0 %',
+                            progressFraction: 0.0,
                           ),
                         ),
                       ],
@@ -9235,8 +10390,9 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                 ? SizedBox(
                                     height: 72,
                                     child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment: isHistoryDateEditable
+                                          ? MainAxisAlignment.spaceBetween
+                                          : MainAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -9261,13 +10417,15 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                             ),
                                           ],
                                         ),
-                                        _buildMealsTimelineEditButton(
-                                          scale: scale,
-                                        ),
+                                        if (isHistoryDateEditable)
+                                          _buildMealsTimelineEditButton(
+                                            scale: scale,
+                                          ),
                                       ],
                                     ),
                                   )
-                                : _isMealsTimelineEditMode
+                                : (_isMealsTimelineEditMode &&
+                                      isHistoryDateEditable)
                                 ? _buildMealsTimelineEditEntries(
                                     scale: scale,
                                     entries: mealsTimelineEntries,
@@ -9282,10 +10440,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                           entries: mealsTimelineEntries,
                                         ),
                                       ),
-                                      SizedBox(width: 8 * scale),
-                                      _buildMealsTimelineEditButton(
-                                        scale: scale,
-                                      ),
+                                      if (isHistoryDateEditable) ...[
+                                        SizedBox(width: 8 * scale),
+                                        _buildMealsTimelineEditButton(
+                                          scale: scale,
+                                        ),
+                                      ],
                                     ],
                                   ),
                           ),
@@ -9299,28 +10459,58 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 top: titleTop,
                 left: contentLeft,
                 width: contentWidth,
-                child: IgnorePointer(
-                  child: SizedBox(
-                    height: 48 * scale,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: _sectionTitle('Daily Progress', scale),
-                          ),
+                child: SizedBox(
+                  height: 56 * scale,
+                  child: _isHistoryViewOpen
+                      ? Row(
+                          children: [
+                            _historyArrowButton(
+                              scale: scale,
+                              assetPath: 'assets/Back_arrow.svg',
+                              onTap: () => _shiftHistoryDateByDays(-1),
+                            ),
+                            SizedBox(width: 16 * scale),
+                            Expanded(
+                              child: _historyDatePill(
+                                scale: scale,
+                                label: _formatHistoryDateLabel(
+                                  selectedProgressDate,
+                                ),
+                                onTap: _openHistoryDatePicker,
+                              ),
+                            ),
+                            SizedBox(width: 16 * scale),
+                            _historyArrowButton(
+                              scale: scale,
+                              assetPath: 'assets/Front_arrow.svg',
+                              onTap: selectedProgressDate.isBefore(todayDate)
+                                  ? () => _shiftHistoryDateByDays(1)
+                                  : null,
+                            ),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: _sectionTitle('Daily Progress', scale),
+                              ),
+                            ),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _openHistoryView,
+                              child: Transform.translate(
+                                offset: Offset(0, -8 * scale),
+                                child: _navIconTile(
+                                  scale: scale,
+                                  icon: Icons.history,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        Transform.translate(
-                          offset: Offset(0, -8 * scale),
-                          child: _navIconTile(
-                            scale: scale,
-                            icon: Icons.history,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
               Positioned(
@@ -9330,100 +10520,419 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 height: blurPanelHeight,
                 child: _buildBottomBlurFadeOverlay(),
               ),
-              Positioned(
-                right: 16 * scale,
-                bottom: controlsBottom + (74 * scale),
-                child: SizedBox(
-                  width: 72 * scale,
-                  height: 99 * scale,
-                  child: Image.asset(
-                    'assets/Bellyo_ai.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Icon(
-                        Icons.image_not_supported_outlined,
-                        color: const Color(0x80000000),
-                        size: 36 * scale,
-                      );
-                    },
+              if (showFloatingBanana)
+                Positioned(
+                  right: 16 * scale,
+                  bottom: controlsBottom + (74 * scale),
+                  child: SizedBox(
+                    width: 72 * scale,
+                    height: 99 * scale,
+                    child: Image.asset(
+                      'assets/Bellyo_ai.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(
+                          Icons.image_not_supported_outlined,
+                          color: const Color(0x80000000),
+                          size: 36 * scale,
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
               Positioned(
                 left: contentLeft,
                 width: contentWidth,
                 bottom: controlsBottom,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16 * scale),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(
-                            sigmaX: _dailyProgressMenuBarBlurSigma,
-                            sigmaY: _dailyProgressMenuBarBlurSigma,
+                child: _isHistoryViewOpen
+                    ? _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: Colors.white,
+                        enablePressShadeFeedback: true,
+                        onTap: _closeHistoryView,
+                        child: SizedBox(
+                          width: 18 * scale,
+                          height: 18 * scale,
+                          child: SvgPicture.asset(
+                            'assets/Below_back.svg',
+                            fit: BoxFit.contain,
                           ),
-                          child: Container(
-                            height: navHeight,
-                            decoration: BoxDecoration(
-                              color: _menuBarBlockFillColor,
+                        ),
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
                               borderRadius: BorderRadius.circular(16 * scale),
-                            ),
-                            padding: EdgeInsets.all(8 * scale),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _bottomNavIconButton(
-                                  scale: scale,
-                                  index: 0,
-                                  assetPath: 'assets/Home_in.svg',
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(
+                                  sigmaX: _dailyProgressMenuBarBlurSigma,
+                                  sigmaY: _dailyProgressMenuBarBlurSigma,
                                 ),
-                                _bottomNavIconButton(
-                                  scale: scale,
-                                  index: 1,
-                                  assetPath: 'assets/Notification_in.svg',
+                                child: Container(
+                                  height: navHeight,
+                                  decoration: BoxDecoration(
+                                    color: _menuBarBlockFillColor,
+                                    borderRadius: BorderRadius.circular(
+                                      16 * scale,
+                                    ),
+                                  ),
+                                  padding: EdgeInsets.all(8 * scale),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      _bottomNavIconButton(
+                                        scale: scale,
+                                        index: 0,
+                                        assetPath: 'assets/Home_in.svg',
+                                      ),
+                                      _bottomNavIconButton(
+                                        scale: scale,
+                                        index: 1,
+                                        assetPath: 'assets/Notification_in.svg',
+                                      ),
+                                      _bottomNavIconButton(
+                                        scale: scale,
+                                        index: 2,
+                                        assetPath: 'assets/Account_in.svg',
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                _bottomNavIconButton(
-                                  scale: scale,
-                                  index: 2,
-                                  assetPath: 'assets/Account_in.svg',
-                                ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 16 * scale),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16 * scale),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(
-                          sigmaX: _dailyProgressMenuBarBlurSigma,
-                          sigmaY: _dailyProgressMenuBarBlurSigma,
-                        ),
-                        child: Container(
-                          width: navHeight,
-                          height: navHeight,
-                          decoration: BoxDecoration(
-                            color: _menuBarBlockFillColor,
+                          SizedBox(width: 16 * scale),
+                          ClipRRect(
                             borderRadius: BorderRadius.circular(16 * scale),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: _dailyProgressMenuBarBlurSigma,
+                                sigmaY: _dailyProgressMenuBarBlurSigma,
+                              ),
+                              child: Container(
+                                width: navHeight,
+                                height: navHeight,
+                                decoration: BoxDecoration(
+                                  color: _menuBarBlockFillColor,
+                                  borderRadius: BorderRadius.circular(
+                                    16 * scale,
+                                  ),
+                                ),
+                                padding: EdgeInsets.all(8 * scale),
+                                child: _bottomNavIconButton(
+                                  scale: scale,
+                                  index: 3,
+                                  assetPath: 'assets/Add_new.svg',
+                                ),
+                              ),
+                            ),
                           ),
-                          padding: EdgeInsets.all(8 * scale),
-                          child: _bottomNavIconButton(
-                            scale: scale,
-                            index: 3,
-                            assetPath: 'assets/Add_new.svg',
-                          ),
-                        ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _HistoryCalendarDialog extends StatefulWidget {
+  const _HistoryCalendarDialog({
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  final DateTime initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  @override
+  State<_HistoryCalendarDialog> createState() => _HistoryCalendarDialogState();
+}
+
+class _HistoryCalendarDialogState extends State<_HistoryCalendarDialog> {
+  static const List<String> _weekdayLabels = <String>[
+    'S',
+    'M',
+    'T',
+    'W',
+    'T',
+    'F',
+    'S',
+  ];
+
+  late DateTime _selectedDate;
+  late DateTime _visibleMonth;
+
+  DateTime get _minDate => _dateOnly(widget.firstDate);
+  DateTime get _maxDate => _dateOnly(widget.lastDate);
+  DateTime get _minMonth => DateTime(_minDate.year, _minDate.month);
+  DateTime get _maxMonth => DateTime(_maxDate.year, _maxDate.month);
+
+  @override
+  void initState() {
+    super.initState();
+    final clampedDate = _clampDate(_dateOnly(widget.initialDate));
+    _selectedDate = clampedDate;
+    _visibleMonth = DateTime(clampedDate.year, clampedDate.month);
+  }
+
+  DateTime _clampDate(DateTime value) {
+    if (value.isBefore(_minDate)) {
+      return _minDate;
+    }
+    if (value.isAfter(_maxDate)) {
+      return _maxDate;
+    }
+    return value;
+  }
+
+  String _monthLabel(DateTime month) {
+    return '${_historyMonthNames[month.month - 1]}, ${month.year}';
+  }
+
+  void _shiftMonth(int monthDelta) {
+    if (monthDelta == 0) {
+      return;
+    }
+    final candidate = DateTime(
+      _visibleMonth.year,
+      _visibleMonth.month + monthDelta,
+    );
+    if (candidate.isBefore(_minMonth) || candidate.isAfter(_maxMonth)) {
+      return;
+    }
+    setState(() {
+      _visibleMonth = candidate;
+    });
+  }
+
+  List<DateTime?> _calendarSlotsForVisibleMonth() {
+    final monthStart = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
+    final daysInMonth = DateTime(
+      _visibleMonth.year,
+      _visibleMonth.month + 1,
+      0,
+    ).day;
+    final leadingBlanks = monthStart.weekday % 7;
+    final usedSlots = leadingBlanks + daysInMonth;
+    final trailingBlanks = (7 - (usedSlots % 7)) % 7;
+    final totalSlots = usedSlots + trailingBlanks;
+    final slots = List<DateTime?>.filled(totalSlots, null);
+    for (int day = 1; day <= daysInMonth; day++) {
+      final slotIndex = leadingBlanks + day - 1;
+      slots[slotIndex] = DateTime(_visibleMonth.year, _visibleMonth.month, day);
+    }
+    return slots;
+  }
+
+  bool _isDateEnabled(DateTime date) {
+    final normalized = _dateOnly(date);
+    return !normalized.isBefore(_minDate) && !normalized.isAfter(_maxDate);
+  }
+
+  Widget _buildMonthArrow({
+    required String assetPath,
+    required bool enabled,
+    required VoidCallback onTap,
+    required double scale,
+  }) {
+    return SizedBox(
+      width: 18 * scale,
+      height: 16 * scale,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: Opacity(
+          opacity: enabled ? 1.0 : 0.35,
+          child: SvgPicture.asset(assetPath, fit: BoxFit.contain),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayChip({required double scale, required DateTime? date}) {
+    if (date == null) {
+      return SizedBox(width: 40 * scale, height: 40 * scale);
+    }
+
+    final dayDate = date;
+    final isEnabled = _isDateEnabled(dayDate);
+    final isSelected = _isSameDate(dayDate, _selectedDate);
+    final isToday = _isSameDate(dayDate, _MealsTimelineStore.today);
+    final hasSelectedStyle = isSelected;
+    final fillColor = (isSelected || isToday)
+        ? Colors.white
+        : const Color(0x8FFFFFFF);
+
+    return SizedBox(
+      width: 40 * scale,
+      height: 40 * scale,
+      child: IgnorePointer(
+        ignoring: !isEnabled,
+        child: Opacity(
+          opacity: isEnabled ? 1.0 : 0.35,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(32 * scale),
+              boxShadow: hasSelectedStyle
+                  ? const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0xFFFF0000),
+                        blurRadius: 2,
+                        blurStyle: BlurStyle.outer,
+                      ),
+                    ]
+                  : const <BoxShadow>[],
+            ),
+            child: _RotatingGlassButton(
+              scale: scale,
+              height: 40 * scale,
+              borderRadius: 32 * scale,
+              fillColor: fillColor,
+              enablePressShadeFeedback: isEnabled,
+              showBorderLight: false,
+              onTap: () =>
+                  Navigator.of(context).pop<DateTime>(_dateOnly(dayDate)),
+              child: Text(
+                '${dayDate.day}',
+                style: TextStyle(
+                  fontFamily: _defaultNonBorelFontFamily,
+                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final scale = (media.size.width / 393).clamp(0.82, 1.0);
+    final slots = _calendarSlotsForVisibleMonth();
+    final rowCount = (slots.length / 7).round();
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).pop(),
+              child: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                  child: Container(color: Colors.black.withValues(alpha: 0.14)),
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16 * scale),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: 40 * scale,
+                  sigmaY: 40 * scale,
+                ),
+                child: Container(
+                  width: math.min(342 * scale, media.size.width - (32 * scale)),
+                  padding: EdgeInsets.all(8 * scale),
+                  decoration: BoxDecoration(
+                    color: const Color(0x52FFFFFF),
+                    borderRadius: BorderRadius.circular(16 * scale),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildMonthArrow(
+                              assetPath: 'assets/Back_arrow.svg',
+                              enabled: !_visibleMonth.isAtSameMomentAs(
+                                _minMonth,
+                              ),
+                              onTap: () => _shiftMonth(-1),
+                              scale: scale,
+                            ),
+                            Text(
+                              _monthLabel(_visibleMonth),
+                              style: TextStyle(
+                                fontFamily: _defaultNonBorelFontFamily,
+                                fontSize: (24 * scale).clamp(20.0, 28.0),
+                                color: Colors.black,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            _buildMonthArrow(
+                              assetPath: 'assets/Front_arrow.svg',
+                              enabled: !_visibleMonth.isAtSameMomentAs(
+                                _maxMonth,
+                              ),
+                              onTap: () => _shiftMonth(1),
+                              scale: scale,
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 16 * scale),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: _weekdayLabels
+                            .map(
+                              (label) => SizedBox(
+                                width: 31 * scale,
+                                child: Text(
+                                  label,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                      SizedBox(height: 16 * scale),
+                      for (int row = 0; row < rowCount; row++) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: List<Widget>.generate(7, (column) {
+                            final index = (row * 7) + column;
+                            final date = index < slots.length
+                                ? slots[index]
+                                : null;
+                            return _buildDayChip(scale: scale, date: date);
+                          }),
+                        ),
+                        if (row != rowCount - 1) SizedBox(height: 8 * scale),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -9626,6 +11135,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
       timeText: _MealsTimelineStore.timeTextFromTimeOfDay(_selectedTime),
       itemName: itemName,
       caloriesText: '0',
+      waterLitersText: waterText,
     );
     if (mounted) {
       setState(() {});
@@ -11153,6 +12663,12 @@ class _SearchFoodItemDetailsScreen extends StatefulWidget {
     this.exchangeTargetEntryId,
     this.initialItemName,
     this.initialCaloriesText,
+    this.initialProteinText,
+    this.initialCarbohydratesText,
+    this.initialFatText,
+    this.initialFiberText,
+    this.initialSugarText,
+    this.initialSodiumText,
     this.initialTimeText,
     this.showAddToCustom = true,
     this.timelineActionLabelOverride,
@@ -11163,6 +12679,12 @@ class _SearchFoodItemDetailsScreen extends StatefulWidget {
   final int? exchangeTargetEntryId;
   final String? initialItemName;
   final String? initialCaloriesText;
+  final String? initialProteinText;
+  final String? initialCarbohydratesText;
+  final String? initialFatText;
+  final String? initialFiberText;
+  final String? initialSugarText;
+  final String? initialSodiumText;
   final String? initialTimeText;
   final bool showAddToCustom;
   final String? timelineActionLabelOverride;
@@ -11465,6 +12987,12 @@ class _SearchFoodItemDetailsScreenState
           '$_timeHourText:$_timeMinuteText ${_isAmSelected ? 'AM' : 'PM'}',
       itemName: itemName,
       caloriesText: _normalizedNumericText(_caloriesController.text),
+      proteinText: _normalizedNumericText(_proteinController.text),
+      carbohydratesText: _normalizedNumericText(_carbsController.text),
+      fatText: _normalizedNumericText(_fatController.text),
+      fiberText: _normalizedNumericText(_fiberController.text),
+      sugarText: _normalizedNumericText(_sugarController.text),
+      sodiumText: _normalizedNumericText(_sodiumController.text),
     );
     if (mounted) {
       setState(() {});
@@ -11574,6 +13102,20 @@ class _SearchFoodItemDetailsScreenState
     final defaultProtein = (calories * 0.15 / 4).round();
     final defaultCarbs = (calories * 0.55 / 4).round();
     final defaultFat = (calories * 0.30 / 9).round();
+    final seededProtein = _normalizedNumericText(
+      widget.initialProteinText ?? defaultProtein.clamp(0, 9999).toString(),
+    );
+    final seededCarbs = _normalizedNumericText(
+      widget.initialCarbohydratesText ?? defaultCarbs.clamp(0, 9999).toString(),
+    );
+    final seededFat = _normalizedNumericText(
+      widget.initialFatText ?? defaultFat.clamp(0, 9999).toString(),
+    );
+    final seededFiber = _normalizedNumericText(widget.initialFiberText ?? '0');
+    final seededSugar = _normalizedNumericText(widget.initialSugarText ?? '0');
+    final seededSodium = _normalizedNumericText(
+      widget.initialSodiumText ?? '0',
+    );
 
     _selectedTime = _parseTimeTextOrDefault(widget.initialTimeText);
     _isFavorite = widget.item.isFavorite;
@@ -11582,18 +13124,12 @@ class _SearchFoodItemDetailsScreenState
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _caloriesController = TextEditingController(text: calories.toString());
-    _proteinController = TextEditingController(
-      text: defaultProtein.clamp(0, 9999).toString(),
-    );
-    _carbsController = TextEditingController(
-      text: defaultCarbs.clamp(0, 9999).toString(),
-    );
-    _fatController = TextEditingController(
-      text: defaultFat.clamp(0, 9999).toString(),
-    );
-    _fiberController = TextEditingController(text: '0');
-    _sugarController = TextEditingController(text: '0');
-    _sodiumController = TextEditingController(text: '0');
+    _proteinController = TextEditingController(text: seededProtein);
+    _carbsController = TextEditingController(text: seededCarbs);
+    _fatController = TextEditingController(text: seededFat);
+    _fiberController = TextEditingController(text: seededFiber);
+    _sugarController = TextEditingController(text: seededSugar);
+    _sodiumController = TextEditingController(text: seededSodium);
 
     _itemNameFocusNode = FocusNode();
     _hourFocusNode = FocusNode();
@@ -12737,6 +14273,7 @@ class _CustomEntriesScreenState extends State<CustomEntriesScreen>
               math.max(metrics.padding.bottom, 24 * scale);
           final searchQuery = _searchController.text.trim().toLowerCase();
           final allEntries = _CustomFoodEntryStore.entries;
+          final isCompletelyEmpty = allEntries.isEmpty;
           final visibleEntries = searchQuery.isEmpty
               ? allEntries
               : allEntries
@@ -12751,116 +14288,165 @@ class _CustomEntriesScreenState extends State<CustomEntriesScreen>
                 top: titleRowTop,
                 left: 16 * scale,
                 right: 16 * scale,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Transform.translate(
-                      offset: Offset(0, 13 * scale),
-                      child: Text(
-                        'Custom Entries',
-                        style: TextStyle(
-                          fontFamily: 'Borel',
-                          fontSize: (32 * scale).clamp(24.0, 42.0),
-                          color: Colors.white,
-                          height: 0.99,
+                child: isCompletelyEmpty
+                    ? Center(
+                        child: Transform.translate(
+                          offset: Offset(0, 13 * scale),
+                          child: Text(
+                            'Custom Entries',
+                            style: TextStyle(
+                              fontFamily: 'Borel',
+                              fontSize: (32 * scale).clamp(24.0, 42.0),
+                              color: Colors.white,
+                              height: 0.99,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    _isSelectMode
-                        ? _TodaysEntryGlassTile(
-                            scale: scale,
-                            width: 65 * scale,
-                            height: 37 * scale,
-                            borderRadius: 15 * scale,
-                            padding: EdgeInsets.zero,
-                            inactiveFillColor: Colors.white,
-                            selectedFillColor: Colors.white,
-                            onTap: _toggleSelectMode,
-                            child: Icon(
-                              Icons.close,
-                              color: Colors.black,
-                              size: (24 * scale).clamp(18.0, 28.0),
-                            ),
-                          )
-                        : _TodaysEntryGlassTile(
-                            scale: scale,
-                            borderRadius: 15 * scale,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12 * scale,
-                              vertical: 8 * scale,
-                            ),
-                            inactiveFillColor: const Color(0x52FFFFFF),
-                            selectedFillColor: Colors.white,
-                            onTap: _toggleSelectMode,
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Transform.translate(
+                            offset: Offset(0, 13 * scale),
                             child: Text(
-                              'Select',
+                              'Custom Entries',
                               style: TextStyle(
+                                fontFamily: 'Borel',
+                                fontSize: (32 * scale).clamp(24.0, 42.0),
+                                color: Colors.white,
+                                height: 0.99,
+                              ),
+                            ),
+                          ),
+                          _isSelectMode
+                              ? _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  width: 65 * scale,
+                                  height: 37 * scale,
+                                  borderRadius: 15 * scale,
+                                  padding: EdgeInsets.zero,
+                                  inactiveFillColor: Colors.white,
+                                  selectedFillColor: Colors.white,
+                                  onTap: _toggleSelectMode,
+                                  child: Icon(
+                                    Icons.close,
+                                    color: Colors.black,
+                                    size: (24 * scale).clamp(18.0, 28.0),
+                                  ),
+                                )
+                              : _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  borderRadius: 15 * scale,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 12 * scale,
+                                    vertical: 8 * scale,
+                                  ),
+                                  inactiveFillColor: const Color(0x52FFFFFF),
+                                  selectedFillColor: Colors.white,
+                                  onTap: _toggleSelectMode,
+                                  child: Text(
+                                    'Select',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                        ],
+                      ),
+              ),
+              if (!isCompletelyEmpty)
+                Positioned(
+                  top: searchTop,
+                  left: 16 * scale,
+                  right: 16 * scale,
+                  child: Container(
+                    height: 56 * scale,
+                    padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                    decoration: BoxDecoration(
+                      color: const Color(0x52FFFFFF),
+                      borderRadius: BorderRadius.circular(32 * scale),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (_) {
+                              if (mounted) {
+                                setState(() {});
+                              }
+                            },
+                            textInputAction: TextInputAction.search,
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (16 * scale).clamp(14.0, 20.0),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              hintText: 'Search Custom Entries',
+                              hintStyle: TextStyle(
                                 fontFamily: _defaultNonBorelFontFamily,
                                 fontSize: (16 * scale).clamp(14.0, 20.0),
-                                color: Colors.white,
+                                color: const Color(0x52000000),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
-                  ],
+                        ),
+                        Icon(
+                          Icons.search,
+                          color: Colors.black,
+                          size: (24 * scale).clamp(20.0, 28.0),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
               Positioned(
-                top: searchTop,
                 left: 16 * scale,
                 right: 16 * scale,
-                child: Container(
-                  height: 56 * scale,
-                  padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-                  decoration: BoxDecoration(
-                    color: const Color(0x52FFFFFF),
-                    borderRadius: BorderRadius.circular(32 * scale),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (_) {
-                            if (mounted) {
-                              setState(() {});
-                            }
-                          },
-                          textInputAction: TextInputAction.search,
-                          style: TextStyle(
-                            fontFamily: _defaultNonBorelFontFamily,
-                            fontSize: (16 * scale).clamp(14.0, 20.0),
-                            color: Colors.black,
-                            fontWeight: FontWeight.w500,
+                top: isCompletelyEmpty
+                    ? (titleRowTop + (172 * scale))
+                    : listTop,
+                bottom: bottomPanelHeight + controlsBottom + (24 * scale),
+                child: isCompletelyEmpty
+                    ? Column(
+                        children: [
+                          SizedBox(
+                            width: 168 * scale,
+                            height: 255 * scale,
+                            child: Image.asset(
+                              'assets/No_custom_entries.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  Icons.image_not_supported_outlined,
+                                  color: const Color(0x80000000),
+                                  size: (64 * scale).clamp(40.0, 84.0),
+                                );
+                              },
+                            ),
                           ),
-                          decoration: InputDecoration(
-                            isCollapsed: true,
-                            border: InputBorder.none,
-                            hintText: 'Search Custom Entries',
-                            hintStyle: TextStyle(
+                          SizedBox(height: 18 * scale),
+                          Text(
+                            'No Custom Food Entries',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
                               fontFamily: _defaultNonBorelFontFamily,
-                              fontSize: (16 * scale).clamp(14.0, 20.0),
-                              color: const Color(0x52000000),
+                              fontSize: (24 * scale).clamp(20.0, 30.0),
+                              color: Colors.black,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.search,
-                        color: Colors.black,
-                        size: (24 * scale).clamp(20.0, 28.0),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 16 * scale,
-                right: 16 * scale,
-                top: listTop,
-                bottom: bottomPanelHeight + controlsBottom + (24 * scale),
-                child: visibleEntries.isEmpty
+                        ],
+                      )
+                    : visibleEntries.isEmpty
                     ? Center(
                         child: Text(
                           'No Custom Food Entries',
@@ -13583,6 +15169,12 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       timeText: entry.timeText,
       itemName: entry.name,
       caloriesText: entry.caloriesText,
+      proteinText: entry.proteinText,
+      carbohydratesText: entry.carbohydratesText,
+      fatText: entry.fatText,
+      fiberText: entry.fiberText,
+      sugarText: entry.sugarText,
+      sodiumText: entry.sodiumText,
     );
     _resetAfterAdd();
   }
@@ -14618,6 +16210,33 @@ class _AccountScreenState extends State<AccountScreen>
     );
   }
 
+  void _refreshCalculatedTargetsFromInputs() {
+    final recommendation = _computeNutritionRecommendation(
+      goalIndex: _selectedGoalIndex,
+      ageYears: _selectedAge,
+      weightKg: _selectedWeightKg,
+      heightCm: _selectedHeightCm,
+      activityIndex: _selectedActivityIndex,
+      genderIndex: _OnboardingProfileState.selectedGenderIndex,
+    );
+    _nutritionGoalValues = Map<String, String>.from(recommendation.goalValues);
+    _advancedNutritionGoalValues = Map<String, String>.from(
+      recommendation.advancedGoalValues,
+    );
+    _hydrationGoalText = _computeHydrationGoalTextFromProfile(
+      weightKg: _selectedWeightKg,
+      activityIndex: _selectedActivityIndex,
+    );
+
+    _OnboardingProfileState.nutritionGoalValues = Map<String, String>.from(
+      _nutritionGoalValues,
+    );
+    _OnboardingProfileState.advancedNutritionGoalValues =
+        Map<String, String>.from(_advancedNutritionGoalValues);
+    _OnboardingProfileState.hydrationGoalText = _hydrationGoalText;
+    _OnboardingProfileState.isHydrationInLiters = true;
+  }
+
   Future<void> _openGoalScreen() async {
     if (!mounted) {
       return;
@@ -14644,7 +16263,10 @@ class _AccountScreenState extends State<AccountScreen>
       return;
     }
     final clampedGoalIndex = updatedGoalIndex.clamp(0, _goalLabels.length - 1);
-    setState(() => _selectedGoalIndex = clampedGoalIndex);
+    setState(() {
+      _selectedGoalIndex = clampedGoalIndex;
+      _refreshCalculatedTargetsFromInputs();
+    });
     _OnboardingProfileState.selectedGoalIndex = clampedGoalIndex;
   }
 
@@ -14676,7 +16298,10 @@ class _AccountScreenState extends State<AccountScreen>
       return;
     }
     final clampedAge = updatedAge.clamp(0, 110);
-    setState(() => _selectedAge = clampedAge);
+    setState(() {
+      _selectedAge = clampedAge;
+      _refreshCalculatedTargetsFromInputs();
+    });
     _OnboardingProfileState.selectedAge = clampedAge;
   }
 
@@ -14700,6 +16325,7 @@ class _AccountScreenState extends State<AccountScreen>
     setState(() {
       _selectedWeightKg = updatedWeight.weightKg.clamp(20, 300);
       _isWeightInKg = updatedWeight.isWeightInKg;
+      _refreshCalculatedTargetsFromInputs();
     });
     _OnboardingProfileState.selectedWeightKg = _selectedWeightKg;
     _OnboardingProfileState.isWeightInKg = _isWeightInKg;
@@ -14725,6 +16351,7 @@ class _AccountScreenState extends State<AccountScreen>
     setState(() {
       _selectedHeightCm = updatedHeight.heightCm.clamp(100, 240);
       _isHeightInCm = updatedHeight.isHeightInCm;
+      _refreshCalculatedTargetsFromInputs();
     });
     _OnboardingProfileState.selectedHeightCm = _selectedHeightCm;
     _OnboardingProfileState.isHeightInCm = _isHeightInCm;
@@ -14746,7 +16373,10 @@ class _AccountScreenState extends State<AccountScreen>
       return;
     }
     final clampedIndex = updatedIndex.clamp(0, _activityLabels.length - 1);
-    setState(() => _selectedActivityIndex = clampedIndex);
+    setState(() {
+      _selectedActivityIndex = clampedIndex;
+      _refreshCalculatedTargetsFromInputs();
+    });
     _OnboardingProfileState.selectedActivityIndex = clampedIndex;
   }
 
@@ -14837,11 +16467,19 @@ class _AccountScreenState extends State<AccountScreen>
     if (!mounted) {
       return;
     }
+    final recommendation = _computeNutritionRecommendation(
+      goalIndex: _selectedGoalIndex,
+      ageYears: _selectedAge,
+      weightKg: _selectedWeightKg,
+      heightCm: _selectedHeightCm,
+      activityIndex: _selectedActivityIndex,
+      genderIndex: _OnboardingProfileState.selectedGenderIndex,
+    );
     final result = await Navigator.of(context).push<_AccountNutritionSelection>(
       _buildAccountEditRoute<_AccountNutritionSelection>(
         screen: AccountDailyNutritionGoalsScreen(
-          initialGoalValues: _nutritionGoalValues,
-          initialAdvancedGoalValues: _advancedNutritionGoalValues,
+          initialGoalValues: recommendation.goalValues,
+          initialAdvancedGoalValues: recommendation.advancedGoalValues,
         ),
       ),
     );
@@ -14865,13 +16503,17 @@ class _AccountScreenState extends State<AccountScreen>
     if (!mounted) {
       return;
     }
+    final recommendedHydrationGoalText = _computeHydrationGoalTextFromProfile(
+      weightKg: _selectedWeightKg,
+      activityIndex: _selectedActivityIndex,
+    );
     final result = await Navigator.of(context).push<_AccountHydrationSelection>(
       _buildAccountEditRoute<_AccountHydrationSelection>(
         screen: AccountDailyHydrationGoalsScreen(
           initiallySkippedHydrationSection: _skippedWaterSection,
           initialHydrationEnabled: _hydrationEnabled,
-          initialHydrationGoalText: _hydrationGoalText,
-          initialHydrationInLiters: _isHydrationInLiters,
+          initialHydrationGoalText: recommendedHydrationGoalText,
+          initialHydrationInLiters: true,
         ),
       ),
     );
@@ -16625,16 +18267,17 @@ class _GoalCardState extends State<_GoalCard> {
       },
       child: SizedBox(
         width: double.infinity,
+        height: 152 * scale,
         child: _RotatingGlassPanel(
           scale: scale,
           borderRadius: 16 * scale,
           fillColor: fillColor,
           padding: EdgeInsets.all(16 * scale),
-          expandToBounds: false,
+          expandToBounds: true,
           boxShadow: shadows,
           enableBlur: !(_isLongPressed || isActive),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               SizedBox(
                 width: 80 * scale,
@@ -17094,6 +18737,7 @@ class _RotatingGlassButton extends StatefulWidget {
     required this.onTap,
     required this.child,
     this.enablePressShadeFeedback = false,
+    this.showBorderLight = true,
   });
 
   final double scale;
@@ -17103,6 +18747,7 @@ class _RotatingGlassButton extends StatefulWidget {
   final VoidCallback onTap;
   final Widget child;
   final bool enablePressShadeFeedback;
+  final bool showBorderLight;
 
   @override
   State<_RotatingGlassButton> createState() => _RotatingGlassButtonState();
@@ -17235,19 +18880,20 @@ class _RotatingGlassButtonState extends State<_RotatingGlassButton>
                     ),
                   ),
                 ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _RotatingBorderLightPainter(
-                        angle: rotatingAngle,
-                        borderRadius: radius,
-                        strokeWidth: rotatingLightStroke,
-                        glowWidth: (2 * scale).clamp(1.2, 2.8),
-                        borderStroke: borderStroke,
+                if (widget.showBorderLight)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _RotatingBorderLightPainter(
+                          angle: rotatingAngle,
+                          borderRadius: radius,
+                          strokeWidth: rotatingLightStroke,
+                          glowWidth: (2 * scale).clamp(1.2, 2.8),
+                          borderStroke: borderStroke,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
