@@ -364,18 +364,40 @@ void _applyRecommendedNutritionToOnboardingProfile({
       Map<String, String>.from(recommendation.advancedGoalValues);
 }
 
-const List<double> _hydrationMlPerKgByActivity = <double>[30, 33, 36, 40, 45];
+const int _hydrationBaseMlPerKg = 35;
+const double _ouncesPerLiter = 33.8140227018;
+const List<int> _hydrationActivityExtraMlByIndex = <int>[
+  0, // Low
+  250, // Light
+  500, // Moderate
+  750, // Active
+  1000, // Athlete
+];
+const List<int> _hydrationGoalExtraMlByGoalIndex = <int>[
+  300, // Lose Weight
+  200, // Gain Weight
+  300, // Gain Muscle
+  0, // Maintain
+];
 
 double _computeHydrationRecommendationLiters({
   required int weightKg,
   required int activityIndex,
+  required int goalIndex,
 }) {
-  final safeWeight = weightKg.clamp(20, 300);
-  final safeIndex = activityIndex
-      .clamp(0, _hydrationMlPerKgByActivity.length - 1)
+  final safeWeight = weightKg.clamp(20, 300).toInt();
+  final safeActivityIndex = activityIndex
+      .clamp(0, _hydrationActivityExtraMlByIndex.length - 1)
       .toInt();
-  final mlPerKg = _hydrationMlPerKgByActivity[safeIndex];
-  final liters = (safeWeight * mlPerKg) / 1000;
+  final safeGoalIndex = goalIndex
+      .clamp(0, _hydrationGoalExtraMlByGoalIndex.length - 1)
+      .toInt();
+
+  final baseMl = safeWeight * _hydrationBaseMlPerKg;
+  final activityExtraMl = _hydrationActivityExtraMlByIndex[safeActivityIndex];
+  final goalExtraMl = _hydrationGoalExtraMlByGoalIndex[safeGoalIndex];
+  final totalMl = baseMl + activityExtraMl + goalExtraMl;
+  final liters = totalMl / 1000;
   return math.max(0.1, liters);
 }
 
@@ -389,27 +411,34 @@ String _formatHydrationGoalTextFromLiters(double liters) {
 }
 
 String _computeHydrationGoalTextFromProfile({
+  int? goalIndex,
   int? weightKg,
   int? activityIndex,
+  bool? outputInLiters,
 }) {
   final liters = _computeHydrationRecommendationLiters(
+    goalIndex: goalIndex ?? _OnboardingProfileState.selectedGoalIndex,
     weightKg: weightKg ?? _OnboardingProfileState.selectedWeightKg,
     activityIndex:
         activityIndex ?? _OnboardingProfileState.selectedActivityIndex,
   );
-  return _formatHydrationGoalTextFromLiters(liters);
+  final shouldOutputLiters = outputInLiters ?? true;
+  final displayedValue = shouldOutputLiters ? liters : (liters * _ouncesPerLiter);
+  return _formatHydrationGoalTextFromLiters(displayedValue);
 }
 
 void _applyRecommendedHydrationToOnboardingProfile({
+  int? goalIndex,
   int? weightKg,
   int? activityIndex,
 }) {
   _OnboardingProfileState.hydrationGoalText =
       _computeHydrationGoalTextFromProfile(
+        goalIndex: goalIndex,
         weightKg: weightKg,
         activityIndex: activityIndex,
+        outputInLiters: _OnboardingProfileState.isHydrationInLiters,
       );
-  _OnboardingProfileState.isHydrationInLiters = true;
 }
 
 Widget _buildBottomBlurFadeOverlay() {
@@ -3272,10 +3301,19 @@ class _NameScreenState extends State<NameScreen>
     if (!mounted) {
       return;
     }
+    if (_isNameClicked && !_isNameLongPressed) {
+      if (!_nameFocusNode.hasFocus) {
+        _nameFocusNode.requestFocus();
+      }
+      return;
+    }
     setState(() {
       _isNameClicked = true;
       _isNameLongPressed = false;
     });
+    if (!_nameFocusNode.hasFocus) {
+      _nameFocusNode.requestFocus();
+    }
   }
 
   @override
@@ -3287,11 +3325,6 @@ class _NameScreenState extends State<NameScreen>
       vsync: this,
       duration: _kBackgroundMotionDuration,
     )..repeat();
-    _nameFocusNode.addListener(() {
-      if (mounted) {
-        setState(() {});
-      }
-    });
   }
 
   @override
@@ -3418,7 +3451,6 @@ class _NameScreenState extends State<NameScreen>
                       },
                       onTap: () {
                         _handleNameTap();
-                        _nameFocusNode.requestFocus();
                       },
                       child: SizedBox(
                         width: double.infinity,
@@ -5245,8 +5277,8 @@ class _AccountDailyHydrationGoalsScreenState
       _isHydrationInLiters = isLiters;
       if (currentValue != null) {
         final converted = isLiters
-            ? currentValue / 33.8140227018
-            : currentValue * 33.8140227018;
+            ? currentValue / _ouncesPerLiter
+            : currentValue * _ouncesPerLiter;
         final nextText = _formatNumberForField(converted);
         _waterController.value = TextEditingValue(
           text: nextText,
@@ -8412,8 +8444,8 @@ class _DailyHydrationGoalsScreenState extends State<DailyHydrationGoalsScreen>
       _isHydrationInLiters = isLiters;
       if (currentValue != null) {
         final converted = isLiters
-            ? currentValue / 33.8140227018
-            : currentValue * 33.8140227018;
+            ? currentValue / _ouncesPerLiter
+            : currentValue * _ouncesPerLiter;
         final nextText = _formatNumberForField(converted);
         _waterController.value = TextEditingValue(
           text: nextText,
@@ -9409,14 +9441,21 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     if (direct > 0) {
       return direct;
     }
-    final match = RegExp(
+    final literMatch = RegExp(
       r'water\s*\(\s*([0-9]+(?:\.[0-9]+)?)\s*l\s*\)',
       caseSensitive: false,
     ).firstMatch(entry.itemName);
-    if (match == null) {
-      return 0;
+    if (literMatch != null) {
+      return _parseNumericText(literMatch.group(1) ?? '0');
     }
-    return _parseNumericText(match.group(1) ?? '0');
+    final ounceMatch = RegExp(
+      r'water\s*\(\s*([0-9]+(?:\.[0-9]+)?)\s*oz\s*\)',
+      caseSensitive: false,
+    ).firstMatch(entry.itemName);
+    if (ounceMatch != null) {
+      return _parseNumericText(ounceMatch.group(1) ?? '0') / _ouncesPerLiter;
+    }
+    return 0;
   }
 
   String _percentText(double current, double target) {
@@ -9986,10 +10025,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                               scale: scale,
                               onTap: () => _openExchangeEntryScreen(entry.id),
                               child: SizedBox(
-                                width: 24 * scale,
-                                height: 24 * scale,
+                                width: 16 * scale,
+                                height: 17 * scale,
                                 child: SvgPicture.asset(
-                                  'assets/Food_exchange.svg',
+                                  'assets/Food__exchange.svg',
                                   fit: BoxFit.contain,
                                 ),
                               ),
@@ -10124,7 +10163,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
               : 0.0;
           final targetWaterLiters = hydrationUnitIsLiters
               ? targetHydrationInputValue
-              : (targetHydrationInputValue / 33.8140227018);
+              : (targetHydrationInputValue / _ouncesPerLiter);
           final budgetCurrencyGlyph =
               _budgetCurrencyGlyphByCode[_OnboardingProfileState
                   .budgetCurrencyCode] ??
@@ -10158,10 +10197,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
 
           final displayedWaterCurrent = hydrationUnitIsLiters
               ? consumedWaterLiters
-              : consumedWaterLiters * 33.8140227018;
+              : consumedWaterLiters * _ouncesPerLiter;
           final displayedWaterTarget = hydrationUnitIsLiters
               ? targetWaterLiters
-              : targetWaterLiters * 33.8140227018;
+              : targetWaterLiters * _ouncesPerLiter;
           final waterUnitLabel = hydrationUnitIsLiters ? 'l' : 'oz';
           final waterTotalText =
               '${_formatCompactDecimalMetric(displayedWaterTarget, maxDecimals: 2)} $waterUnitLabel';
@@ -11468,10 +11507,10 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   final GlobalKey _hourFieldKey = GlobalKey();
   final GlobalKey _minuteFieldKey = GlobalKey();
 
-  static const List<String> _waterAmounts = <String>[
-    '0.250 l',
-    '0.500 l',
-    '1 l',
+  static const List<double> _waterPresetAmountsLiters = <double>[
+    0.25,
+    0.5,
+    1.0,
   ];
 
   bool get _isExchangeMode =>
@@ -11485,6 +11524,9 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   bool get _showEntryActionIcon => !widget.isExchangeEntry;
 
   bool get _isAmSelected => _selectedTime.period == DayPeriod.am;
+  bool get _waterUnitIsLiters => _OnboardingProfileState.isHydrationInLiters;
+  String get _waterUnitSuffix => _waterUnitIsLiters ? 'l' : 'oz';
+  String get _waterUnitLabel => _waterUnitIsLiters ? 'Liters (l)' : 'oz';
 
   String get _timeHourText {
     final hour = _selectedTime.hourOfPeriod;
@@ -11494,26 +11536,45 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
 
   String get _timeMinuteText => _selectedTime.minute.toString().padLeft(2, '0');
 
-  String _formatWaterLiters(double liters) {
-    if (liters <= 0) {
+  String _formatWaterAmount(double value, {required int maxDecimals}) {
+    if (value <= 0) {
       return '0';
     }
-    return liters
-        .toStringAsFixed(3)
+    return value
+        .toStringAsFixed(maxDecimals)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
-  double _parseWaterAmountLabel(String label) {
-    final parsed = double.tryParse(
-      label.replaceAll('l', '').replaceAll('L', '').trim(),
-    );
-    return parsed ?? 0.0;
+  String _formatWaterLiters(double liters) =>
+      _formatWaterAmount(liters, maxDecimals: 3);
+
+  double _displayedWaterFromLiters(double liters) {
+    return _waterUnitIsLiters ? liters : liters * _ouncesPerLiter;
+  }
+
+  double _litersFromDisplayedWater(double displayedValue) {
+    return _waterUnitIsLiters
+        ? displayedValue
+        : (displayedValue / _ouncesPerLiter);
+  }
+
+  String _formatDisplayedWaterValue(double liters) {
+    final maxDecimals = _waterUnitIsLiters ? 3 : 1;
+    final displayed = _displayedWaterFromLiters(liters);
+    return _formatWaterAmount(displayed, maxDecimals: maxDecimals);
+  }
+
+  String _waterPresetLabel(double liters) {
+    final maxDecimals = _waterUnitIsLiters ? 3 : 1;
+    final displayed = _displayedWaterFromLiters(liters);
+    final amountText = _formatWaterAmount(displayed, maxDecimals: maxDecimals);
+    return '$amountText $_waterUnitSuffix';
   }
 
   int _waterAmountIndexForValue(double liters) {
-    for (int i = 0; i < _waterAmounts.length; i++) {
-      final amount = _parseWaterAmountLabel(_waterAmounts[i]);
+    for (int i = 0; i < _waterPresetAmountsLiters.length; i++) {
+      final amount = _waterPresetAmountsLiters[i];
       if ((amount - liters).abs() <= 0.0005) {
         return i;
       }
@@ -11553,24 +11614,25 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   }
 
   void _commitWaterFromController() {
-    final parsed = double.tryParse(
+    final parsedDisplayed = double.tryParse(
       _waterController.text.trim().replaceAll(' ', '').replaceAll(',', '.'),
     );
-    if (parsed == null || parsed < 0) {
+    if (parsedDisplayed == null || parsedDisplayed < 0) {
       setState(() {
-        _waterController.text = _formatWaterLiters(_waterIntakeLiters);
+        _waterController.text = _formatDisplayedWaterValue(_waterIntakeLiters);
       });
       return;
     }
+    final parsedLiters = _litersFromDisplayedWater(parsedDisplayed);
     setState(() {
-      _waterIntakeLiters = parsed;
+      _waterIntakeLiters = parsedLiters;
       _selectedWaterAmountIndex = _waterEditedManually
           ? -1
-          : _waterAmountIndexForValue(parsed);
+          : _waterAmountIndexForValue(parsedLiters);
       if (_waterEditedManually) {
         _isCustomWaterEntrySelected = true;
       }
-      _waterController.text = _formatWaterLiters(_waterIntakeLiters);
+      _waterController.text = _formatDisplayedWaterValue(_waterIntakeLiters);
       _waterController.selection = TextSelection.fromPosition(
         TextPosition(offset: _waterController.text.length),
       );
@@ -11626,14 +11688,17 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   }
 
   void _addWaterEntryToTimeline() {
-    final waterText = _formatWaterLiters(_waterIntakeLiters);
-    final itemName = waterText == '0' ? 'Water' : 'Water ($waterText l)';
+    final waterLitersText = _formatWaterLiters(_waterIntakeLiters);
+    final displayedWaterText = _formatDisplayedWaterValue(_waterIntakeLiters);
+    final itemName = displayedWaterText == '0'
+        ? 'Water'
+        : 'Water ($displayedWaterText $_waterUnitSuffix)';
     _MealsTimelineStore.addOrReplace(
       entryId: _isExchangeMode ? widget.exchangeTargetEntryId : null,
       timeText: _MealsTimelineStore.timeTextFromTimeOfDay(_selectedTime),
       itemName: itemName,
       caloriesText: '0',
-      waterLitersText: waterText,
+      waterLitersText: waterLitersText,
     );
     if (mounted) {
       setState(() {});
@@ -11643,7 +11708,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   @override
   void initState() {
     super.initState();
-    _waterController = TextEditingController(text: _formatWaterLiters(0));
+    _waterController = TextEditingController(text: _formatDisplayedWaterValue(0));
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _waterFocusNode = FocusNode()
@@ -12171,7 +12236,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                               ),
                                               SizedBox(width: 8 * scale),
                                               Text(
-                                                'Liters (l)',
+                                                _waterUnitLabel,
                                                 style: TextStyle(
                                                   fontFamily:
                                                       _defaultNonBorelFontFamily,
@@ -12191,18 +12256,22 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                     SizedBox(height: 16 * scale),
                                     Row(
                                       children: List<Widget>.generate(
-                                        _waterAmounts.length,
+                                        _waterPresetAmountsLiters.length,
                                         (index) => Padding(
                                           padding: EdgeInsets.only(
                                             right:
                                                 index ==
-                                                    _waterAmounts.length - 1
+                                                    _waterPresetAmountsLiters
+                                                            .length -
+                                                        1
                                                 ? 0
                                                 : 16 * scale,
                                           ),
                                           child: _waterAmountChip(
                                             scale: scale,
-                                            label: _waterAmounts[index],
+                                            label: _waterPresetLabel(
+                                              _waterPresetAmountsLiters[index],
+                                            ),
                                             selected:
                                                 _selectedWaterAmountIndex ==
                                                 index,
@@ -12210,10 +12279,8 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                               if (!mounted) {
                                                 return;
                                               }
-                                              final waterAmount =
-                                                  _parseWaterAmountLabel(
-                                                    _waterAmounts[index],
-                                                  );
+                                              final waterAmountLiters =
+                                                  _waterPresetAmountsLiters[index];
                                               setState(() {
                                                 _waterEditedManually = false;
                                                 _isCustomWaterEntrySelected =
@@ -12221,9 +12288,9 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                 _selectedWaterAmountIndex =
                                                     index;
                                                 _waterIntakeLiters =
-                                                    waterAmount;
+                                                    waterAmountLiters;
                                                 _waterController.text =
-                                                    _formatWaterLiters(
+                                                    _formatDisplayedWaterValue(
                                                       _waterIntakeLiters,
                                                     );
                                                 _waterController.selection =
@@ -16776,8 +16843,10 @@ class _AccountScreenState extends State<AccountScreen>
       recommendation.advancedGoalValues,
     );
     _hydrationGoalText = _computeHydrationGoalTextFromProfile(
+      goalIndex: _selectedGoalIndex,
       weightKg: _selectedWeightKg,
       activityIndex: _selectedActivityIndex,
+      outputInLiters: _isHydrationInLiters,
     );
 
     _OnboardingProfileState.nutritionGoalValues = Map<String, String>.from(
@@ -16786,7 +16855,7 @@ class _AccountScreenState extends State<AccountScreen>
     _OnboardingProfileState.advancedNutritionGoalValues =
         Map<String, String>.from(_advancedNutritionGoalValues);
     _OnboardingProfileState.hydrationGoalText = _hydrationGoalText;
-    _OnboardingProfileState.isHydrationInLiters = true;
+    _OnboardingProfileState.isHydrationInLiters = _isHydrationInLiters;
   }
 
   Future<void> _openGoalScreen() async {
@@ -17068,8 +17137,10 @@ class _AccountScreenState extends State<AccountScreen>
       return;
     }
     final recommendedHydrationGoalText = _computeHydrationGoalTextFromProfile(
+      goalIndex: _selectedGoalIndex,
       weightKg: _selectedWeightKg,
       activityIndex: _selectedActivityIndex,
+      outputInLiters: _isHydrationInLiters,
     );
     final result = await Navigator.of(context).push<_AccountHydrationSelection>(
       _buildAccountEditRoute<_AccountHydrationSelection>(
@@ -17077,7 +17148,7 @@ class _AccountScreenState extends State<AccountScreen>
           initiallySkippedHydrationSection: _skippedWaterSection,
           initialHydrationEnabled: _hydrationEnabled,
           initialHydrationGoalText: recommendedHydrationGoalText,
-          initialHydrationInLiters: true,
+          initialHydrationInLiters: _isHydrationInLiters,
         ),
       ),
     );
