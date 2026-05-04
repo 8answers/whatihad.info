@@ -3240,7 +3240,9 @@ class _WelcomeScreenState extends State<WelcomeScreen>
 }
 
 class NameScreen extends StatefulWidget {
-  const NameScreen({super.key});
+  const NameScreen({super.key, this.isAccountEdit = false});
+
+  final bool isAccountEdit;
 
   @override
   State<NameScreen> createState() => _NameScreenState();
@@ -3304,6 +3306,10 @@ class _NameScreenState extends State<NameScreen>
     if (!mounted) {
       return;
     }
+    if (widget.isAccountEdit) {
+      Navigator.of(context).pop();
+      return;
+    }
     Navigator.of(context).pushReplacement(
       _buildSwipeRoute(screen: const WelcomeScreen(), fromLeft: true),
     );
@@ -3318,6 +3324,10 @@ class _NameScreenState extends State<NameScreen>
     _applyRecommendedNutritionToOnboardingProfile(
       genderIndex: _selectedGenderIndex,
     );
+    if (widget.isAccountEdit) {
+      Navigator.of(context).pop();
+      return;
+    }
     _didNavigateForward = true;
     FocusScope.of(context).unfocus();
 
@@ -3638,7 +3648,7 @@ class _NameScreenState extends State<NameScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Next',
+                              widget.isAccountEdit ? 'Save' : 'Next',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: (34 * metrics.designScale / 1.7)
@@ -3646,15 +3656,17 @@ class _NameScreenState extends State<NameScreen>
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            SizedBox(width: 12 * metrics.designScale),
-                            Icon(
-                              Icons.arrow_forward,
-                              color: Colors.white,
-                              size: (24 * metrics.designScale).clamp(
-                                20.0,
-                                28.0,
+                            if (!widget.isAccountEdit) ...[
+                              SizedBox(width: 12 * metrics.designScale),
+                              Icon(
+                                Icons.arrow_forward,
+                                color: Colors.white,
+                                size: (24 * metrics.designScale).clamp(
+                                  20.0,
+                                  28.0,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
@@ -4821,17 +4833,18 @@ class _AccountDailyNutritionGoalsScreenState
             metrics.width - (32 * scale),
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
-          final titleTop = metrics.padding.top + (18 * scale);
+          final titleTop = metrics.padding.top + (15 * scale) + (30 * scale);
           final recommendedTop = titleTop + (50 * scale);
-          final cardsTop = titleTop + (94 * scale);
+          final cardsTop = titleTop + (60 * scale);
           final cardHeight = (80 * scale).clamp(68.0, 96.0);
           final cardGap = 16 * scale;
-          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
+          final controlsRowHeight = 56 * scale;
           final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
           final controlsBottom = _actionControlsBottomInset(
             metrics: metrics,
             scale: scale,
           );
+          final bottomPanelHeight = controlsBottom + controlsRowHeight;
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
 
@@ -4950,7 +4963,7 @@ class _AccountDailyNutritionGoalsScreenState
               Positioned(
                 left: contentLeft,
                 width: contentWidth,
-                bottom: controlsBottom + (56 * scale) + (10 * scale),
+                bottom: controlsBottom + controlsRowHeight + (10 * scale),
                 child: Row(
                   children: [
                     SizedBox(width: backButtonWidth + (16 * scale)),
@@ -5039,7 +5052,7 @@ class _AccountDailyNutritionGoalsScreenState
                       width: backButtonWidth,
                       child: _RotatingGlassButton(
                         scale: scale,
-                        height: 56 * scale,
+                        height: controlsRowHeight,
                         borderRadius: 32 * scale,
                         fillColor: Colors.white,
                         enablePressShadeFeedback: true,
@@ -5056,7 +5069,7 @@ class _AccountDailyNutritionGoalsScreenState
                       width: nextButtonWidth,
                       child: _RotatingGlassButton(
                         scale: scale,
-                        height: 56 * scale,
+                        height: controlsRowHeight,
                         borderRadius: 32 * scale,
                         fillColor: const Color(0x8FFFD206),
                         enablePressShadeFeedback: true,
@@ -8090,12 +8103,14 @@ class _DailyNutritionGoalsScreenState extends State<DailyNutritionGoalsScreen>
           final cardsTop = titleTop + (94 * scale);
           final cardHeight = (80 * scale).clamp(68.0, 96.0);
           final cardGap = 16 * scale;
-          final bottomPanelHeight = (190 * scale).clamp(162.0, 220.0);
-          final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
+          final controlsRowHeight = 56 * scale;
           final controlsBottom = _actionControlsBottomInset(
             metrics: metrics,
             scale: scale,
           );
+          // Start the blur exactly where the control buttons row starts.
+          final bottomPanelHeight = controlsBottom + controlsRowHeight;
+          final contentBottomInset = (56 * scale).clamp(40.0, 72.0);
           final backButtonWidth = 79 * scale;
           final nextButtonWidth = 263 * scale;
 
@@ -8223,7 +8238,7 @@ class _DailyNutritionGoalsScreenState extends State<DailyNutritionGoalsScreen>
                       width: backButtonWidth,
                       child: _RotatingGlassButton(
                         scale: scale,
-                        height: 56 * scale,
+                        height: controlsRowHeight,
                         borderRadius: 32 * scale,
                         fillColor: Colors.white,
                         enablePressShadeFeedback: true,
@@ -8240,7 +8255,7 @@ class _DailyNutritionGoalsScreenState extends State<DailyNutritionGoalsScreen>
                       width: nextButtonWidth,
                       child: _RotatingGlassButton(
                         scale: scale,
-                        height: 56 * scale,
+                        height: controlsRowHeight,
                         borderRadius: 32 * scale,
                         fillColor: const Color(0x8FFFD206),
                         enablePressShadeFeedback: true,
@@ -9774,7 +9789,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     );
   }
 
-  Widget _buildMealsTimelineEditButton({required double scale}) {
+  Widget _buildMealsTimelineEditButton({
+    required double scale,
+    bool showAddIcon = false,
+  }) {
     return SizedBox(
       width: 48 * scale,
       height: 48 * scale,
@@ -9789,11 +9807,28 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           expandToBounds: true,
           boxShadow: const <BoxShadow>[],
           enableBlur: false,
-          child: SvgPicture.asset(
-            'assets/Edit_food.svg',
-            fit: BoxFit.contain,
-            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-          ),
+          child: showAddIcon
+              ? Image.asset(
+                  'assets/Add.png',
+                  fit: BoxFit.contain,
+                  color: Colors.white,
+                  colorBlendMode: BlendMode.srcIn,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
+                      Icons.add,
+                      color: Colors.white,
+                      size: (20 * scale).clamp(16.0, 24.0),
+                    );
+                  },
+                )
+              : SvgPicture.asset(
+                  'assets/Edit_food.svg',
+                  fit: BoxFit.contain,
+                  colorFilter: const ColorFilter.mode(
+                    Colors.white,
+                    BlendMode.srcIn,
+                  ),
+                ),
         ),
       ),
     );
@@ -10399,46 +10434,53 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                           ),
                         ),
                       ],
-                      SizedBox(height: 30 * scale),
-                      _sectionTitle('Bellyo Suggestion', scale),
-                      SizedBox(height: 8 * scale),
-                      _outerPanel(
-                        scale: scale,
-                        child: _innerPanel(
-                          scale: scale,
-                          height: 88,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Expanded(
-                                child: Align(
-                                  alignment: Alignment.topLeft,
-                                  child: Text(
-                                    'Your source for expert nutrition tips and covering healthy recipes, cooking hacks.',
-                                    style: TextStyle(
-                                      fontSize: (14 * scale).clamp(12.0, 16.0),
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.w500,
+                      if (!_isHistoryViewOpen) ...[
+                        SizedBox(height: 30 * scale),
+                        _sectionTitle('Bellyo Suggestion', scale),
+                        SizedBox(height: 8 * scale),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _openBellyoAiScreen,
+                          child: _outerPanel(
+                            scale: scale,
+                            child: _innerPanel(
+                              scale: scale,
+                              height: 88,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Expanded(
+                                    child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: Text(
+                                        'Your source for expert nutrition tips and covering healthy recipes, cooking hacks.',
+                                        style: TextStyle(
+                                          fontSize:
+                                              (14 * scale).clamp(12.0, 16.0),
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              SizedBox(
-                                width: (18 * scale).clamp(14.0, 22.0),
-                                height: (18 * scale).clamp(14.0, 22.0),
-                                child: SvgPicture.asset(
-                                  'assets/Chat.svg',
-                                  fit: BoxFit.contain,
-                                  colorFilter: const ColorFilter.mode(
-                                    Colors.white,
-                                    BlendMode.srcIn,
+                                  SizedBox(
+                                    width: (18 * scale).clamp(14.0, 22.0),
+                                    height: (18 * scale).clamp(14.0, 22.0),
+                                    child: SvgPicture.asset(
+                                      'assets/Chat.svg',
+                                      fit: BoxFit.contain,
+                                      colorFilter: const ColorFilter.mode(
+                                        Colors.white,
+                                        BlendMode.srcIn,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                       if (!hideMealsTimelineSection) ...[
                         SizedBox(height: 30 * scale),
                         _sectionTitle('Meals Timeline', scale),
@@ -10489,6 +10531,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                         if (isHistoryDateEditable)
                                           _buildMealsTimelineEditButton(
                                             scale: scale,
+                                            showAddIcon: true,
                                           ),
                                       ],
                                     ),
@@ -10988,9 +11031,9 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
                       width: double.infinity,
                       color: const Color(0x05FFFFFF),
                       padding: EdgeInsets.fromLTRB(
+                        0,
                         10 * scale,
-                        10 * scale,
-                        10 * scale,
+                        0,
                         (8 * scale) + media.padding.bottom,
                       ),
                       child: Column(
@@ -11006,74 +11049,81 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
                             prompts: secondRowPrompts,
                           ),
                           SizedBox(height: 10 * scale),
-                          Container(
-                            height: 56 * scale,
-                            decoration: BoxDecoration(
-                              color: const Color(0x52FFFFFF),
-                              borderRadius: BorderRadius.circular(32 * scale),
-                              border: Border.all(
-                                color: const Color(0x8FFFFFFF),
-                                width: 1 * scale,
+                          Padding(
+                            padding: EdgeInsets.only(right: 10 * scale),
+                            child: Container(
+                              height: 56 * scale,
+                              decoration: BoxDecoration(
+                                color: const Color(0x52FFFFFF),
+                                borderRadius: BorderRadius.circular(32 * scale),
+                                border: Border.all(
+                                  color: const Color(0x8FFFFFFF),
+                                  width: 1 * scale,
+                                ),
                               ),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 16 * scale,
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _promptController,
-                                    textInputAction: TextInputAction.done,
-                                    onChanged: (_) {
-                                      if (mounted) {
-                                        setState(() {});
-                                      }
-                                    },
-                                    style: TextStyle(
-                                      fontFamily: _defaultNonBorelFontFamily,
-                                      fontSize: (16 * scale).clamp(14.0, 18.0),
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    cursorColor: Colors.black,
-                                    decoration: InputDecoration(
-                                      border: InputBorder.none,
-                                      isCollapsed: true,
-                                      hintText: 'Ask',
-                                      hintStyle: TextStyle(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16 * scale,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _promptController,
+                                      textInputAction: TextInputAction.done,
+                                      onChanged: (_) {
+                                        if (mounted) {
+                                          setState(() {});
+                                        }
+                                      },
+                                      style: TextStyle(
                                         fontFamily: _defaultNonBorelFontFamily,
                                         fontSize: (16 * scale).clamp(
                                           14.0,
                                           18.0,
                                         ),
-                                        color: const Color(0x52000000),
+                                        color: Colors.black,
                                         fontWeight: FontWeight.w500,
+                                      ),
+                                      cursorColor: Colors.black,
+                                      decoration: InputDecoration(
+                                        border: InputBorder.none,
+                                        isCollapsed: true,
+                                        hintText: 'Ask',
+                                        hintStyle: TextStyle(
+                                          fontFamily:
+                                              _defaultNonBorelFontFamily,
+                                          fontSize: (16 * scale).clamp(
+                                            14.0,
+                                            18.0,
+                                          ),
+                                          color: const Color(0x52000000),
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                SizedBox(width: 8 * scale),
-                                SizedBox(
-                                  width: 32 * scale,
-                                  height: 32 * scale,
-                                  child: _RotatingGlassButton(
-                                    scale: scale,
+                                  SizedBox(width: 8 * scale),
+                                  SizedBox(
+                                    width: 32 * scale,
                                     height: 32 * scale,
-                                    borderRadius: 16 * scale,
-                                    fillColor: hasPromptInput
-                                        ? Colors.white
-                                        : const Color(0x29FFFFFF),
-                                    enablePressShadeFeedback: true,
-                                    onTap: () {},
-                                    child: Icon(
-                                      Icons.arrow_upward,
-                                      color: Colors.black,
-                                      size: (18 * scale).clamp(14.0, 20.0),
+                                    child: _RotatingGlassButton(
+                                      scale: scale,
+                                      height: 32 * scale,
+                                      borderRadius: 16 * scale,
+                                      fillColor: hasPromptInput
+                                          ? Colors.white
+                                          : const Color(0x29FFFFFF),
+                                      enablePressShadeFeedback: true,
+                                      onTap: () {},
+                                      child: Icon(
+                                        Icons.arrow_upward,
+                                        color: Colors.black,
+                                        size: (18 * scale).clamp(14.0, 20.0),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -11842,7 +11892,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    0,
+                    32 * scale,
                     contentLeft,
                     scrollBottomPadding,
                   ),
@@ -12874,7 +12924,7 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    0,
+                    16,
                     contentLeft,
                     scrollBottomPadding,
                   ),
@@ -13677,7 +13727,7 @@ class _SearchFoodItemDetailsScreenState
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
           final titleTop = metrics.padding.top + (18 * scale);
-          final contentTop = titleTop + (58 * scale);
+          final contentTop = titleTop + (48 * scale);
           final controlsBottom = _actionControlsBottomInset(
             metrics: metrics,
             scale: scale,
@@ -13700,7 +13750,7 @@ class _SearchFoodItemDetailsScreenState
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    0,
+                    16,
                     contentLeft,
                     scrollBottomPadding,
                   ),
@@ -15850,7 +15900,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
           final titleTop = metrics.padding.top + (18 * scale);
-          final contentTop = titleTop + (58 * scale);
+          final contentTop = titleTop + (42 * scale);
           final controlsBottom = _actionControlsBottomInset(
             metrics: metrics,
             scale: scale,
@@ -15873,7 +15923,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    0,
+                    16,
                     contentLeft,
                     scrollBottomPadding,
                   ),
@@ -16592,6 +16642,8 @@ class _AccountScreenState extends State<AccountScreen>
   static const Color _accountCardFillColor = Color(0x52FFFFFF);
 
   late final AnimationController _controller;
+  late final TextEditingController _accountNameController;
+  late final FocusNode _accountNameFocusNode;
   int _selectedGoalIndex = 2;
   int _selectedAge = 21;
   int _selectedWeightKg = 66;
@@ -16640,6 +16692,15 @@ class _AccountScreenState extends State<AccountScreen>
   @override
   void initState() {
     super.initState();
+    _accountNameController = TextEditingController(
+      text: _OnboardingProfileState.selectedName.trim(),
+    );
+    _accountNameFocusNode = FocusNode();
+    _accountNameFocusNode.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
     _selectedGoalIndex = _OnboardingProfileState.selectedGoalIndex.clamp(
       0,
       _goalLabels.length - 1,
@@ -16682,6 +16743,8 @@ class _AccountScreenState extends State<AccountScreen>
 
   @override
   void dispose() {
+    _accountNameFocusNode.dispose();
+    _accountNameController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -17086,23 +17149,78 @@ class _AccountScreenState extends State<AccountScreen>
     );
   }
 
-  Widget _nameCard({required double scale, required String name}) {
+  Widget _nameCard({required double scale}) {
+    final isFocused = _accountNameFocusNode.hasFocus;
     return SizedBox(
       height: 56 * scale,
-      child: _RotatingGlassPanel(
-        scale: scale,
-        borderRadius: 16 * scale,
-        fillColor: _accountCardFillColor,
-        padding: EdgeInsets.symmetric(horizontal: 8 * scale),
-        expandToBounds: true,
-        enableBlur: false,
-        child: Center(
-          child: Text(
-            name,
-            style: TextStyle(
-              fontSize: (16 * scale).clamp(14.0, 20.0),
-              color: Colors.black,
-              fontWeight: FontWeight.w500,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _accountNameFocusNode.requestFocus(),
+        child: _RotatingGlassPanel(
+          scale: scale,
+          borderRadius: 16 * scale,
+          fillColor: isFocused ? Colors.white : _accountCardFillColor,
+          padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+          expandToBounds: true,
+          boxShadow: isFocused
+              ? const [
+                  BoxShadow(
+                    color: Color(0xFFFF0000),
+                    blurRadius: 4,
+                    blurStyle: BlurStyle.outer,
+                  ),
+                ]
+              : const <BoxShadow>[],
+          enableBlur: false,
+          child: Center(
+            child: TextField(
+              controller: _accountNameController,
+              focusNode: _accountNameFocusNode,
+              textInputAction: TextInputAction.done,
+              enableInteractiveSelection: false,
+              textAlign: TextAlign.center,
+              textAlignVertical: TextAlignVertical.center,
+              cursorColor: Colors.black,
+              onChanged: (value) {
+                _OnboardingProfileState.selectedName = value.trim();
+              },
+              onEditingComplete: () {
+                FocusScope.of(context).unfocus();
+                final trimmed = _accountNameController.text.trim();
+                if (_accountNameController.text != trimmed) {
+                  _accountNameController.value = TextEditingValue(
+                    text: trimmed,
+                    selection: TextSelection.collapsed(offset: trimmed.length),
+                  );
+                }
+                _OnboardingProfileState.selectedName = trimmed;
+              },
+              onSubmitted: (_) {
+                FocusScope.of(context).unfocus();
+                final trimmed = _accountNameController.text.trim();
+                if (_accountNameController.text != trimmed) {
+                  _accountNameController.value = TextEditingValue(
+                    text: trimmed,
+                    selection: TextSelection.collapsed(offset: trimmed.length),
+                  );
+                }
+                _OnboardingProfileState.selectedName = trimmed;
+              },
+              style: TextStyle(
+                fontSize: (40 * scale).clamp(16.0, 22.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
+                hintText: 'Name',
+                hintStyle: TextStyle(
+                  color: const Color(0x80000000),
+                  fontSize: (16 * scale).clamp(14.0, 20.0),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
           ),
         ),
@@ -17278,7 +17396,7 @@ class _AccountScreenState extends State<AccountScreen>
         child: _RotatingGlassPanel(
           scale: scale,
           borderRadius: 15 * scale,
-          fillColor: _accountCardFillColor,
+          fillColor: isSelected ? Colors.white : _accountCardFillColor,
           padding: EdgeInsets.zero,
           expandToBounds: true,
           boxShadow: isSelected
@@ -17349,13 +17467,13 @@ class _AccountScreenState extends State<AccountScreen>
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     contentLeft,
-                    0,
+                    10,
                     contentLeft,
                     scrollBottomPadding,
                   ),
                   child: Column(
                     children: [
-                      _nameCard(scale: scale, name: 'Prajna S P'),
+                      _nameCard(scale: scale),
                       SizedBox(height: 8 * scale),
                       Row(
                         children: [
@@ -19098,16 +19216,29 @@ class _GlassNextButtonState extends State<_GlassNextButton>
       scale: scale,
       height: 56 * scale,
       borderRadius: 32 * scale,
-      fillColor: const Color(0x52FFFFFF),
+      fillColor: widget.enabled
+          ? const Color(0x8FFFD206)
+          : const Color(0x14FFD206),
       enablePressShadeFeedback: widget.enabled,
       onTap: widget.enabled ? widget.onTap : () {},
-      child: Text(
-        'Next',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Next',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          SizedBox(width: 12 * scale),
+          Icon(
+            Icons.arrow_forward,
+            color: Colors.white,
+            size: (24 * scale).clamp(20.0, 28.0),
+          ),
+        ],
       ),
     );
   }
