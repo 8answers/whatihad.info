@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-const Duration _kScreenFadeDuration = Duration(milliseconds: 500);
+const Duration _kScreenFadeDuration = Duration(milliseconds: 380);
 const Duration _kSplashDuration = Duration(milliseconds: 2500);
 const Duration _kLoadingFillDuration = Duration(milliseconds: 2600);
 const Duration _kBackgroundMotionDuration = Duration(seconds: 10);
@@ -1482,11 +1482,18 @@ PageRouteBuilder<void> _buildSwipeRoute({
     reverseTransitionDuration: _kScreenFadeDuration,
     pageBuilder: (context, animation, secondaryAnimation) => screen,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curvedAnimation = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
       final slideAnimation = Tween<Offset>(
         begin: beginOffset,
         end: Offset.zero,
-      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
-      return SlideTransition(position: slideAnimation, child: child);
+      ).animate(curvedAnimation);
+      return RepaintBoundary(
+        child: SlideTransition(position: slideAnimation, child: child),
+      );
     },
   );
 }
@@ -1497,9 +1504,11 @@ PageRouteBuilder<void> _buildFadeRoute({required Widget screen}) {
     reverseTransitionDuration: _kScreenFadeDuration,
     pageBuilder: (context, animation, secondaryAnimation) => screen,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      return FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
-        child: child,
+      return RepaintBoundary(
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          child: child,
+        ),
       );
     },
   );
@@ -3425,7 +3434,7 @@ class _NameScreenState extends State<NameScreen>
                                   ),
                                 ]
                               : const <BoxShadow>[],
-                          enableBlur: !(_isNameLongPressed || _isNameClicked),
+                          enableBlur: false,
                           child: Align(
                             alignment: Alignment.center,
                             child: TextField(
@@ -3767,7 +3776,7 @@ class _NameGenderCardState extends State<_NameGenderCard> {
           padding: EdgeInsets.symmetric(horizontal: 16 * scale),
           expandToBounds: true,
           boxShadow: shadows,
-          enableBlur: !(_isLongPressed || isActive),
+          enableBlur: false,
           child: Center(
             child: Text(
               widget.label,
@@ -9500,6 +9509,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       borderRadius: 16 * scale,
       fillColor: const Color(0x52FFFFFF),
       padding: EdgeInsets.all(8 * scale),
+      enableBlur: false,
       lightLengthMultiplier: 18.0,
       child: child,
     );
@@ -9620,7 +9630,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 ),
               ]
             : const <BoxShadow>[],
-        enableBlur: !selected,
+        enableBlur: false,
         child: Center(
           child: Icon(
             icon,
@@ -9682,6 +9692,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           fillColor: const Color(0x52FFFFFF),
           padding: EdgeInsets.symmetric(horizontal: 16 * scale),
           expandToBounds: true,
+          enableBlur: false,
           child: Center(
             child: Text(
               label,
@@ -9743,7 +9754,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                   ),
                 ]
               : const <BoxShadow>[],
-          enableBlur: !isSelected,
+          enableBlur: false,
           child: Center(
             child: SizedBox(
               width: 30 * scale,
@@ -9777,6 +9788,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           padding: EdgeInsets.all(12 * scale),
           expandToBounds: true,
           boxShadow: const <BoxShadow>[],
+          enableBlur: false,
           child: SvgPicture.asset(
             'assets/Edit_food.svg',
             fit: BoxFit.contain,
@@ -11752,7 +11764,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                   ),
                 ]
               : const <BoxShadow>[],
-          enableBlur: !isSelected,
+          enableBlur: false,
           child: Center(
             child: SizedBox(
               width: 30 * scale,
@@ -12720,7 +12732,7 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
                   ),
                 ]
               : const <BoxShadow>[],
-          enableBlur: !isSelected,
+          enableBlur: false,
           child: Center(
             child: SizedBox(
               width: 30 * scale,
@@ -12765,6 +12777,7 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
                 padding: EdgeInsets.all(12 * scale),
                 expandToBounds: true,
                 boxShadow: const <BoxShadow>[],
+                enableBlur: false,
                 child: SvgPicture.asset('assets/Food.svg', fit: BoxFit.contain),
               ),
             ),
@@ -14381,6 +14394,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                                       padding: EdgeInsets.all(12 * scale),
                                       expandToBounds: true,
                                       boxShadow: const <BoxShadow>[],
+                                      enableBlur: false,
                                       child: SvgPicture.asset(
                                         'assets/Food.svg',
                                         fit: BoxFit.contain,
@@ -15147,6 +15161,7 @@ class _CustomEntrySwipeTileState extends State<_CustomEntrySwipeTile> {
           padding: EdgeInsets.all(15 * scale),
           expandToBounds: true,
           boxShadow: const <BoxShadow>[],
+          enableBlur: false,
           child: SvgPicture.asset('assets/Delete.svg', fit: BoxFit.contain),
         ),
       ),
@@ -15170,6 +15185,7 @@ class _CustomEntrySwipeTileState extends State<_CustomEntrySwipeTile> {
               padding: EdgeInsets.all(12 * scale),
               expandToBounds: true,
               boxShadow: const <BoxShadow>[],
+              enableBlur: false,
               child: SvgPicture.asset('assets/Food.svg', fit: BoxFit.contain),
             ),
           ),
@@ -15335,6 +15351,7 @@ class _CustomEntrySelectableTile extends StatelessWidget {
                 padding: EdgeInsets.all(12 * scale),
                 expandToBounds: true,
                 boxShadow: const <BoxShadow>[],
+                enableBlur: false,
                 child: SvgPicture.asset('assets/Food.svg', fit: BoxFit.contain),
               ),
             ),
@@ -16319,8 +16336,28 @@ class _TodaysEntryWaterAmountChip extends StatefulWidget {
 
 class _TodaysEntryWaterAmountChipState
     extends State<_TodaysEntryWaterAmountChip> {
+  static const Duration _tapFlashDuration = Duration(milliseconds: 120);
+
   bool _isLongPressed = false;
   bool _isClicked = false;
+
+  void _flashTapState() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isClicked = true;
+      _isLongPressed = false;
+    });
+    Future<void>.delayed(_tapFlashDuration, () {
+      if (!mounted || widget.isSelected || _isLongPressed || !_isClicked) {
+        return;
+      }
+      setState(() {
+        _isClicked = false;
+      });
+    });
+  }
 
   @override
   void didUpdateWidget(covariant _TodaysEntryWaterAmountChip oldWidget) {
@@ -16375,10 +16412,7 @@ class _TodaysEntryWaterAmountChipState
         });
       },
       onTap: () {
-        setState(() {
-          _isClicked = true;
-          _isLongPressed = false;
-        });
+        _flashTapState();
         widget.onTap();
       },
       child: SizedBox(
@@ -16391,7 +16425,7 @@ class _TodaysEntryWaterAmountChipState
           padding: EdgeInsets.zero,
           expandToBounds: true,
           boxShadow: shadows,
-          enableBlur: !(_isLongPressed || isActive),
+          enableBlur: false,
           child: Center(
             child: Text(
               widget.label,
@@ -16439,8 +16473,28 @@ class _TodaysEntryGlassTile extends StatefulWidget {
 }
 
 class _TodaysEntryGlassTileState extends State<_TodaysEntryGlassTile> {
+  static const Duration _tapFlashDuration = Duration(milliseconds: 120);
+
   bool _isLongPressed = false;
   bool _isClicked = false;
+
+  void _flashTapState() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isClicked = true;
+      _isLongPressed = false;
+    });
+    Future<void>.delayed(_tapFlashDuration, () {
+      if (!mounted || widget.isSelected || _isLongPressed || !_isClicked) {
+        return;
+      }
+      setState(() {
+        _isClicked = false;
+      });
+    });
+  }
 
   @override
   void didUpdateWidget(covariant _TodaysEntryGlassTile oldWidget) {
@@ -16478,7 +16532,7 @@ class _TodaysEntryGlassTileState extends State<_TodaysEntryGlassTile> {
       // expansion (which can create infinite-height constraints in rows).
       expandToBounds: widget.height != null,
       boxShadow: shadows,
-      enableBlur: !(_isLongPressed || isActive),
+      enableBlur: false,
       child: widget.child,
     );
 
@@ -16511,10 +16565,7 @@ class _TodaysEntryGlassTileState extends State<_TodaysEntryGlassTile> {
         });
       },
       onTap: () {
-        setState(() {
-          _isClicked = true;
-          _isLongPressed = false;
-        });
+        _flashTapState();
         widget.onTap();
       },
       child: tile,
@@ -16538,6 +16589,8 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen>
     with SingleTickerProviderStateMixin {
+  static const Color _accountCardFillColor = Color(0x52FFFFFF);
+
   late final AnimationController _controller;
   int _selectedGoalIndex = 2;
   int _selectedAge = 21;
@@ -16689,9 +16742,15 @@ class _AccountScreenState extends State<AccountScreen>
                 begin: const Offset(1, 0),
                 end: Offset.zero,
               ).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                  reverseCurve: Curves.easeInCubic,
+                ),
               );
-          return SlideTransition(position: slideAnimation, child: child);
+          return RepaintBoundary(
+            child: SlideTransition(position: slideAnimation, child: child),
+          );
         },
       ),
     );
@@ -16714,9 +16773,15 @@ class _AccountScreenState extends State<AccountScreen>
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final slideAnimation =
             Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              ),
             );
-        return SlideTransition(position: slideAnimation, child: child);
+        return RepaintBoundary(
+          child: SlideTransition(position: slideAnimation, child: child),
+        );
       },
     );
   }
@@ -17027,9 +17092,10 @@ class _AccountScreenState extends State<AccountScreen>
       child: _RotatingGlassPanel(
         scale: scale,
         borderRadius: 16 * scale,
-        fillColor: const Color(0x52FFFFFF),
+        fillColor: _accountCardFillColor,
         padding: EdgeInsets.symmetric(horizontal: 8 * scale),
         expandToBounds: true,
+        enableBlur: false,
         child: Center(
           child: Text(
             name,
@@ -17060,12 +17126,13 @@ class _AccountScreenState extends State<AccountScreen>
           child: _RotatingGlassPanel(
             scale: scale,
             borderRadius: 16 * scale,
-            fillColor: const Color(0x52FFFFFF),
+            fillColor: _accountCardFillColor,
             padding: EdgeInsets.symmetric(
               horizontal: 8 * scale,
               vertical: 6 * scale,
             ),
             expandToBounds: true,
+            enableBlur: false,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -17118,9 +17185,10 @@ class _AccountScreenState extends State<AccountScreen>
         child: _RotatingGlassPanel(
           scale: scale,
           borderRadius: 16 * scale,
-          fillColor: const Color(0x52FFFFFF),
+          fillColor: _accountCardFillColor,
           padding: EdgeInsets.symmetric(horizontal: 16 * scale),
           expandToBounds: true,
+          enableBlur: false,
           child: Row(
             children: [
               Expanded(
@@ -17172,9 +17240,10 @@ class _AccountScreenState extends State<AccountScreen>
       child: _RotatingGlassPanel(
         scale: scale,
         borderRadius: 5 * scale,
-        fillColor: const Color(0x3DFFFFFF),
+        fillColor: _accountCardFillColor,
         padding: EdgeInsets.all(2 * scale),
         expandToBounds: true,
+        enableBlur: false,
         child: Center(
           child: Image.asset(
             'assets/Add.png',
@@ -17209,7 +17278,7 @@ class _AccountScreenState extends State<AccountScreen>
         child: _RotatingGlassPanel(
           scale: scale,
           borderRadius: 15 * scale,
-          fillColor: isSelected ? Colors.white : const Color(0x52FFFFFF),
+          fillColor: _accountCardFillColor,
           padding: EdgeInsets.zero,
           expandToBounds: true,
           boxShadow: isSelected
@@ -17221,7 +17290,7 @@ class _AccountScreenState extends State<AccountScreen>
                   ),
                 ]
               : const <BoxShadow>[],
-          enableBlur: !isSelected,
+          enableBlur: false,
           child: Center(
             child: SizedBox(
               width: 30 * scale,
@@ -17596,7 +17665,7 @@ class _BudgetOptionCardState extends State<_BudgetOptionCard> {
             padding: EdgeInsets.symmetric(horizontal: 16 * scale),
             expandToBounds: true,
             boxShadow: shadows,
-            enableBlur: !(_isLongPressed || isActive),
+            enableBlur: false,
             child: Align(alignment: Alignment.centerLeft, child: widget.child),
           ),
         ),
@@ -17720,7 +17789,7 @@ class _DietPreferenceCardState extends State<_DietPreferenceCard> {
           ),
           expandToBounds: true,
           boxShadow: shadows,
-          enableBlur: !(_isLongPressed || isActive),
+          enableBlur: false,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -17886,7 +17955,7 @@ class _EditableNutritionValueFieldState
         ),
         expandToBounds: true,
         boxShadow: shadows,
-        enableBlur: !(_isLongPressed || _isClicked),
+        enableBlur: false,
         child: Align(
           alignment: Alignment.center,
           child: TextField(
@@ -18157,7 +18226,7 @@ class _ActivityLevelCardState extends State<_ActivityLevelCard> {
           padding: EdgeInsets.all(cardPadding),
           expandToBounds: true,
           boxShadow: shadows,
-          enableBlur: !(_isLongPressed || isActive),
+          enableBlur: false,
           child: Row(
             children: [
               Expanded(
@@ -18711,7 +18780,7 @@ class _GoalCardState extends State<_GoalCard> {
           padding: EdgeInsets.all(16 * scale),
           expandToBounds: true,
           boxShadow: shadows,
-          enableBlur: !(_isLongPressed || isActive),
+          enableBlur: false,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -18820,7 +18889,7 @@ class _TermsLinkTileState extends State<_TermsLinkTile> {
           padding: EdgeInsets.symmetric(horizontal: 24 * scale),
           expandToBounds: true,
           boxShadow: shadows,
-          enableBlur: !(_isLongPressed || _isClicked),
+          enableBlur: false,
           child: Row(
             children: [
               Expanded(
@@ -18859,7 +18928,7 @@ class _RotatingGlassPanel extends StatefulWidget {
     this.onTap,
     this.expandToBounds = false,
     this.boxShadow,
-    this.enableBlur = true,
+    this.enableBlur = false,
     this.lightLengthMultiplier = 18.0,
   });
 
@@ -18881,6 +18950,7 @@ class _RotatingGlassPanel extends StatefulWidget {
 class _RotatingGlassPanelState extends State<_RotatingGlassPanel>
     with SingleTickerProviderStateMixin {
   late final AnimationController _lightController;
+  ScrollPosition? _scrollPosition;
 
   @override
   void initState() {
@@ -18888,13 +18958,52 @@ class _RotatingGlassPanelState extends State<_RotatingGlassPanel>
     _lightController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
-    )..repeat();
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextScrollPosition = Scrollable.maybeOf(context)?.position;
+    if (!identical(_scrollPosition, nextScrollPosition)) {
+      _scrollPosition?.isScrollingNotifier.removeListener(
+        _handleScrollActivityChange,
+      );
+      _scrollPosition = nextScrollPosition;
+      _scrollPosition?.isScrollingNotifier.addListener(
+        _handleScrollActivityChange,
+      );
+    }
+    _syncBorderAnimation();
   }
 
   @override
   void dispose() {
+    _scrollPosition?.isScrollingNotifier.removeListener(
+      _handleScrollActivityChange,
+    );
     _lightController.dispose();
     super.dispose();
+  }
+
+  void _handleScrollActivityChange() {
+    _syncBorderAnimation();
+  }
+
+  void _syncBorderAnimation() {
+    final shouldAnimate =
+        mounted &&
+        TickerMode.valuesOf(context).enabled &&
+        !(_scrollPosition?.isScrollingNotifier.value ?? false);
+    if (shouldAnimate) {
+      if (!_lightController.isAnimating) {
+        _lightController.repeat();
+      }
+      return;
+    }
+    if (_lightController.isAnimating) {
+      _lightController.stop(canceled: false);
+    }
   }
 
   @override
@@ -18903,68 +19012,64 @@ class _RotatingGlassPanelState extends State<_RotatingGlassPanel>
     final radius = widget.borderRadius;
     final borderStroke = (2 * scale).clamp(1.2, 2.8);
     final rotatingLightStroke = (borderStroke * 0.5).clamp(0.6, 1.4);
-
-    return AnimatedBuilder(
-      animation: _lightController,
-      builder: (context, child) {
-        final rotatingAngle =
-            (math.pi / 4) + (_lightController.value * math.pi * 2);
-        final panelContent = Container(
-          padding: widget.padding,
-          decoration: BoxDecoration(
-            color: widget.fillColor,
+    final panelContent = Container(
+      padding: widget.padding,
+      decoration: BoxDecoration(
+        color: widget.fillColor,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: widget.child,
+    );
+    final panel = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: widget.boxShadow,
+      ),
+      child: Stack(
+        fit: widget.expandToBounds ? StackFit.expand : StackFit.loose,
+        children: [
+          ClipRRect(
             borderRadius: BorderRadius.circular(radius),
-          ),
-          child: widget.child,
-        );
-        final panel = Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: widget.boxShadow,
-          ),
-          child: Stack(
-            fit: widget.expandToBounds ? StackFit.expand : StackFit.loose,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(radius),
-                child: widget.enableBlur
-                    ? BackdropFilter(
-                        filter: ImageFilter.blur(
-                          sigmaX: 40 * scale,
-                          sigmaY: 40 * scale,
-                        ),
-                        child: panelContent,
-                      )
-                    : panelContent,
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _RotatingBorderLightPainter(
-                      angle: rotatingAngle,
-                      borderRadius: radius,
-                      strokeWidth: rotatingLightStroke,
-                      glowWidth: (2 * scale).clamp(1.2, 2.8),
-                      borderStroke: borderStroke,
-                      lightLengthMultiplier: widget.lightLengthMultiplier,
+            child: widget.enableBlur
+                ? BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: 40 * scale,
+                      sigmaY: 40 * scale,
                     ),
+                    child: panelContent,
+                  )
+                : panelContent,
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  isComplex: true,
+                  willChange: true,
+                  painter: _RotatingBorderLightPainter(
+                    rotation: _lightController,
+                    borderRadius: radius,
+                    strokeWidth: rotatingLightStroke,
+                    glowWidth: (2 * scale).clamp(1.2, 2.8),
+                    borderStroke: borderStroke,
+                    lightLengthMultiplier: widget.lightLengthMultiplier,
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        );
+        ],
+      ),
+    );
 
-        if (widget.onTap == null) {
-          return panel;
-        }
+    if (widget.onTap == null) {
+      return panel;
+    }
 
-        return GestureDetector(
-          onTap: widget.onTap,
-          behavior: HitTestBehavior.opaque,
-          child: panel,
-        );
-      },
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: panel,
     );
   }
 }
@@ -18993,9 +19098,7 @@ class _GlassNextButtonState extends State<_GlassNextButton>
       scale: scale,
       height: 56 * scale,
       borderRadius: 32 * scale,
-      fillColor: widget.enabled
-          ? const Color(0x8FFFD206)
-          : const Color(0x14FFD206),
+      fillColor: const Color(0x52FFFFFF),
       enablePressShadeFeedback: widget.enabled,
       onTap: widget.enabled ? widget.onTap : () {},
       child: Text(
@@ -19128,7 +19231,7 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
               padding: EdgeInsets.symmetric(horizontal: 24 * scale),
               expandToBounds: true,
               boxShadow: shadows,
-              enableBlur: !(_isLongPressed || isActive),
+              enableBlur: false,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -19201,13 +19304,43 @@ class _RotatingGlassButtonState extends State<_RotatingGlassButton>
     _lightController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
-    )..repeat();
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncBorderAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RotatingGlassButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.showBorderLight != widget.showBorderLight) {
+      _syncBorderAnimation();
+    }
   }
 
   @override
   void dispose() {
     _lightController.dispose();
     super.dispose();
+  }
+
+  void _syncBorderAnimation() {
+    final shouldAnimate =
+        mounted &&
+        widget.showBorderLight &&
+        TickerMode.valuesOf(context).enabled;
+    if (shouldAnimate) {
+      if (!_lightController.isAnimating) {
+        _lightController.repeat();
+      }
+      return;
+    }
+    if (_lightController.isAnimating) {
+      _lightController.stop(canceled: false);
+    }
   }
 
   @override
@@ -19226,130 +19359,116 @@ class _RotatingGlassButtonState extends State<_RotatingGlassButton>
     final safeAlpha = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
     final fillColor = widget.fillColor.withAlpha(safeAlpha);
 
-    return AnimatedBuilder(
-      animation: _lightController,
-      builder: (context, child) {
-        final rotatingAngle =
-            (math.pi / 4) + (_lightController.value * math.pi * 2);
-
-        return SizedBox(
-          height: height,
-          child: GestureDetector(
-            onLongPressDown: widget.enablePressShadeFeedback
-                ? (_) {
-                    if (mounted) {
-                      setState(() {
-                        _isLongPressed = true;
-                        _isTapPressed = false;
-                      });
-                    }
-                  }
-                : null,
-            onLongPressStart: widget.enablePressShadeFeedback
-                ? (_) {
-                    if (mounted) {
-                      setState(() {
-                        _isLongPressed = true;
-                        _isTapPressed = false;
-                      });
-                    }
-                  }
-                : null,
-            onLongPressEnd: widget.enablePressShadeFeedback
-                ? (_) {
-                    if (mounted) {
-                      setState(() {
-                        _isLongPressed = false;
-                        _isTapPressed = false;
-                      });
-                    }
-                  }
-                : null,
-            onTapCancel: widget.enablePressShadeFeedback
-                ? () {
-                    if (mounted) {
-                      setState(() {
-                        _isTapPressed = false;
-                        _isLongPressed = false;
-                      });
-                    }
-                  }
-                : null,
-            onTap: () {
-              if (widget.enablePressShadeFeedback) {
+    return SizedBox(
+      height: height,
+      child: GestureDetector(
+        onLongPressDown: widget.enablePressShadeFeedback
+            ? (_) {
                 if (mounted) {
                   setState(() {
-                    _isTapPressed = true;
+                    _isLongPressed = true;
+                    _isTapPressed = false;
+                  });
+                }
+              }
+            : null,
+        onLongPressStart: widget.enablePressShadeFeedback
+            ? (_) {
+                if (mounted) {
+                  setState(() {
+                    _isLongPressed = true;
+                    _isTapPressed = false;
+                  });
+                }
+              }
+            : null,
+        onLongPressEnd: widget.enablePressShadeFeedback
+            ? (_) {
+                if (mounted) {
+                  setState(() {
+                    _isLongPressed = false;
+                    _isTapPressed = false;
+                  });
+                }
+              }
+            : null,
+        onTapCancel: widget.enablePressShadeFeedback
+            ? () {
+                if (mounted) {
+                  setState(() {
+                    _isTapPressed = false;
                     _isLongPressed = false;
                   });
                 }
-                Future<void>.delayed(const Duration(milliseconds: 100), () {
-                  if (mounted) {
-                    setState(() {
-                      _isTapPressed = false;
-                      _isLongPressed = false;
-                    });
-                  }
+              }
+            : null,
+        onTap: () {
+          if (widget.enablePressShadeFeedback) {
+            if (mounted) {
+              setState(() {
+                _isTapPressed = true;
+                _isLongPressed = false;
+              });
+            }
+            Future<void>.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) {
+                setState(() {
+                  _isTapPressed = false;
+                  _isLongPressed = false;
                 });
               }
-              widget.onTap();
-            },
-            behavior: HitTestBehavior.opaque,
-            child: Stack(
-              children: [
-                ClipRRect(
+            });
+          }
+          widget.onTap();
+        },
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: Container(
+                height: height,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: fillColor,
                   borderRadius: BorderRadius.circular(radius),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: 40 * scale,
-                      sigmaY: 40 * scale,
-                    ),
-                    child: Container(
-                      height: height,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: fillColor,
-                        borderRadius: BorderRadius.circular(radius),
-                      ),
-                      alignment: Alignment.center,
-                      child: widget.child,
+                ),
+                alignment: Alignment.center,
+                child: widget.child,
+              ),
+            ),
+            if (widget.showBorderLight)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _RotatingBorderLightPainter(
+                      rotation: _lightController,
+                      borderRadius: radius,
+                      strokeWidth: rotatingLightStroke,
+                      glowWidth: (2 * scale).clamp(1.2, 2.8),
+                      borderStroke: borderStroke,
                     ),
                   ),
                 ),
-                if (widget.showBorderLight)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        painter: _RotatingBorderLightPainter(
-                          angle: rotatingAngle,
-                          borderRadius: radius,
-                          strokeWidth: rotatingLightStroke,
-                          glowWidth: (2 * scale).clamp(1.2, 2.8),
-                          borderStroke: borderStroke,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 class _RotatingBorderLightPainter extends CustomPainter {
   const _RotatingBorderLightPainter({
-    required this.angle,
+    required this.rotation,
     required this.borderRadius,
     required this.strokeWidth,
     required this.glowWidth,
     required this.borderStroke,
     this.lightLengthMultiplier = 18.0,
-  });
+  }) : super(repaint: rotation);
 
-  final double angle;
+  final Animation<double> rotation;
   final double borderRadius;
   final double strokeWidth;
   final double glowWidth;
@@ -19358,6 +19477,7 @@ class _RotatingBorderLightPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final angle = (math.pi / 4) + (rotation.value * math.pi * 2);
     // Keep the rotating highlight exactly on the button's border edge.
     final drawRect = Rect.fromLTWH(
       borderStroke * 0.5,
@@ -19411,7 +19531,7 @@ class _RotatingBorderLightPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RotatingBorderLightPainter oldDelegate) {
-    return oldDelegate.angle != angle ||
+    return oldDelegate.rotation != rotation ||
         oldDelegate.borderRadius != borderRadius ||
         oldDelegate.strokeWidth != strokeWidth ||
         oldDelegate.glowWidth != glowWidth ||
