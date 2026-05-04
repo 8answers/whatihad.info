@@ -35,6 +35,8 @@ const double _bottomBlurLayerCount = 8;
 const double _bottomBlurTopSigma = 0.25;
 const double _bottomBlurBottomSigma = 2.0;
 const double _dailyProgressMenuBarBlurSigma = 40.0;
+const double _currencyDropdownBlurSigma = 32.0;
+const double _currencyDropdownOptionBlurSigma = 58.0;
 const ColorFilter _halfOpacityBackdropColorFilter = ColorFilter.matrix(<double>[
   1,
   0,
@@ -7225,99 +7227,132 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
   }
 
   Widget _buildCurrencySelector(double scale) {
+    final selectorRadius = BorderRadius.circular(16 * scale);
+    final selectorBorder = Border.all(
+      color: const Color(0x80FFFFFF),
+      width: (1 * scale).clamp(0.8, 1.4),
+    );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggleCurrencyDropdown,
-      child: Container(
-        width: (252 * scale).clamp(220.0, 300.0),
-        height: (62 * scale).clamp(56.0, 74.0),
-        padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-        decoration: BoxDecoration(
-          color: const Color(0x52FFFFFF),
-          borderRadius: BorderRadius.circular(16 * scale),
-          border: Border.all(
-            color: const Color(0x80FFFFFF),
-            width: (1 * scale).clamp(0.8, 1.4),
+      child: ClipRRect(
+        borderRadius: selectorRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: _currencyDropdownBlurSigma * scale,
+            sigmaY: _currencyDropdownBlurSigma * scale,
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                _currencyDisplayLabel(_selectedCurrency),
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: (24 * scale).clamp(18.0, 28.0),
-                  color: Colors.black,
-                  fontWeight: FontWeight.w400,
+          child: Container(
+            width: (252 * scale).clamp(220.0, 300.0),
+            height: (62 * scale).clamp(56.0, 74.0),
+            padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+            decoration: BoxDecoration(
+              color: const Color(0x52FFFFFF),
+              borderRadius: selectorRadius,
+              border: selectorBorder,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    _currencyDisplayLabel(_selectedCurrency),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: (24 * scale).clamp(18.0, 28.0),
+                      color: Colors.black,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
                 ),
-              ),
+                SizedBox(width: 8 * scale),
+                Icon(
+                  _isCurrencyDropdownOpen
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: Colors.white,
+                  size: (24 * scale).clamp(20.0, 30.0),
+                ),
+              ],
             ),
-            SizedBox(width: 8 * scale),
-            Icon(
-              _isCurrencyDropdownOpen
-                  ? Icons.keyboard_arrow_up
-                  : Icons.keyboard_arrow_down,
-              color: Colors.white,
-              size: (24 * scale).clamp(20.0, 30.0),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildCurrencyDropdownPanel(double scale) {
-    return Container(
-      width: (252 * scale).clamp(220.0, 300.0),
-      constraints: BoxConstraints(maxHeight: (420 * scale).clamp(240.0, 520.0)),
-      padding: EdgeInsets.all(16 * scale),
-      decoration: BoxDecoration(
-        color: const Color(0x52FFFFFF),
-        borderRadius: BorderRadius.circular(16 * scale),
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const BouncingScrollPhysics(),
-        itemCount: _dropdownCurrencyOptions.length,
-        separatorBuilder: (_, index) => SizedBox(height: 16 * scale),
-        itemBuilder: (context, index) {
-          final option = _dropdownCurrencyOptions[index];
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _selectCurrencyOption(index),
-            child: Align(
-              alignment: Alignment.center,
-              child: Container(
-                width: math.min(
-                  218 * scale,
-                  ((252 * scale).clamp(220.0, 300.0)) - (32 * scale),
-                ),
-                padding: EdgeInsets.all(8 * scale),
-                decoration: BoxDecoration(
-                  color: const Color(0x3DFFFFFF),
-                  borderRadius: BorderRadius.circular(16 * scale),
-                  border: Border.all(
-                    color: const Color(0x80FFFFFF),
-                    width: (1 * scale).clamp(0.8, 1.4),
+    final panelRadius = BorderRadius.circular(16 * scale);
+    return ClipRRect(
+      borderRadius: panelRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: _currencyDropdownBlurSigma * scale,
+          sigmaY: _currencyDropdownBlurSigma * scale,
+        ),
+        child: Container(
+          width: (252 * scale).clamp(220.0, 300.0),
+          constraints: BoxConstraints(
+            maxHeight: (420 * scale).clamp(240.0, 520.0),
+          ),
+          padding: EdgeInsets.all(16 * scale),
+          decoration: BoxDecoration(
+            color: const Color(0x52FFFFFF),
+            borderRadius: panelRadius,
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _dropdownCurrencyOptions.length,
+            separatorBuilder: (_, index) => SizedBox(height: 16 * scale),
+            itemBuilder: (context, index) {
+              final option = _dropdownCurrencyOptions[index];
+              final optionRadius = BorderRadius.circular(16 * scale);
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _selectCurrencyOption(index),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: ClipRRect(
+                    borderRadius: optionRadius,
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: _currencyDropdownOptionBlurSigma * scale,
+                        sigmaY: _currencyDropdownOptionBlurSigma * scale,
+                      ),
+                      child: Container(
+                        width: math.min(
+                          218 * scale,
+                          ((252 * scale).clamp(220.0, 300.0)) - (32 * scale),
+                        ),
+                        padding: EdgeInsets.all(8 * scale),
+                        decoration: BoxDecoration(
+                          color: const Color(0x94FFFFFF),
+                          borderRadius: optionRadius,
+                          border: Border.all(
+                            color: const Color(0x80FFFFFF),
+                            width: (1 * scale).clamp(0.8, 1.4),
+                          ),
+                        ),
+                        child: Text(
+                          _currencyDropdownLabel(option),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: (24 * scale).clamp(18.0, 28.0),
+                            color: Colors.black,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                child: Text(
-                  _currencyDropdownLabel(option),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: (24 * scale).clamp(18.0, 28.0),
-                    color: Colors.black,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
+              );
+            },
+          ),
+        ),
       ),
     );
   }
