@@ -87,6 +87,9 @@ flutter:
     - assets/Serach_food.svg
     - assets/Delete.svg
     - assets/Edit_food.svg
+    - assets/Back_arrow.svg
+    - assets/Front_arrow.svg
+    - assets/Below_back.svg
     - assets/Bellyo_ai.png
     - assets/Bellyo_open_page.png
     - assets/No_custom_entries.png

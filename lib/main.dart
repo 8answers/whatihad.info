@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' as rendering;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -423,7 +424,9 @@ String _computeHydrationGoalTextFromProfile({
         activityIndex ?? _OnboardingProfileState.selectedActivityIndex,
   );
   final shouldOutputLiters = outputInLiters ?? true;
-  final displayedValue = shouldOutputLiters ? liters : (liters * _ouncesPerLiter);
+  final displayedValue = shouldOutputLiters
+      ? liters
+      : (liters * _ouncesPerLiter);
   return _formatHydrationGoalTextFromLiters(displayedValue);
 }
 
@@ -502,6 +505,11 @@ bool _isCompactIPhoneLayout(_SceneMetrics metrics) {
 }
 
 DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+
+TimeOfDay _currentLocalTimeOfDay() {
+  final now = DateTime.now();
+  return TimeOfDay(hour: now.hour, minute: now.minute);
+}
 
 bool _isSameDate(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -753,6 +761,7 @@ class _MealTimelineEntry {
     this.sugarText = '0',
     this.sodiumText = '0',
     this.waterLitersText = '0',
+    this.budgetAmountText = '0',
   });
 
   final int id;
@@ -767,6 +776,7 @@ class _MealTimelineEntry {
   final String sugarText;
   final String sodiumText;
   final String waterLitersText;
+  final String budgetAmountText;
 }
 
 class _MealsTimelineStore {
@@ -843,6 +853,7 @@ class _MealsTimelineStore {
     String sugarText = '0',
     String sodiumText = '0',
     String waterLitersText = '0',
+    String budgetAmountText = '0',
   }) {
     final normalizedName = itemName.trim().isEmpty ? 'Meal' : itemName.trim();
     _entries.add(
@@ -859,6 +870,7 @@ class _MealsTimelineStore {
         sugarText: _normalizedAmountText(sugarText),
         sodiumText: _normalizedAmountText(sodiumText),
         waterLitersText: _normalizedAmountText(waterLitersText),
+        budgetAmountText: _normalizedAmountText(budgetAmountText),
       ),
     );
   }
@@ -868,6 +880,7 @@ class _MealsTimelineStore {
     required String timeText,
     required String itemName,
     required String caloriesText,
+    bool preserveExistingTimeText = false,
     DateTime? entryDate,
     String proteinText = '0',
     String carbohydratesText = '0',
@@ -876,6 +889,7 @@ class _MealsTimelineStore {
     String sugarText = '0',
     String sodiumText = '0',
     String waterLitersText = '0',
+    String budgetAmountText = '0',
   }) {
     final index = _entries.indexWhere((entry) => entry.id == id);
     if (index < 0) {
@@ -886,7 +900,9 @@ class _MealsTimelineStore {
     _entries[index] = _MealTimelineEntry(
       id: id,
       entryDate: _dateOnly(entryDate ?? existingEntry.entryDate),
-      timeText: normalizeTimeText(timeText),
+      timeText: preserveExistingTimeText
+          ? existingEntry.timeText
+          : normalizeTimeText(timeText),
       itemName: normalizedName,
       caloriesText: _normalizedAmountText(caloriesText),
       proteinText: _normalizedAmountText(proteinText),
@@ -896,6 +912,7 @@ class _MealsTimelineStore {
       sugarText: _normalizedAmountText(sugarText),
       sodiumText: _normalizedAmountText(sodiumText),
       waterLitersText: _normalizedAmountText(waterLitersText),
+      budgetAmountText: _normalizedAmountText(budgetAmountText),
     );
     return true;
   }
@@ -905,6 +922,7 @@ class _MealsTimelineStore {
     required String timeText,
     required String itemName,
     required String caloriesText,
+    bool preserveExistingTimeText = false,
     DateTime? entryDate,
     String proteinText = '0',
     String carbohydratesText = '0',
@@ -913,6 +931,7 @@ class _MealsTimelineStore {
     String sugarText = '0',
     String sodiumText = '0',
     String waterLitersText = '0',
+    String budgetAmountText = '0',
   }) {
     if (entryId != null) {
       final wasReplaced = replaceById(
@@ -920,6 +939,7 @@ class _MealsTimelineStore {
         timeText: timeText,
         itemName: itemName,
         caloriesText: caloriesText,
+        preserveExistingTimeText: preserveExistingTimeText,
         entryDate: entryDate,
         proteinText: proteinText,
         carbohydratesText: carbohydratesText,
@@ -928,6 +948,7 @@ class _MealsTimelineStore {
         sugarText: sugarText,
         sodiumText: sodiumText,
         waterLitersText: waterLitersText,
+        budgetAmountText: budgetAmountText,
       );
       if (wasReplaced) {
         return;
@@ -945,6 +966,7 @@ class _MealsTimelineStore {
       sugarText: sugarText,
       sodiumText: sodiumText,
       waterLitersText: waterLitersText,
+      budgetAmountText: budgetAmountText,
     );
   }
 
@@ -1556,6 +1578,11 @@ PageRouteBuilder<void> _buildNoTransitionRoute({required Widget screen}) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  rendering.debugPaintBaselinesEnabled = false;
+  rendering.debugPaintSizeEnabled = false;
+  rendering.debugPaintPointersEnabled = false;
+  rendering.debugPaintLayerBordersEnabled = false;
+  rendering.debugRepaintRainbowEnabled = false;
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -1571,6 +1598,14 @@ class WhatIHadApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    assert(() {
+      rendering.debugPaintBaselinesEnabled = false;
+      rendering.debugPaintSizeEnabled = false;
+      rendering.debugPaintPointersEnabled = false;
+      rendering.debugPaintLayerBordersEnabled = false;
+      rendering.debugRepaintRainbowEnabled = false;
+      return true;
+    }());
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(fontFamily: _defaultNonBorelFontFamily),
@@ -3297,6 +3332,27 @@ class _NameScreenState extends State<NameScreen>
     _isNameClicked = false;
   }
 
+  void _setNameLongPressedState() {
+    _nameFocusNode.unfocus();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isNameLongPressed = true;
+      _isNameClicked = false;
+    });
+  }
+
+  void _resetNameLongPressState() {
+    _nameFocusNode.unfocus();
+    if (!mounted || !_isNameLongPressed) {
+      return;
+    }
+    setState(() {
+      _setNameDefaultState();
+    });
+  }
+
   void _handleNameTap() {
     if (!mounted) {
       return;
@@ -3417,116 +3473,94 @@ class _NameScreenState extends State<NameScreen>
                       ),
                     ),
                     SizedBox(height: 24 * metrics.designScale),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onLongPressDown: (_) {
-                        if (mounted) {
-                          setState(() {
-                            _isNameLongPressed = true;
-                            _isNameClicked = false;
-                          });
-                        }
-                      },
-                      onLongPressStart: (_) {
-                        if (mounted) {
-                          setState(() {
-                            _isNameLongPressed = true;
-                            _isNameClicked = false;
-                          });
-                        }
-                      },
-                      onLongPressEnd: (_) {
-                        if (mounted) {
-                          setState(() {
-                            _isNameLongPressed = false;
-                          });
-                        }
-                      },
-                      onLongPressCancel: () {
-                        if (mounted) {
-                          setState(() {
-                            _isNameLongPressed = false;
-                          });
-                        }
-                      },
-                      onTap: () {
-                        _handleNameTap();
-                      },
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 56 * metrics.designScale,
-                        child: _RotatingGlassPanel(
-                          scale: metrics.designScale,
-                          borderRadius: 16 * metrics.designScale,
-                          fillColor: _isNameLongPressed
-                              ? Colors.transparent
-                              : (_isNameClicked
-                                    ? Colors.white
-                                    : const Color(0x52FFFFFF)),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 16 * metrics.designScale,
-                          ),
-                          expandToBounds: true,
-                          boxShadow: (_isNameLongPressed || _isNameClicked)
-                              ? const [
-                                  BoxShadow(
-                                    color: Color(0xFFFF0000),
-                                    blurRadius: 4,
-                                    blurStyle: BlurStyle.outer,
+                    Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerUp: (_) => _resetNameLongPressState(),
+                      onPointerCancel: (_) => _resetNameLongPressState(),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onLongPressDown: (_) => _setNameLongPressedState(),
+                        onLongPressStart: (_) => _setNameLongPressedState(),
+                        onLongPressUp: _resetNameLongPressState,
+                        onLongPressEnd: (_) => _resetNameLongPressState(),
+                        onLongPressCancel: _resetNameLongPressState,
+                        onTap: _handleNameTap,
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 56 * metrics.designScale,
+                          child: _RotatingGlassPanel(
+                            scale: metrics.designScale,
+                            borderRadius: 16 * metrics.designScale,
+                            fillColor: _isNameLongPressed
+                                ? Colors.transparent
+                                : (_isNameClicked
+                                      ? Colors.white
+                                      : const Color(0x52FFFFFF)),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16 * metrics.designScale,
+                            ),
+                            expandToBounds: true,
+                            boxShadow: (_isNameLongPressed || _isNameClicked)
+                                ? const [
+                                    BoxShadow(
+                                      color: Color(0xFFFF0000),
+                                      blurRadius: 4,
+                                      blurStyle: BlurStyle.outer,
+                                    ),
+                                  ]
+                                : const <BoxShadow>[],
+                            enableBlur: false,
+                            child: Align(
+                              alignment: Alignment.center,
+                              child: TextField(
+                                focusNode: _nameFocusNode,
+                                onTap: _handleNameTap,
+                                onChanged: (_) {
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
+                                },
+                                onEditingComplete: () {
+                                  FocusScope.of(context).unfocus();
+                                  if (mounted) {
+                                    setState(() {
+                                      _setNameDefaultState();
+                                    });
+                                  }
+                                },
+                                onSubmitted: (_) {
+                                  FocusScope.of(context).unfocus();
+                                  if (mounted) {
+                                    setState(() {
+                                      _setNameDefaultState();
+                                    });
+                                  }
+                                },
+                                controller: _nameController,
+                                textInputAction: TextInputAction.done,
+                                enableInteractiveSelection: false,
+                                textAlign: TextAlign.center,
+                                textAlignVertical: TextAlignVertical.center,
+                                cursorColor: Colors.black,
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: (40 * metrics.designScale).clamp(
+                                    16.0,
+                                    22.0,
                                   ),
-                                ]
-                              : const <BoxShadow>[],
-                          enableBlur: false,
-                          child: Align(
-                            alignment: Alignment.center,
-                            child: TextField(
-                              focusNode: _nameFocusNode,
-                              onTap: _handleNameTap,
-                              onChanged: (_) {
-                                if (mounted) {
-                                  setState(() {});
-                                }
-                              },
-                              onEditingComplete: () {
-                                FocusScope.of(context).unfocus();
-                                if (mounted) {
-                                  setState(() {
-                                    _setNameDefaultState();
-                                  });
-                                }
-                              },
-                              onSubmitted: (_) {
-                                FocusScope.of(context).unfocus();
-                                if (mounted) {
-                                  setState(() {
-                                    _setNameDefaultState();
-                                  });
-                                }
-                              },
-                              controller: _nameController,
-                              textInputAction: TextInputAction.done,
-                              enableInteractiveSelection: false,
-                              textAlign: TextAlign.center,
-                              textAlignVertical: TextAlignVertical.center,
-                              cursorColor: Colors.black,
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: (40 * metrics.designScale).clamp(
-                                  16.0,
-                                  22.0,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                fontWeight: FontWeight.w500,
-                              ),
-                              decoration: InputDecoration(
-                                isCollapsed: true,
-                                border: InputBorder.none,
-                                hintText: '',
-                                hintStyle: TextStyle(
-                                  color: const Color(0x80000000),
-                                  fontFamily: 'Borel',
-                                  fontSize: (16 * metrics.designScale).clamp(
-                                    14.0,
-                                    20.0,
+                                decoration: InputDecoration(
+                                  isCollapsed: true,
+                                  border: InputBorder.none,
+                                  hintText: '',
+                                  hintStyle: TextStyle(
+                                    color: const Color(0x80000000),
+                                    fontFamily: 'Borel',
+                                    fontSize: (16 * metrics.designScale).clamp(
+                                      14.0,
+                                      20.0,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -9495,6 +9529,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           initialFiberText: entry.fiberText,
           initialSugarText: entry.sugarText,
           initialSodiumText: entry.sodiumText,
+          initialBudgetText: entry.budgetAmountText,
           initialTimeText: entry.timeText,
           showAddToCustom: false,
           timelineActionLabelOverride: 'Save',
@@ -10184,6 +10219,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           double consumedSugar = 0;
           double consumedSodium = 0;
           double consumedWaterLiters = 0;
+          double consumedBudget = 0;
           for (final entry in mealsTimelineEntries) {
             consumedCalories += _parseNumericText(entry.caloriesText);
             consumedProtein += _parseNumericText(entry.proteinText);
@@ -10193,6 +10229,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
             consumedSugar += _parseNumericText(entry.sugarText);
             consumedSodium += _parseNumericText(entry.sodiumText);
             consumedWaterLiters += _waterLitersFromEntry(entry);
+            consumedBudget += _parseNumericText(entry.budgetAmountText);
           }
 
           final displayedWaterCurrent = hydrationUnitIsLiters
@@ -10467,9 +10504,16 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                             accentColor: const Color(0xFF00A814),
                             totalValueText:
                                 '$budgetCurrencyGlyph ${_formatCurrencyAmount(chosenBudgetTarget)}',
-                            currentText: '$budgetCurrencyGlyph 0',
-                            percentText: '0 %',
-                            progressFraction: 0.0,
+                            currentText:
+                                '$budgetCurrencyGlyph ${_formatCurrencyAmount(consumedBudget)}',
+                            percentText: _percentText(
+                              consumedBudget,
+                              chosenBudgetTarget,
+                            ),
+                            progressFraction: _progressFraction(
+                              consumedBudget,
+                              chosenBudgetTarget,
+                            ),
                           ),
                         ),
                       ],
@@ -10494,8 +10538,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       child: Text(
                                         'Your source for expert nutrition tips and covering healthy recipes, cooking hacks.',
                                         style: TextStyle(
-                                          fontSize:
-                                              (14 * scale).clamp(12.0, 16.0),
+                                          fontSize: (14 * scale).clamp(
+                                            12.0,
+                                            16.0,
+                                          ),
                                           color: Colors.black,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -11496,7 +11542,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   double _waterIntakeLiters = 0.0;
   bool _waterEditedManually = false;
   bool _isCustomWaterEntrySelected = false;
-  TimeOfDay _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+  TimeOfDay _selectedTime = _currentLocalTimeOfDay();
   late final TextEditingController _waterController;
   late final TextEditingController _hourController;
   late final TextEditingController _minuteController;
@@ -11570,6 +11616,16 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
     final displayed = _displayedWaterFromLiters(liters);
     final amountText = _formatWaterAmount(displayed, maxDecimals: maxDecimals);
     return '$amountText $_waterUnitSuffix';
+  }
+
+  bool get _canAddWaterEntry {
+    final parsedDisplayed = double.tryParse(
+      _waterController.text.trim().replaceAll(' ', '').replaceAll(',', '.'),
+    );
+    if (parsedDisplayed == null || parsedDisplayed <= 0) {
+      return false;
+    }
+    return _litersFromDisplayedWater(parsedDisplayed) > 0;
   }
 
   int _waterAmountIndexForValue(double liters) {
@@ -11688,6 +11744,9 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   }
 
   void _addWaterEntryToTimeline() {
+    if (!_canAddWaterEntry) {
+      return;
+    }
     final waterLitersText = _formatWaterLiters(_waterIntakeLiters);
     final displayedWaterText = _formatDisplayedWaterValue(_waterIntakeLiters);
     final itemName = displayedWaterText == '0'
@@ -11698,6 +11757,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
       timeText: _MealsTimelineStore.timeTextFromTimeOfDay(_selectedTime),
       itemName: itemName,
       caloriesText: '0',
+      preserveExistingTimeText: _isExchangeMode,
       waterLitersText: waterLitersText,
     );
     if (mounted) {
@@ -11708,7 +11768,9 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   @override
   void initState() {
     super.initState();
-    _waterController = TextEditingController(text: _formatDisplayedWaterValue(0));
+    _waterController = TextEditingController(
+      text: _formatDisplayedWaterValue(0),
+    );
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _waterFocusNode = FocusNode()
@@ -11921,6 +11983,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
         animation: _controller,
         contentBuilder: (context, metrics) {
           final scale = metrics.designScale;
+          final canAddWaterEntry = _canAddWaterEntry;
           final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
           final isKeyboardVisible = keyboardInset > 0;
           final contentWidth = math.min(
@@ -12172,6 +12235,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                 isSelected:
                                                     _waterFocusNode.hasFocus ||
                                                     _isCustomWaterEntrySelected,
+                                                unfocusOnLongPress: true,
                                                 onTap: () => _waterFocusNode
                                                     .requestFocus(),
                                                 child: Center(
@@ -12211,6 +12275,8 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                       },
                                                       textInputAction:
                                                           TextInputAction.done,
+                                                      enableInteractiveSelection:
+                                                          false,
                                                       onSubmitted: (_) =>
                                                           _waterFocusNode
                                                               .unfocus(),
@@ -12346,6 +12412,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                           ),
                                           selectedFillColor: Colors.white,
                                           isSelected: _hourFocusNode.hasFocus,
+                                          unfocusOnLongPress: true,
                                           onTap: () =>
                                               _hourFocusNode.requestFocus(),
                                           child: Center(
@@ -12365,6 +12432,8 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                 ],
                                                 textInputAction:
                                                     TextInputAction.done,
+                                                enableInteractiveSelection:
+                                                    false,
                                                 onSubmitted: (_) =>
                                                     _hourFocusNode.unfocus(),
                                                 onTapOutside: (_) =>
@@ -12412,6 +12481,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                           ),
                                           selectedFillColor: Colors.white,
                                           isSelected: _minuteFocusNode.hasFocus,
+                                          unfocusOnLongPress: true,
                                           onTap: () =>
                                               _minuteFocusNode.requestFocus(),
                                           child: Center(
@@ -12431,6 +12501,8 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                 ],
                                                 textInputAction:
                                                     TextInputAction.done,
+                                                enableInteractiveSelection:
+                                                    false,
                                                 onSubmitted: (_) =>
                                                     _minuteFocusNode.unfocus(),
                                                 onTapOutside: (_) =>
@@ -12463,6 +12535,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                 8 * scale,
                                               ),
                                               isSelected: _isAmSelected,
+                                              unfocusOnLongPress: true,
                                               onTap: () => _setAmPm(true),
                                               child: Text(
                                                 'AM',
@@ -12486,6 +12559,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                 8 * scale,
                                               ),
                                               isSelected: !_isAmSelected,
+                                              unfocusOnLongPress: true,
                                               onTap: () => _setAmPm(false),
                                               child: Text(
                                                 'PM',
@@ -12513,9 +12587,15 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                 scale: scale,
                                 height: 56 * scale,
                                 borderRadius: 32 * scale,
-                                inactiveFillColor: const Color(0x29FFD206),
-                                selectedFillColor: const Color(0x29FFD206),
-                                onTap: _addWaterEntryToTimeline,
+                                inactiveFillColor: canAddWaterEntry
+                                    ? const Color(0x29FFD206)
+                                    : const Color(0x52FFFFFF),
+                                selectedFillColor: canAddWaterEntry
+                                    ? const Color(0x29FFD206)
+                                    : const Color(0x52FFFFFF),
+                                onTap: canAddWaterEntry
+                                    ? _addWaterEntryToTimeline
+                                    : () {},
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
@@ -12527,7 +12607,9 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                           16.0,
                                           24.0,
                                         ),
-                                        color: Colors.white,
+                                        color: canAddWaterEntry
+                                            ? Colors.white
+                                            : const Color(0x80000000),
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
@@ -12535,7 +12617,9 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                       SizedBox(width: 16 * scale),
                                       Icon(
                                         Icons.add,
-                                        color: Colors.white,
+                                        color: canAddWaterEntry
+                                            ? Colors.white
+                                            : const Color(0x80000000),
                                         size: (34 * scale).clamp(24.0, 38.0),
                                       ),
                                     ],
@@ -13235,6 +13319,7 @@ class _SearchFoodItemDetailsScreen extends StatefulWidget {
     this.initialFiberText,
     this.initialSugarText,
     this.initialSodiumText,
+    this.initialBudgetText,
     this.initialTimeText,
     this.showAddToCustom = true,
     this.timelineActionLabelOverride,
@@ -13251,6 +13336,7 @@ class _SearchFoodItemDetailsScreen extends StatefulWidget {
   final String? initialFiberText;
   final String? initialSugarText;
   final String? initialSodiumText;
+  final String? initialBudgetText;
   final String? initialTimeText;
   final bool showAddToCustom;
   final String? timelineActionLabelOverride;
@@ -13271,6 +13357,7 @@ class _SearchFoodItemDetailsScreenState
   late final TextEditingController _itemNameController;
   late final TextEditingController _hourController;
   late final TextEditingController _minuteController;
+  late final TextEditingController _budgetPriceController;
   late final TextEditingController _caloriesController;
   late final TextEditingController _proteinController;
   late final TextEditingController _carbsController;
@@ -13282,6 +13369,7 @@ class _SearchFoodItemDetailsScreenState
   late final FocusNode _itemNameFocusNode;
   late final FocusNode _hourFocusNode;
   late final FocusNode _minuteFocusNode;
+  late final FocusNode _budgetPriceFocusNode;
   late final FocusNode _caloriesFocusNode;
   late final FocusNode _proteinFocusNode;
   late final FocusNode _carbsFocusNode;
@@ -13293,6 +13381,7 @@ class _SearchFoodItemDetailsScreenState
   final GlobalKey _itemNameFieldKey = GlobalKey();
   final GlobalKey _hourFieldKey = GlobalKey();
   final GlobalKey _minuteFieldKey = GlobalKey();
+  final GlobalKey _budgetPriceFieldKey = GlobalKey();
   final GlobalKey _caloriesFieldKey = GlobalKey();
   final GlobalKey _proteinFieldKey = GlobalKey();
   final GlobalKey _carbsFieldKey = GlobalKey();
@@ -13300,6 +13389,7 @@ class _SearchFoodItemDetailsScreenState
   final GlobalKey _fiberFieldKey = GlobalKey();
   final GlobalKey _sugarFieldKey = GlobalKey();
   final GlobalKey _sodiumFieldKey = GlobalKey();
+  static const List<double> _budgetPresetValues = <double>[100, 150, 200];
 
   late String _initialName;
   late String _initialCalories;
@@ -13334,25 +13424,8 @@ class _SearchFoodItemDetailsScreenState
   String get _timeMinuteText => _selectedTime.minute.toString().padLeft(2, '0');
 
   TimeOfDay _parseTimeTextOrDefault(String? rawText) {
-    final match = RegExp(
-      r'^\s*(\d{1,2})\s*:\s*(\d{1,2})\s*([AaPp][Mm])\s*$',
-    ).firstMatch(rawText ?? '');
-    if (match == null) {
-      return const TimeOfDay(hour: 6, minute: 45);
-    }
-    var hour = int.tryParse(match.group(1) ?? '') ?? 12;
-    var minute = int.tryParse(match.group(2) ?? '') ?? 0;
-    if (hour <= 0) {
-      hour = 12;
-    }
-    if (hour > 12) {
-      hour = ((hour - 1) % 12) + 1;
-    }
-    minute = minute.clamp(0, 59);
-    final meridiem = (match.group(3) ?? 'AM').toUpperCase();
-    final isPm = meridiem == 'PM';
-    final hour24 = (hour % 12) + (isPm ? 12 : 0);
-    return TimeOfDay(hour: hour24, minute: minute);
+    // Item details should always open with the present local time.
+    return _currentLocalTimeOfDay();
   }
 
   String _normalizeItemName(String raw) => raw.trim();
@@ -13485,6 +13558,60 @@ class _SearchFoodItemDetailsScreenState
     });
   }
 
+  String _normalizedBudgetText(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return '';
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return '';
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _commitBudgetFromController() {
+    final normalized = _normalizedBudgetText(_budgetPriceController.text);
+    setState(() {
+      _budgetPriceController.text = normalized;
+      _budgetPriceController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _budgetPriceController.text.length),
+      );
+    });
+  }
+
+  double? _parsedBudgetValue() {
+    final normalized = _normalizedBudgetText(_budgetPriceController.text);
+    if (normalized.isEmpty) {
+      return null;
+    }
+    return double.tryParse(normalized);
+  }
+
+  bool _isBudgetPresetSelected(double preset) {
+    final value = _parsedBudgetValue();
+    if (value == null) {
+      return false;
+    }
+    return (value - preset).abs() <= 0.0001;
+  }
+
+  void _setBudgetPreset(double value) {
+    final text = _normalizedBudgetText(value.toString());
+    setState(() {
+      _budgetPriceController.text = text;
+      _budgetPriceController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _budgetPriceController.text.length),
+      );
+    });
+  }
+
   void _bindFieldFocus({
     required FocusNode focusNode,
     required GlobalKey fieldKey,
@@ -13553,12 +13680,14 @@ class _SearchFoodItemDetailsScreenState
           '$_timeHourText:$_timeMinuteText ${_isAmSelected ? 'AM' : 'PM'}',
       itemName: itemName,
       caloriesText: _normalizedNumericText(_caloriesController.text),
+      preserveExistingTimeText: _isExchangeMode,
       proteinText: _normalizedNumericText(_proteinController.text),
       carbohydratesText: _normalizedNumericText(_carbsController.text),
       fatText: _normalizedNumericText(_fatController.text),
       fiberText: _normalizedNumericText(_fiberController.text),
       sugarText: _normalizedNumericText(_sugarController.text),
       sodiumText: _normalizedNumericText(_sodiumController.text),
+      budgetAmountText: _normalizedBudgetText(_budgetPriceController.text),
     );
     if (mounted) {
       setState(() {});
@@ -13601,6 +13730,7 @@ class _SearchFoodItemDetailsScreenState
             inactiveFillColor: const Color(0x52FFFFFF),
             selectedFillColor: Colors.white,
             isSelected: focusNode.hasFocus,
+            unfocusOnLongPress: true,
             onTap: () => focusNode.requestFocus(),
             child: Center(
               child: SizedBox(
@@ -13619,6 +13749,7 @@ class _SearchFoodItemDetailsScreenState
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                   ],
                   textInputAction: TextInputAction.done,
+                  enableInteractiveSelection: false,
                   onSubmitted: (_) => focusNode.unfocus(),
                   onTapOutside: (_) => focusNode.unfocus(),
                   decoration: const InputDecoration.collapsed(hintText: '0'),
@@ -13689,6 +13820,9 @@ class _SearchFoodItemDetailsScreenState
     _itemNameController = TextEditingController(text: seededName);
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
+    _budgetPriceController = TextEditingController(
+      text: _normalizedBudgetText(widget.initialBudgetText ?? ''),
+    );
     _caloriesController = TextEditingController(text: calories.toString());
     _proteinController = TextEditingController(text: seededProtein);
     _carbsController = TextEditingController(text: seededCarbs);
@@ -13700,6 +13834,7 @@ class _SearchFoodItemDetailsScreenState
     _itemNameFocusNode = FocusNode();
     _hourFocusNode = FocusNode();
     _minuteFocusNode = FocusNode();
+    _budgetPriceFocusNode = FocusNode();
     _caloriesFocusNode = FocusNode();
     _proteinFocusNode = FocusNode();
     _carbsFocusNode = FocusNode();
@@ -13719,6 +13854,11 @@ class _SearchFoodItemDetailsScreenState
       fieldKey: _minuteFieldKey,
       onFocusLost: _commitMinuteFromController,
     );
+    _bindFieldFocus(
+      focusNode: _budgetPriceFocusNode,
+      fieldKey: _budgetPriceFieldKey,
+      onFocusLost: _commitBudgetFromController,
+    );
     _bindFieldFocus(focusNode: _caloriesFocusNode, fieldKey: _caloriesFieldKey);
     _bindFieldFocus(focusNode: _proteinFocusNode, fieldKey: _proteinFieldKey);
     _bindFieldFocus(focusNode: _carbsFocusNode, fieldKey: _carbsFieldKey);
@@ -13729,6 +13869,7 @@ class _SearchFoodItemDetailsScreenState
 
     for (final controller in <TextEditingController>[
       _itemNameController,
+      _budgetPriceController,
       _caloriesController,
       _proteinController,
       _carbsController,
@@ -13756,6 +13897,7 @@ class _SearchFoodItemDetailsScreenState
     _itemNameFocusNode.dispose();
     _hourFocusNode.dispose();
     _minuteFocusNode.dispose();
+    _budgetPriceFocusNode.dispose();
     _caloriesFocusNode.dispose();
     _proteinFocusNode.dispose();
     _carbsFocusNode.dispose();
@@ -13767,6 +13909,7 @@ class _SearchFoodItemDetailsScreenState
     _itemNameController.dispose();
     _hourController.dispose();
     _minuteController.dispose();
+    _budgetPriceController.dispose();
     _caloriesController.dispose();
     _proteinController.dispose();
     _carbsController.dispose();
@@ -13846,6 +13989,7 @@ class _SearchFoodItemDetailsScreenState
                             inactiveFillColor: const Color(0x52FFFFFF),
                             selectedFillColor: Colors.white,
                             isSelected: _itemNameFocusNode.hasFocus,
+                            unfocusOnLongPress: true,
                             onTap: () => _itemNameFocusNode.requestFocus(),
                             child: Align(
                               alignment: Alignment.centerLeft,
@@ -13859,6 +14003,7 @@ class _SearchFoodItemDetailsScreenState
                                   textAlign: TextAlign.left,
                                   keyboardType: TextInputType.text,
                                   textInputAction: TextInputAction.done,
+                                  enableInteractiveSelection: false,
                                   onSubmitted: (_) =>
                                       _itemNameFocusNode.unfocus(),
                                   onTapOutside: (_) =>
@@ -13922,6 +14067,7 @@ class _SearchFoodItemDetailsScreenState
                             inactiveFillColor: const Color(0x52FFFFFF),
                             selectedFillColor: Colors.white,
                             isSelected: _hourFocusNode.hasFocus,
+                            unfocusOnLongPress: true,
                             onTap: () => _hourFocusNode.requestFocus(),
                             child: Center(
                               child: SizedBox(
@@ -13937,6 +14083,7 @@ class _SearchFoodItemDetailsScreenState
                                     FilteringTextInputFormatter.digitsOnly,
                                   ],
                                   textInputAction: TextInputAction.done,
+                                  enableInteractiveSelection: false,
                                   onSubmitted: (_) => _hourFocusNode.unfocus(),
                                   onTapOutside: (_) => _hourFocusNode.unfocus(),
                                   decoration: const InputDecoration.collapsed(
@@ -13971,6 +14118,7 @@ class _SearchFoodItemDetailsScreenState
                             inactiveFillColor: const Color(0x52FFFFFF),
                             selectedFillColor: Colors.white,
                             isSelected: _minuteFocusNode.hasFocus,
+                            unfocusOnLongPress: true,
                             onTap: () => _minuteFocusNode.requestFocus(),
                             child: Center(
                               child: SizedBox(
@@ -13986,6 +14134,7 @@ class _SearchFoodItemDetailsScreenState
                                     FilteringTextInputFormatter.digitsOnly,
                                   ],
                                   textInputAction: TextInputAction.done,
+                                  enableInteractiveSelection: false,
                                   onSubmitted: (_) =>
                                       _minuteFocusNode.unfocus(),
                                   onTapOutside: (_) =>
@@ -14011,6 +14160,7 @@ class _SearchFoodItemDetailsScreenState
                                 borderRadius: 15 * scale,
                                 padding: EdgeInsets.all(8 * scale),
                                 isSelected: _isAmSelected,
+                                unfocusOnLongPress: true,
                                 onTap: () => _setAmPm(true),
                                 child: Text(
                                   'AM',
@@ -14028,6 +14178,7 @@ class _SearchFoodItemDetailsScreenState
                                 borderRadius: 15 * scale,
                                 padding: EdgeInsets.all(8 * scale),
                                 isSelected: !_isAmSelected,
+                                unfocusOnLongPress: true,
                                 onTap: () => _setAmPm(false),
                                 child: Text(
                                   'PM',
@@ -14040,6 +14191,209 @@ class _SearchFoodItemDetailsScreenState
                                 ),
                               ),
                             ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 24 * scale),
+                    Text(
+                      'Budget',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 16 * scale),
+                    Container(
+                      padding: EdgeInsets.all(8 * scale),
+                      decoration: BoxDecoration(
+                        color: const Color(0x3DFFFFFF),
+                        borderRadius: BorderRadius.circular(16 * scale),
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(16 * scale),
+                            decoration: BoxDecoration(
+                              color: const Color(0x3DFFFFFF),
+                              borderRadius: BorderRadius.circular(16 * scale),
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Price',
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (16 * scale).clamp(14.0, 20.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '₹',
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (14 * scale).clamp(12.0, 18.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                _TodaysEntryGlassTile(
+                                  scale: scale,
+                                  width: (140 * scale).clamp(120.0, 168.0),
+                                  height: 47 * scale,
+                                  borderRadius: 15 * scale,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16 * scale,
+                                    vertical: 8 * scale,
+                                  ),
+                                  inactiveFillColor: const Color(0x3DFFFFFF),
+                                  selectedFillColor: Colors.white,
+                                  isSelected: _budgetPriceFocusNode.hasFocus,
+                                  unfocusOnLongPress: true,
+                                  onTap: () =>
+                                      _budgetPriceFocusNode.requestFocus(),
+                                  child: Center(
+                                    child: SizedBox(
+                                      key: _budgetPriceFieldKey,
+                                      width: double.infinity,
+                                      child: TextField(
+                                        controller: _budgetPriceController,
+                                        focusNode: _budgetPriceFocusNode,
+                                        scrollPadding: EdgeInsets.zero,
+                                        textAlign: TextAlign.center,
+                                        textAlignVertical:
+                                            TextAlignVertical.center,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'[0-9.,]'),
+                                          ),
+                                        ],
+                                        textInputAction: TextInputAction.done,
+                                        enableInteractiveSelection: false,
+                                        onSubmitted: (_) =>
+                                            _budgetPriceFocusNode.unfocus(),
+                                        onTapOutside: (_) =>
+                                            _budgetPriceFocusNode.unfocus(),
+                                        decoration: InputDecoration.collapsed(
+                                          hintText: '0',
+                                          hintStyle: TextStyle(
+                                            fontFamily:
+                                                _defaultNonBorelFontFamily,
+                                            fontSize: (24 * scale).clamp(
+                                              18.0,
+                                              30.0,
+                                            ),
+                                            color: const Color(0x29000000),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        style: TextStyle(
+                                          fontFamily:
+                                              _defaultNonBorelFontFamily,
+                                          fontSize: (24 * scale).clamp(
+                                            18.0,
+                                            30.0,
+                                          ),
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w500,
+                                          height: 1.0,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8 * scale),
+                                Text(
+                                  '/meal',
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (14 * scale).clamp(12.0, 18.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: 16 * scale),
+                          Row(
+                            children: _budgetPresetValues
+                                .map((preset) {
+                                  final isSelected = _isBudgetPresetSelected(
+                                    preset,
+                                  );
+                                  return Expanded(
+                                    child: Padding(
+                                      padding: EdgeInsets.only(
+                                        right:
+                                            preset == _budgetPresetValues.last
+                                            ? 0
+                                            : 16 * scale,
+                                      ),
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => _setBudgetPreset(preset),
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 16 * scale,
+                                            vertical: 8 * scale,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? Colors.white
+                                                : const Color(0x52FFFFFF),
+                                            borderRadius: BorderRadius.circular(
+                                              15 * scale,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0x80FFFFFF),
+                                              width: (1 * scale).clamp(
+                                                0.8,
+                                                1.4,
+                                              ),
+                                            ),
+                                            boxShadow: isSelected
+                                                ? const <BoxShadow>[
+                                                    BoxShadow(
+                                                      color: Color(0xFFFF0000),
+                                                      blurRadius: 4,
+                                                      blurStyle:
+                                                          BlurStyle.outer,
+                                                    ),
+                                                  ]
+                                                : const <BoxShadow>[],
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '₹ ${preset.toInt()}',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontFamily:
+                                                    _defaultNonBorelFontFamily,
+                                                fontSize: (24 * scale).clamp(
+                                                  18.0,
+                                                  30.0,
+                                                ),
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                })
+                                .toList(growable: false),
                           ),
                         ],
                       ),
@@ -14783,6 +15137,48 @@ class _CustomEntriesScreenState extends State<CustomEntriesScreen>
     });
   }
 
+  int _parseEntryCalories(String rawCalories) {
+    final parsed = double.tryParse(rawCalories.trim().replaceAll(',', '.'));
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return 0;
+    }
+    return parsed.round();
+  }
+
+  Future<void> _openCustomEntryItemDetails(_CustomFoodEntry entry) async {
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push(
+      _buildNoTransitionRoute(
+        screen: _SearchFoodItemDetailsScreen(
+          item: _DailyFoodCatalogItem(
+            id: -entry.id,
+            name: entry.name,
+            caloriesKcal: _parseEntryCalories(entry.caloriesText),
+            isFavorite: entry.isFavorite,
+          ),
+          isExchangeEntry: widget.isExchangeEntry,
+          exchangeTargetEntryId: widget.exchangeTargetEntryId,
+          initialItemName: entry.name,
+          initialCaloriesText: entry.caloriesText,
+          initialProteinText: entry.proteinText,
+          initialCarbohydratesText: entry.carbohydratesText,
+          initialFatText: entry.fatText,
+          initialFiberText: entry.fiberText,
+          initialSugarText: entry.sugarText,
+          initialSodiumText: entry.sodiumText,
+          initialTimeText: entry.timeText,
+          showAddToCustom: false,
+        ),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
   bool get _canDeleteSelectedEntries => _selectedEntryIds.isNotEmpty;
 
   void _deleteSelectedEntries() {
@@ -15048,6 +15444,7 @@ class _CustomEntriesScreenState extends State<CustomEntriesScreen>
                             key: ValueKey<int>(entry.id),
                             scale: scale,
                             entry: entry,
+                            onTap: () => _openCustomEntryItemDetails(entry),
                             onToggleFavorite: () => _toggleEntryFavorite(entry),
                             onDelete: () {
                               if (!mounted) {
@@ -15208,12 +15605,14 @@ class _CustomEntrySwipeTile extends StatefulWidget {
     super.key,
     required this.scale,
     required this.entry,
+    required this.onTap,
     required this.onToggleFavorite,
     required this.onDelete,
   });
 
   final double scale;
   final _CustomFoodEntry entry;
+  final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
   final VoidCallback onDelete;
 
@@ -15369,7 +15768,9 @@ class _CustomEntrySwipeTileState extends State<_CustomEntrySwipeTile> {
       onTap: () {
         if (_targetOffsetX != 0 || _isDragging) {
           _closeDeleteAction();
+          return;
         }
+        widget.onTap();
       },
       onHorizontalDragStart: (_) {
         if (!mounted) {
@@ -15538,11 +15939,15 @@ class NewCustomEntryScreen extends StatefulWidget {
 class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  TimeOfDay _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+  TimeOfDay _selectedTime = _currentLocalTimeOfDay();
   bool _isAdvanceOpen = false;
   bool _isFavorite = false;
+  bool _isQuantityUnitDropdownOpen = false;
+  int _selectedQuantityUnitIndex = 0;
+  final List<_CustomFoodEntry> _pendingCustomEntries = <_CustomFoodEntry>[];
 
   late final TextEditingController _itemNameController;
+  late final TextEditingController _quantityController;
   late final TextEditingController _hourController;
   late final TextEditingController _minuteController;
   late final TextEditingController _caloriesController;
@@ -15554,6 +15959,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   late final TextEditingController _sodiumController;
 
   late final FocusNode _itemNameFocusNode;
+  late final FocusNode _quantityFocusNode;
   late final FocusNode _hourFocusNode;
   late final FocusNode _minuteFocusNode;
   late final FocusNode _caloriesFocusNode;
@@ -15565,6 +15971,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   late final FocusNode _sodiumFocusNode;
 
   final GlobalKey _itemNameFieldKey = GlobalKey();
+  final GlobalKey _quantityFieldKey = GlobalKey();
   final GlobalKey _hourFieldKey = GlobalKey();
   final GlobalKey _minuteFieldKey = GlobalKey();
   final GlobalKey _caloriesFieldKey = GlobalKey();
@@ -15574,6 +15981,30 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   final GlobalKey _fiberFieldKey = GlobalKey();
   final GlobalKey _sugarFieldKey = GlobalKey();
   final GlobalKey _sodiumFieldKey = GlobalKey();
+  static const List<_CustomEntryQuantityUnitOption> _quantityUnitOptions =
+      <_CustomEntryQuantityUnitOption>[
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Unit',
+          displaySuffix: '',
+          usesStepControls: true,
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Grams (g)',
+          displaySuffix: 'g',
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Milligrams (mg)',
+          displaySuffix: 'mg',
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Liter (l)',
+          displaySuffix: 'liter (l)',
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Milliliter (ml)',
+          displaySuffix: 'ml',
+        ),
+      ];
 
   bool get _isExchangeMode =>
       widget.isExchangeEntry && widget.exchangeTargetEntryId != null;
@@ -15584,6 +16015,8 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   bool get _showTimelineActionIcon => !widget.isExchangeEntry;
 
   bool get _isAmSelected => _selectedTime.hour < 12;
+  _CustomEntryQuantityUnitOption get _selectedQuantityUnit =>
+      _quantityUnitOptions[_selectedQuantityUnitIndex];
 
   String get _timeHourText {
     final hour = _selectedTime.hourOfPeriod == 0
@@ -15594,8 +16027,238 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
 
   String get _timeMinuteText => _selectedTime.minute.toString().padLeft(2, '0');
 
-  void _goBack() {
+  String _normalizedQuantityText(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return _selectedQuantityUnit.usesStepControls ? '1' : '';
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed <= 0) {
+      return _selectedQuantityUnit.usesStepControls ? '1' : '';
+    }
+    if (_selectedQuantityUnit.usesStepControls) {
+      return parsed.round().clamp(1, 9999).toString();
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _toggleQuantityUnitDropdown() {
     if (!mounted) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isQuantityUnitDropdownOpen = !_isQuantityUnitDropdownOpen;
+    });
+  }
+
+  void _selectQuantityUnitOption(int index) {
+    if (!mounted || index < 0 || index >= _quantityUnitOptions.length) {
+      return;
+    }
+    final previousUsesStepControls = _selectedQuantityUnit.usesStepControls;
+    final previousValue = _quantityController.text;
+    setState(() {
+      _selectedQuantityUnitIndex = index;
+      _isQuantityUnitDropdownOpen = false;
+      final normalized = _normalizedQuantityText(previousValue);
+      if (!_selectedQuantityUnit.usesStepControls &&
+          previousUsesStepControls &&
+          normalized == '1') {
+        _quantityController.text = '';
+      } else {
+        _quantityController.text = normalized;
+      }
+    });
+  }
+
+  void _adjustUnitQuantity(int delta) {
+    final parsed = int.tryParse(_quantityController.text.trim()) ?? 1;
+    final next = (parsed + delta).clamp(1, 9999);
+    setState(() {
+      _quantityController.text = next.toString();
+    });
+  }
+
+  bool get _hasPendingCustomEntries => _pendingCustomEntries.isNotEmpty;
+
+  String _dialogCaloriesText(_CustomFoodEntry entry) {
+    final parsed = double.tryParse(
+      entry.caloriesText.trim().replaceAll(',', '.'),
+    );
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return '0';
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _savePendingCustomEntries() {
+    for (final entry in _pendingCustomEntries) {
+      _CustomFoodEntryStore.add(entry);
+    }
+    _pendingCustomEntries.clear();
+  }
+
+  void _discardPendingCustomEntries() {
+    _pendingCustomEntries.clear();
+  }
+
+  Future<bool?> _showSaveToCustomPrompt(_CustomFoodEntry entry) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      useSafeArea: false,
+      builder: (dialogContext) {
+        final media = MediaQuery.of(dialogContext);
+        final scale = (math.min(media.size.width, media.size.height) / 390)
+            .clamp(0.86, 1.06);
+        final cardWidth = math.min(
+          322 * scale,
+          media.size.width - (32 * scale),
+        );
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.14),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: cardWidth,
+                  padding: EdgeInsets.fromLTRB(
+                    8 * scale,
+                    16 * scale,
+                    8 * scale,
+                    16 * scale,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0x52FFFFFF),
+                    borderRadius: BorderRadius.circular(16 * scale),
+                    border: Border.all(color: Colors.white),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(height: 16 * scale),
+                      Text(
+                        'Custom Entries',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Borel',
+                          fontSize: (32 * scale).clamp(24.0, 36.0),
+                          color: Colors.white,
+                          height: 0.99,
+                        ),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Text(
+                        '${entry.name}\n( ${_dialogCaloriesText(entry)} Kcal )',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: _defaultNonBorelFontFamily,
+                          fontSize: (14 * scale).clamp(12.0, 18.0),
+                          color: Colors.black,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 32 * scale),
+                      _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: const Color(0x9400B2FF),
+                        enablePressShadeFeedback: true,
+                        onTap: () => Navigator.of(dialogContext).pop(true),
+                        child: Center(
+                          child: Text(
+                            'Save to Custom',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (20 * scale).clamp(16.0, 24.0),
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      _RotatingGlassButton(
+                        scale: scale,
+                        height: 56 * scale,
+                        borderRadius: 32 * scale,
+                        fillColor: const Color(0x8FFF0606),
+                        enablePressShadeFeedback: true,
+                        onTap: () => Navigator.of(dialogContext).pop(false),
+                        child: Center(
+                          child: Text(
+                            'Discard',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (20 * scale).clamp(16.0, 24.0),
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _handleBackAttempt() async {
+    if (!_hasPendingCustomEntries) {
+      return true;
+    }
+    final promptResult = await _showSaveToCustomPrompt(
+      _pendingCustomEntries.last,
+    );
+    if (promptResult == true) {
+      _savePendingCustomEntries();
+      return true;
+    }
+    if (promptResult == false) {
+      _discardPendingCustomEntries();
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _goBack() async {
+    if (!mounted) {
+      return;
+    }
+    final canPop = await _handleBackAttempt();
+    if (!mounted || !canPop) {
       return;
     }
     Navigator.of(context).pop();
@@ -15701,6 +16364,9 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   void _resetAfterAdd() {
     setState(() {
       _itemNameController.text = '';
+      _quantityController.text = '1';
+      _selectedQuantityUnitIndex = 0;
+      _isQuantityUnitDropdownOpen = false;
       _caloriesController.text = '0';
       _proteinController.text = '0';
       _carbsController.text = '0';
@@ -15708,7 +16374,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       _fiberController.text = '0';
       _sugarController.text = '0';
       _sodiumController.text = '0';
-      _selectedTime = const TimeOfDay(hour: 6, minute: 45);
+      _selectedTime = _currentLocalTimeOfDay();
       _hourController.text = _timeHourText;
       _minuteController.text = _timeMinuteText;
       _isFavorite = false;
@@ -15720,6 +16386,9 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     if (!_canAddEntry) {
       return;
     }
+    _quantityController.text = _normalizedQuantityText(
+      _quantityController.text,
+    );
     final entry = _CustomFoodEntryStore.create(
       name: _itemNameController.text.trim(),
       caloriesText: _normalizedNumericText(_caloriesController.text),
@@ -15733,12 +16402,13 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       sodiumText: _normalizedNumericText(_sodiumController.text),
       isFavorite: _isFavorite,
     );
-    _CustomFoodEntryStore.add(entry);
+    _pendingCustomEntries.add(entry);
     _MealsTimelineStore.addOrReplace(
       entryId: _isExchangeMode ? widget.exchangeTargetEntryId : null,
       timeText: entry.timeText,
       itemName: entry.name,
       caloriesText: entry.caloriesText,
+      preserveExistingTimeText: _isExchangeMode,
       proteinText: entry.proteinText,
       carbohydratesText: entry.carbohydratesText,
       fatText: entry.fatText,
@@ -15776,6 +16446,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   void initState() {
     super.initState();
     _itemNameController = TextEditingController(text: '');
+    _quantityController = TextEditingController(text: '1');
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _caloriesController = TextEditingController(text: '0');
@@ -15787,6 +16458,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _sodiumController = TextEditingController(text: '0');
 
     _itemNameFocusNode = FocusNode();
+    _quantityFocusNode = FocusNode();
     _hourFocusNode = FocusNode();
     _minuteFocusNode = FocusNode();
     _caloriesFocusNode = FocusNode();
@@ -15798,6 +16470,15 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _sodiumFocusNode = FocusNode();
 
     _bindFieldFocus(focusNode: _itemNameFocusNode, fieldKey: _itemNameFieldKey);
+    _bindFieldFocus(
+      focusNode: _quantityFocusNode,
+      fieldKey: _quantityFieldKey,
+      onFocusLost: () {
+        _quantityController.text = _normalizedQuantityText(
+          _quantityController.text,
+        );
+      },
+    );
     _bindFieldFocus(
       focusNode: _hourFocusNode,
       fieldKey: _hourFieldKey,
@@ -15818,6 +16499,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
 
     for (final controller in <TextEditingController>[
       _itemNameController,
+      _quantityController,
       _caloriesController,
       _proteinController,
       _carbsController,
@@ -15842,6 +16524,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   @override
   void dispose() {
     _itemNameFocusNode.dispose();
+    _quantityFocusNode.dispose();
     _hourFocusNode.dispose();
     _minuteFocusNode.dispose();
     _caloriesFocusNode.dispose();
@@ -15852,6 +16535,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _sugarFocusNode.dispose();
     _sodiumFocusNode.dispose();
     _itemNameController.dispose();
+    _quantityController.dispose();
     _hourController.dispose();
     _minuteController.dispose();
     _caloriesController.dispose();
@@ -15901,6 +16585,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
             inactiveFillColor: const Color(0x52FFFFFF),
             selectedFillColor: Colors.white,
             isSelected: focusNode.hasFocus,
+            unfocusOnLongPress: true,
             onTap: () => focusNode.requestFocus(),
             child: Center(
               child: SizedBox(
@@ -15919,6 +16604,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                   ],
                   textInputAction: TextInputAction.done,
+                  enableInteractiveSelection: false,
                   onSubmitted: (_) => focusNode.unfocus(),
                   onTapOutside: (_) => focusNode.unfocus(),
                   decoration: const InputDecoration.collapsed(hintText: '0'),
@@ -15944,6 +16630,211 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                 fontSize: (14 * scale).clamp(12.0, 18.0),
                 color: Colors.black,
                 fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuantityUnitDropdownPanel(double scale) {
+    final panelRadius = BorderRadius.circular(16 * scale);
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x52FFFFFF),
+        borderRadius: panelRadius,
+      ),
+      child: Column(
+        children: List<Widget>.generate(_quantityUnitOptions.length, (index) {
+          final option = _quantityUnitOptions[index];
+          final isSelected = index == _selectedQuantityUnitIndex;
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: index == _quantityUnitOptions.length - 1 ? 0 : 16 * scale,
+            ),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _selectQuantityUnitOption(index),
+              child: Container(
+                width: 218 * scale,
+                padding: EdgeInsets.all(8 * scale),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16 * scale),
+                  border: Border.all(
+                    color: const Color(0x80FFFFFF),
+                    width: (1 * scale).clamp(0.8, 1.4),
+                  ),
+                  boxShadow: isSelected
+                      ? const <BoxShadow>[
+                          BoxShadow(
+                            color: Color(0xFFFF0000),
+                            blurRadius: 2,
+                            blurStyle: BlurStyle.outer,
+                          ),
+                        ]
+                      : const <BoxShadow>[],
+                ),
+                child: Text(
+                  option.dropdownLabel,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (24 * scale).clamp(18.0, 28.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildQuantityCard(double scale) {
+    final showsStepControls = _selectedQuantityUnit.usesStepControls;
+    final quantityHintText = showsStepControls
+        ? '1'
+        : (_quantityFocusNode.hasFocus ? '' : '0');
+    return Container(
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x3DFFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              if (showsStepControls) ...[
+                _TodaysEntryGlassTile(
+                  scale: scale,
+                  width: 47 * scale,
+                  height: 47 * scale,
+                  borderRadius: 15 * scale,
+                  padding: EdgeInsets.zero,
+                  inactiveFillColor: const Color(0x52FFFFFF),
+                  selectedFillColor: const Color(0x52FFFFFF),
+                  unfocusOnLongPress: true,
+                  onTap: () => _adjustUnitQuantity(-1),
+                  child: Icon(
+                    Icons.remove,
+                    color: Colors.white,
+                    size: (24 * scale).clamp(18.0, 28.0),
+                  ),
+                ),
+                SizedBox(width: 8 * scale),
+              ],
+              _TodaysEntryGlassTile(
+                scale: scale,
+                width: 140 * scale,
+                height: 47 * scale,
+                borderRadius: 15 * scale,
+                padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+                inactiveFillColor: const Color(0x52FFFFFF),
+                selectedFillColor: Colors.white,
+                isSelected: _quantityFocusNode.hasFocus,
+                unfocusOnLongPress: true,
+                onTap: () => _quantityFocusNode.requestFocus(),
+                child: Center(
+                  child: SizedBox(
+                    key: _quantityFieldKey,
+                    width: double.infinity,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onLongPressDown: (_) => _quantityFocusNode.unfocus(),
+                      onLongPressStart: (_) => _quantityFocusNode.unfocus(),
+                      onLongPressEnd: (_) => _quantityFocusNode.unfocus(),
+                      onLongPressCancel: _quantityFocusNode.unfocus,
+                      onLongPress: _quantityFocusNode.unfocus,
+                      child: TextField(
+                        controller: _quantityController,
+                        focusNode: _quantityFocusNode,
+                        scrollPadding: EdgeInsets.zero,
+                        textAlign: TextAlign.center,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                        ],
+                        textInputAction: TextInputAction.done,
+                        enableInteractiveSelection: false,
+                        onSubmitted: (_) => _quantityFocusNode.unfocus(),
+                        onTapOutside: (_) => _quantityFocusNode.unfocus(),
+                        decoration: InputDecoration.collapsed(
+                          hintText: quantityHintText,
+                          hintStyle: TextStyle(
+                            fontFamily: _defaultNonBorelFontFamily,
+                            fontSize: (24 * scale).clamp(18.0, 30.0),
+                            color: const Color(0x80000000),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        style: TextStyle(
+                          fontFamily: _defaultNonBorelFontFamily,
+                          fontSize: (24 * scale).clamp(18.0, 30.0),
+                          color: Colors.black,
+                          fontWeight: FontWeight.w500,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (showsStepControls) ...[
+                SizedBox(width: 8 * scale),
+                _TodaysEntryGlassTile(
+                  scale: scale,
+                  width: 47 * scale,
+                  height: 47 * scale,
+                  borderRadius: 15 * scale,
+                  padding: EdgeInsets.zero,
+                  inactiveFillColor: const Color(0x52FFFFFF),
+                  selectedFillColor: const Color(0x52FFFFFF),
+                  unfocusOnLongPress: true,
+                  onTap: () => _adjustUnitQuantity(1),
+                  child: Icon(
+                    Icons.add,
+                    color: Colors.white,
+                    size: (24 * scale).clamp(18.0, 28.0),
+                  ),
+                ),
+              ] else ...[
+                SizedBox(width: 16 * scale),
+                Text(
+                  _selectedQuantityUnit.displaySuffix,
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggleQuantityUnitDropdown,
+            child: SizedBox(
+              width: 16 * scale,
+              height: 16 * scale,
+              child: Icon(
+                _isQuantityUnitDropdownOpen
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                color: Colors.white,
+                size: (20 * scale).clamp(16.0, 24.0),
               ),
             ),
           ),
@@ -16019,6 +16910,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                             inactiveFillColor: const Color(0x52FFFFFF),
                             selectedFillColor: Colors.white,
                             isSelected: _itemNameFocusNode.hasFocus,
+                            unfocusOnLongPress: true,
                             onTap: () => _itemNameFocusNode.requestFocus(),
                             child: Align(
                               alignment: Alignment.centerLeft,
@@ -16032,6 +16924,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                   textAlign: TextAlign.left,
                                   keyboardType: TextInputType.text,
                                   textInputAction: TextInputAction.done,
+                                  enableInteractiveSelection: false,
                                   onSubmitted: (_) =>
                                       _itemNameFocusNode.unfocus(),
                                   onTapOutside: (_) =>
@@ -16076,6 +16969,22 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                     ),
                     SizedBox(height: 24 * scale),
                     Text(
+                      'Quantity',
+                      style: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (16 * scale).clamp(14.0, 20.0),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 16 * scale),
+                    _buildQuantityCard(scale),
+                    if (_isQuantityUnitDropdownOpen) ...[
+                      SizedBox(height: 16 * scale),
+                      _buildQuantityUnitDropdownPanel(scale),
+                    ],
+                    SizedBox(height: 24 * scale),
+                    Text(
                       'Meal Time',
                       style: TextStyle(
                         fontFamily: _defaultNonBorelFontFamily,
@@ -16102,6 +17011,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                             inactiveFillColor: const Color(0x52FFFFFF),
                             selectedFillColor: Colors.white,
                             isSelected: _hourFocusNode.hasFocus,
+                            unfocusOnLongPress: true,
                             onTap: () => _hourFocusNode.requestFocus(),
                             child: Center(
                               child: SizedBox(
@@ -16117,6 +17027,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                     FilteringTextInputFormatter.digitsOnly,
                                   ],
                                   textInputAction: TextInputAction.done,
+                                  enableInteractiveSelection: false,
                                   onSubmitted: (_) => _hourFocusNode.unfocus(),
                                   onTapOutside: (_) => _hourFocusNode.unfocus(),
                                   decoration: const InputDecoration.collapsed(
@@ -16151,6 +17062,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                             inactiveFillColor: const Color(0x52FFFFFF),
                             selectedFillColor: Colors.white,
                             isSelected: _minuteFocusNode.hasFocus,
+                            unfocusOnLongPress: true,
                             onTap: () => _minuteFocusNode.requestFocus(),
                             child: Center(
                               child: SizedBox(
@@ -16166,6 +17078,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                     FilteringTextInputFormatter.digitsOnly,
                                   ],
                                   textInputAction: TextInputAction.done,
+                                  enableInteractiveSelection: false,
                                   onSubmitted: (_) =>
                                       _minuteFocusNode.unfocus(),
                                   onTapOutside: (_) =>
@@ -16191,6 +17104,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                 borderRadius: 15 * scale,
                                 padding: EdgeInsets.all(8 * scale),
                                 isSelected: _isAmSelected,
+                                unfocusOnLongPress: true,
                                 onTap: () => _setAmPm(true),
                                 child: Text(
                                   'AM',
@@ -16208,6 +17122,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                 borderRadius: 15 * scale,
                                 padding: EdgeInsets.all(8 * scale),
                                 isSelected: !_isAmSelected,
+                                unfocusOnLongPress: true,
                                 onTap: () => _setAmPm(false),
                                 child: Text(
                                   'PM',
@@ -16572,6 +17487,7 @@ class _TodaysEntryGlassTile extends StatefulWidget {
     this.isSelected = false,
     this.inactiveFillColor = const Color(0x52FFFFFF),
     this.selectedFillColor = Colors.white,
+    this.unfocusOnLongPress = false,
   });
 
   final double scale;
@@ -16584,6 +17500,7 @@ class _TodaysEntryGlassTile extends StatefulWidget {
   final bool isSelected;
   final Color inactiveFillColor;
   final Color selectedFillColor;
+  final bool unfocusOnLongPress;
 
   @override
   State<_TodaysEntryGlassTile> createState() => _TodaysEntryGlassTileState();
@@ -16594,6 +17511,26 @@ class _TodaysEntryGlassTileState extends State<_TodaysEntryGlassTile> {
 
   bool _isLongPressed = false;
   bool _isClicked = false;
+
+  void _unfocusIfNeeded() {
+    if (!widget.unfocusOnLongPress) {
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  void _resetLongPressState() {
+    if (!mounted) {
+      return;
+    }
+    if (!_isLongPressed && !_isClicked) {
+      return;
+    }
+    setState(() {
+      _isLongPressed = false;
+      _isClicked = false;
+    });
+  }
 
   void _flashTapState() {
     if (!mounted) {
@@ -16657,35 +17594,54 @@ class _TodaysEntryGlassTileState extends State<_TodaysEntryGlassTile> {
       tile = SizedBox(width: widget.width, height: widget.height, child: tile);
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onLongPressDown: (_) {
-        setState(() {
-          _isLongPressed = true;
-          _isClicked = false;
-        });
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerUp: (_) {
+        if (_isLongPressed) {
+          _unfocusIfNeeded();
+          _resetLongPressState();
+        }
       },
-      onLongPressStart: (_) {
-        setState(() {
-          _isLongPressed = true;
-          _isClicked = false;
-        });
+      onPointerCancel: (_) {
+        if (_isLongPressed) {
+          _unfocusIfNeeded();
+          _resetLongPressState();
+        }
       },
-      onLongPressEnd: (_) {
-        setState(() {
-          _isLongPressed = false;
-        });
-      },
-      onLongPressCancel: () {
-        setState(() {
-          _isLongPressed = false;
-        });
-      },
-      onTap: () {
-        _flashTapState();
-        widget.onTap();
-      },
-      child: tile,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPressDown: (_) {
+          _unfocusIfNeeded();
+          setState(() {
+            _isLongPressed = true;
+            _isClicked = false;
+          });
+        },
+        onLongPressStart: (_) {
+          _unfocusIfNeeded();
+          setState(() {
+            _isLongPressed = true;
+            _isClicked = false;
+          });
+        },
+        onLongPressUp: () {
+          _unfocusIfNeeded();
+          _resetLongPressState();
+        },
+        onLongPressEnd: (_) {
+          _unfocusIfNeeded();
+          _resetLongPressState();
+        },
+        onLongPressCancel: () {
+          _unfocusIfNeeded();
+          _resetLongPressState();
+        },
+        onTap: () {
+          _flashTapState();
+          widget.onTap();
+        },
+        child: tile,
+      ),
     );
   }
 }
@@ -18296,6 +19252,18 @@ class _CurrencyOption {
 
   final String label;
   final String symbol;
+}
+
+class _CustomEntryQuantityUnitOption {
+  const _CustomEntryQuantityUnitOption({
+    required this.dropdownLabel,
+    required this.displaySuffix,
+    this.usesStepControls = false,
+  });
+
+  final String dropdownLabel;
+  final String displaySuffix;
+  final bool usesStepControls;
 }
 
 class _ActivityLevelCard extends StatefulWidget {
