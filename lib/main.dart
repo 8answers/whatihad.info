@@ -3344,10 +3344,10 @@ class _NameScreenState extends State<NameScreen>
   }
 
   void _resetNameLongPressState() {
-    _nameFocusNode.unfocus();
     if (!mounted || !_isNameLongPressed) {
       return;
     }
+    _nameFocusNode.unfocus();
     setState(() {
       _setNameDefaultState();
     });
@@ -9556,6 +9556,15 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     );
   }
 
+  void _openTodaysEntryScreen() {
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(screen: const TodaysEntryScreen()),
+    );
+  }
+
   void _openBellyoAiScreen() {
     if (!mounted) {
       return;
@@ -9819,9 +9828,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
             return;
           }
           if (index == 3) {
-            Navigator.of(context).pushReplacement(
-              _buildNoTransitionRoute(screen: const TodaysEntryScreen()),
-            );
+            _openTodaysEntryScreen();
             return;
           }
           setState(() {
@@ -9872,7 +9879,9 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       height: 48 * scale,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: _toggleMealsTimelineEditMode,
+        onTap: showAddIcon
+            ? _openTodaysEntryScreen
+            : _toggleMealsTimelineEditMode,
         child: _RotatingGlassPanel(
           scale: scale,
           borderRadius: 16 * scale,
@@ -12583,48 +12592,16 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                 ),
                               ),
                               SizedBox(height: 16 * scale),
-                              _TodaysEntryGlassTile(
+                              _GlassNextButton(
                                 scale: scale,
-                                height: 56 * scale,
-                                borderRadius: 32 * scale,
-                                inactiveFillColor: canAddWaterEntry
-                                    ? const Color(0x29FFD206)
-                                    : const Color(0x52FFFFFF),
-                                selectedFillColor: canAddWaterEntry
-                                    ? const Color(0x29FFD206)
-                                    : const Color(0x52FFFFFF),
-                                onTap: canAddWaterEntry
-                                    ? _addWaterEntryToTimeline
-                                    : () {},
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      _entryActionLabel,
-                                      style: TextStyle(
-                                        fontFamily: _defaultNonBorelFontFamily,
-                                        fontSize: (20 * scale).clamp(
-                                          16.0,
-                                          24.0,
-                                        ),
-                                        color: canAddWaterEntry
-                                            ? Colors.white
-                                            : const Color(0x80000000),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    if (_showEntryActionIcon) ...[
-                                      SizedBox(width: 16 * scale),
-                                      Icon(
-                                        Icons.add,
-                                        color: canAddWaterEntry
-                                            ? Colors.white
-                                            : const Color(0x80000000),
-                                        size: (34 * scale).clamp(24.0, 38.0),
-                                      ),
-                                    ],
-                                  ],
-                                ),
+                                label: _entryActionLabel,
+                                showArrowIcon: false,
+                                trailingIcon: _showEntryActionIcon
+                                    ? Icons.add
+                                    : null,
+                                trailingIconSize: 24,
+                                enabled: canAddWaterEntry,
+                                onTap: _addWaterEntryToTimeline,
                               ),
                             ],
                           ),
@@ -14565,78 +14542,26 @@ class _SearchFoodItemDetailsScreenState
                       SizedBox(width: 16 * scale),
                       SizedBox(
                         width: (150 * scale).clamp(120.0, 170.0),
-                        child: _RotatingGlassButton(
+                        child: _GlassNextButton(
                           scale: scale,
-                          height: bottomRowHeight,
-                          borderRadius: 32 * scale,
-                          fillColor: _canAddToCustom
-                              ? const Color(0x9400B2FF)
-                              : const Color(0x2E00B2FF),
-                          enablePressShadeFeedback: _canAddToCustom,
-                          onTap: _canAddToCustom ? _addToCustomEntries : () {},
-                          child: Center(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                'Add to Custom',
-                                maxLines: 1,
-                                softWrap: false,
-                                style: TextStyle(
-                                  fontFamily: _defaultNonBorelFontFamily,
-                                  fontSize: (34 * scale / 1.7).clamp(
-                                    18.0,
-                                    26.0,
-                                  ),
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
+                          label: 'Add to Custom',
+                          showArrowIcon: false,
+                          enabled: _canAddToCustom,
+                          onTap: _addToCustomEntries,
                         ),
                       ),
                     ],
                     SizedBox(width: 16 * scale),
                     Expanded(
-                      child: _RotatingGlassButton(
+                      child: _GlassNextButton(
                         scale: scale,
-                        height: bottomRowHeight,
-                        borderRadius: 32 * scale,
-                        fillColor: const Color(0x8FFFD206),
-                        enablePressShadeFeedback: true,
+                        label: _timelineActionLabel,
+                        showArrowIcon: false,
+                        trailingIcon: _showTimelineActionIcon
+                            ? Icons.add
+                            : null,
+                        trailingIconSize: 24,
                         onTap: _addToMealsTimeline,
-                        child: Center(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _timelineActionLabel,
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  style: TextStyle(
-                                    fontFamily: _defaultNonBorelFontFamily,
-                                    fontSize: (34 * scale / 1.7).clamp(
-                                      18.0,
-                                      26.0,
-                                    ),
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                if (_showTimelineActionIcon) ...[
-                                  SizedBox(width: 8 * scale),
-                                  Icon(
-                                    Icons.add,
-                                    color: Colors.white,
-                                    size: (24 * scale).clamp(20.0, 30.0),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
                       ),
                     ),
                   ],
@@ -17304,37 +17229,16 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                     ),
                     SizedBox(width: 16 * scale),
                     Expanded(
-                      child: _RotatingGlassButton(
+                      child: _GlassNextButton(
                         scale: scale,
-                        height: bottomRowHeight,
-                        borderRadius: 32 * scale,
-                        fillColor: _canAddEntry
-                            ? const Color(0x8FFFD206)
-                            : const Color(0x14FFD206),
-                        enablePressShadeFeedback: _canAddEntry,
-                        onTap: _canAddEntry ? _addCustomEntry : () {},
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              _timelineActionLabel,
-                              style: TextStyle(
-                                fontFamily: _defaultNonBorelFontFamily,
-                                fontSize: (36 * scale / 1.7).clamp(18.0, 28.0),
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            if (_showTimelineActionIcon) ...[
-                              SizedBox(width: 16 * scale),
-                              Icon(
-                                Icons.add,
-                                color: Colors.white,
-                                size: (34 * scale).clamp(24.0, 38.0),
-                              ),
-                            ],
-                          ],
-                        ),
+                        label: _timelineActionLabel,
+                        showArrowIcon: false,
+                        trailingIcon: _showTimelineActionIcon
+                            ? Icons.add
+                            : null,
+                        trailingIconSize: 24,
+                        enabled: _canAddEntry,
+                        onTap: _addCustomEntry,
                       ),
                     ),
                   ],
@@ -20236,11 +20140,19 @@ class _GlassNextButton extends StatefulWidget {
     required this.scale,
     required this.onTap,
     this.enabled = true,
+    this.label = 'Next',
+    this.showArrowIcon = true,
+    this.trailingIcon,
+    this.trailingIconSize = 24,
   });
 
   final double scale;
   final VoidCallback onTap;
   final bool enabled;
+  final String label;
+  final bool showArrowIcon;
+  final IconData? trailingIcon;
+  final double trailingIconSize;
 
   @override
   State<_GlassNextButton> createState() => _GlassNextButtonState();
@@ -20251,6 +20163,9 @@ class _GlassNextButtonState extends State<_GlassNextButton>
   @override
   Widget build(BuildContext context) {
     final scale = widget.scale;
+    final trailingIconData = widget.trailingIcon;
+    final shouldShowArrow = widget.showArrowIcon && trailingIconData == null;
+    final shouldShowTrailingIcon = shouldShowArrow || trailingIconData != null;
     return _RotatingGlassButton(
       scale: scale,
       height: 56 * scale,
@@ -20260,24 +20175,31 @@ class _GlassNextButtonState extends State<_GlassNextButton>
           : const Color(0x14FFD206),
       enablePressShadeFeedback: widget.enabled,
       onTap: widget.enabled ? widget.onTap : () {},
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Next',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
-              fontWeight: FontWeight.w700,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.label,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          SizedBox(width: 12 * scale),
-          Icon(
-            Icons.arrow_forward,
-            color: Colors.white,
-            size: (24 * scale).clamp(20.0, 28.0),
-          ),
-        ],
+            if (shouldShowTrailingIcon) ...[
+              SizedBox(width: 12 * scale),
+              Icon(
+                trailingIconData ?? Icons.arrow_forward,
+                color: Colors.white,
+                size: widget.trailingIconSize * scale,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
