@@ -35,6 +35,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.2.1
+  geocoding: ^4.0.0
+  geolocator: ^14.0.2
+  http: ^1.5.0
   supabase_flutter: ^2.10.3
 
 dev_dependencies:
@@ -92,8 +95,10 @@ flutter:
     - assets/Below_back.svg
     - assets/Bellyo_ai.png
     - assets/Bellyo_open_page.png
+    - assets/AI_Profile.png
     - assets/No_custom_entries.png
     - assets/No_Favorites.png
+    - "lib/realistic_country_specific_food_prices.csv"
 
   fonts:
     - family: Borel

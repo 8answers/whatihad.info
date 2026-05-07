@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' as rendering;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const Duration _kScreenFadeDuration = Duration(milliseconds: 380);
@@ -77,13 +81,18 @@ final Map<String, String> _defaultAdvancedNutritionGoalValues =
       activityIndex: 1,
     ).advancedGoalValues;
 const Map<String, String> _budgetCurrencyGlyphByCode = <String, String>{
-  'AED': 'د.إ',
-  'AUD': r'$',
-  'BRL': r'R$',
-  'CAD': r'$',
-  'EUR': '€',
-  'INR': '₹',
   'USD': r'$',
+  'EUR': '€',
+  'GBP': '£',
+  'INR': '₹',
+  'CNY': '¥',
+  'BRL': r'R$',
+  'JPY': '¥',
+  'AUD': r'A$',
+  'CAD': r'C$',
+  'SGD': r'S$',
+  'AED': 'د.إ',
+  'SAR': '﷼',
 };
 const int _defaultDietPreferenceIndex = 1;
 const List<_DietPreferenceOption> _dietPreferenceOptions =
@@ -106,19 +115,87 @@ const List<String> _onboardingGenderLabels = <String>[
   'Other',
   'Prefer not to respond',
 ];
-const List<String> _bellyoAssistantPromptSuggestions = <String>[
-  'Suggest meal under ₹150',
-  'High protein food',
-  'What should I eat today?',
-  'Recovery foods',
-  'Quick meal idea',
-  'Low calorie dinner',
-  'Cheap muscle meal',
-  'Quick healthy snack',
-  'Breakfast Ideas',
-  'Lunch Ideas',
-  'Dinner Ideas',
+const Map<String, String> _countryNameByIso2Code = <String, String>{
+  'IN': 'India',
+  'US': 'United States',
+  'GB': 'United Kingdom',
+  'AE': 'United Arab Emirates',
+  'SA': 'Saudi Arabia',
+  'CN': 'China',
+  'JP': 'Japan',
+  'BR': 'Brazil',
+  'CA': 'Canada',
+  'AU': 'Australia',
+  'SG': 'Singapore',
+  'DE': 'Germany',
+  'FR': 'France',
+  'IT': 'Italy',
+  'ES': 'Spain',
+  'MX': 'Mexico',
+  'ID': 'Indonesia',
+  'MY': 'Malaysia',
+  'TH': 'Thailand',
+  'PH': 'Philippines',
+  'KR': 'South Korea',
+  'TR': 'Turkey',
+  'ZA': 'South Africa',
+};
+
+class _BellyoQuickPrompt {
+  const _BellyoQuickPrompt({required this.label, required this.prompt});
+
+  final String label;
+  final String prompt;
+}
+
+const List<_BellyoQuickPrompt>
+_bellyoAssistantPromptSuggestions = <_BellyoQuickPrompt>[
+  _BellyoQuickPrompt(
+    label: 'Suggest meal under ₹150',
+    prompt: 'Suggest meal under ₹150',
+  ),
+  _BellyoQuickPrompt(label: 'High protein food', prompt: 'High protein food'),
+  _BellyoQuickPrompt(
+    label: 'What should I eat today?',
+    prompt: 'What should I eat today?',
+  ),
+  _BellyoQuickPrompt(label: 'Recovery foods', prompt: 'Recovery foods'),
+  _BellyoQuickPrompt(label: 'Quick meal idea', prompt: 'Quick meal idea'),
+  _BellyoQuickPrompt(label: 'Low calorie dinner', prompt: 'Low calorie dinner'),
+  _BellyoQuickPrompt(label: 'Cheap muscle meal', prompt: 'Cheap muscle meal'),
+  _BellyoQuickPrompt(
+    label: 'Quick healthy snack',
+    prompt: 'Quick healthy snack',
+  ),
+  _BellyoQuickPrompt(label: 'Breakfast Ideas', prompt: 'Breakfast Ideas'),
+  _BellyoQuickPrompt(label: 'Lunch Ideas', prompt: 'Lunch Ideas'),
+  _BellyoQuickPrompt(label: 'Dinner Ideas', prompt: 'Dinner Ideas'),
 ];
+const String _bellyoAssistantOllamaEndpoint = String.fromEnvironment(
+  'BELLYO_OLLAMA_ENDPOINT',
+  defaultValue: '',
+);
+const String _bellyoAssistantOllamaModel = String.fromEnvironment(
+  'BELLYO_OLLAMA_MODEL',
+  defaultValue: 'llama3.2',
+);
+const int _bellyoAssistantHistoryLimit = 12;
+const bool _bellyoAssistantEnableOfflineFallback = bool.fromEnvironment(
+  'BELLYO_ENABLE_OFFLINE_FALLBACK',
+  defaultValue: false,
+);
+
+enum _BellyoAssistantRole { user, assistant }
+
+class _BellyoAssistantMessage {
+  const _BellyoAssistantMessage({required this.role, required this.text});
+
+  final _BellyoAssistantRole role;
+  final String text;
+
+  bool get isUser => role == _BellyoAssistantRole.user;
+}
+
 const int _maleGenderIndex = 0;
 const int _unselectedGenderIndex = -1;
 
@@ -614,6 +691,7 @@ class _OnboardingProfileState {
   );
   static bool isHydrationInLiters = true;
   static int selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
+  static String selectedCountryName = '';
 
   static void reset() {
     selectedName = '';
@@ -649,6 +727,7 @@ class _OnboardingProfileState {
     );
     isHydrationInLiters = true;
     selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
+    selectedCountryName = '';
   }
 }
 
@@ -658,6 +737,7 @@ class _CustomFoodEntry {
     required this.name,
     required this.caloriesText,
     required this.timeText,
+    this.budgetAmountText = '0',
     required this.proteinText,
     required this.carbohydratesText,
     required this.fatText,
@@ -671,6 +751,7 @@ class _CustomFoodEntry {
   final String name;
   final String caloriesText;
   final String timeText;
+  final String budgetAmountText;
   final String proteinText;
   final String carbohydratesText;
   final String fatText;
@@ -685,6 +766,7 @@ class _CustomFoodEntry {
       name: name,
       caloriesText: caloriesText,
       timeText: timeText,
+      budgetAmountText: budgetAmountText,
       proteinText: proteinText,
       carbohydratesText: carbohydratesText,
       fatText: fatText,
@@ -707,6 +789,7 @@ class _CustomFoodEntryStore {
     required String name,
     required String caloriesText,
     required String timeText,
+    String budgetAmountText = '0',
     required String proteinText,
     required String carbohydratesText,
     required String fatText,
@@ -720,6 +803,7 @@ class _CustomFoodEntryStore {
       name: name,
       caloriesText: caloriesText,
       timeText: timeText,
+      budgetAmountText: budgetAmountText,
       proteinText: proteinText,
       carbohydratesText: carbohydratesText,
       fatText: fatText,
@@ -980,12 +1064,42 @@ class _DailyFoodCatalogItem {
     required this.id,
     required this.name,
     required this.caloriesKcal,
+    this.caloriesText = '0',
+    this.proteinText = '0',
+    this.carbohydratesText = '0',
+    this.fatText = '0',
+    this.fiberText = '0',
+    this.sugarText = '0',
+    this.sodiumText = '0',
+    this.quantityType = '',
+    this.quantityAmountText = '',
+    this.priceByCurrency = const <String, double>{},
+    this.countryName = '',
+    this.isVegetarian = false,
+    this.isNonVegetarian = false,
+    this.isEggFriendly = false,
+    this.isVegan = false,
     this.isFavorite = false,
   });
 
   final int id;
   final String name;
   final int caloriesKcal;
+  final String caloriesText;
+  final String proteinText;
+  final String carbohydratesText;
+  final String fatText;
+  final String fiberText;
+  final String sugarText;
+  final String sodiumText;
+  final String quantityType;
+  final String quantityAmountText;
+  final Map<String, double> priceByCurrency;
+  final String countryName;
+  final bool isVegetarian;
+  final bool isNonVegetarian;
+  final bool isEggFriendly;
+  final bool isVegan;
   final bool isFavorite;
 
   _DailyFoodCatalogItem copyWith({bool? isFavorite}) {
@@ -993,15 +1107,109 @@ class _DailyFoodCatalogItem {
       id: id,
       name: name,
       caloriesKcal: caloriesKcal,
+      caloriesText: caloriesText,
+      proteinText: proteinText,
+      carbohydratesText: carbohydratesText,
+      fatText: fatText,
+      fiberText: fiberText,
+      sugarText: sugarText,
+      sodiumText: sodiumText,
+      quantityType: quantityType,
+      quantityAmountText: quantityAmountText,
+      priceByCurrency: priceByCurrency,
+      countryName: countryName,
+      isVegetarian: isVegetarian,
+      isNonVegetarian: isNonVegetarian,
+      isEggFriendly: isEggFriendly,
+      isVegan: isVegan,
       isFavorite: isFavorite ?? this.isFavorite,
     );
+  }
+
+  String get quantityTypeLabel {
+    final normalized = quantityType.trim().toLowerCase();
+    switch (normalized) {
+      case 'unit':
+        return 'unit';
+      case 'g':
+      case 'gram':
+      case 'grams':
+        return 'g';
+      case 'mg':
+      case 'milligram':
+      case 'milligrams':
+        return 'mg';
+      case 'ml':
+      case 'milliliter':
+      case 'milliliters':
+      case 'millilitre':
+      case 'millilitres':
+        return 'ml';
+      case 'l':
+      case 'liter':
+      case 'liters':
+      case 'litre':
+      case 'litres':
+        return 'l';
+      default:
+        return quantityType.trim();
+    }
+  }
+
+  String get quantityDisplayText {
+    final amount = quantityAmountText.trim();
+    final type = quantityTypeLabel.trim();
+    if (amount.isEmpty && type.isEmpty) {
+      return '';
+    }
+    if (amount.isEmpty) {
+      return type;
+    }
+    if (type.isEmpty) {
+      return amount;
+    }
+    return '$amount $type';
+  }
+
+  String budgetTextForCurrency(String currencyCode) {
+    final value = priceByCurrency[currencyCode];
+    if (value == null || value.isNaN || value.isInfinite || value < 0) {
+      return '';
+    }
+    if ((value - value.roundToDouble()).abs() < 0.0001) {
+      return value.round().toString();
+    }
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 }
 
 class _DailyFoodDatabase {
+  static const String _mainFoodCsvAssetPath =
+      'lib/realistic_country_specific_food_prices.csv';
+  static const List<String> _mainFoodCurrencyColumns = <String>[
+    'USD',
+    'EUR',
+    'GBP',
+    'INR',
+    'CNY',
+    'BRL',
+    'JPY',
+    'AUD',
+    'CAD',
+    'SGD',
+    'AED',
+    'SAR',
+  ];
+
   static final Set<int> _favoriteFoodIds = <int>{};
   static bool _triedRemoteSearch = false;
   static bool _remoteSearchAvailable = true;
+  static bool _csvFoodsLoaded = false;
+  static Future<void>? _csvLoadFuture;
+  static List<_DailyFoodCatalogItem> _csvFoods = <_DailyFoodCatalogItem>[];
 
   static final List<_DailyFoodCatalogItem>
   _localFoods = <_DailyFoodCatalogItem>[
@@ -1223,6 +1431,176 @@ class _DailyFoodDatabase {
     _DailyFoodCatalogItem(id: 1140, name: 'Gulab Jamun', caloriesKcal: 175),
   ];
 
+  static List<String> _parseCsvRow(String row) {
+    final fields = <String>[];
+    final buffer = StringBuffer();
+    bool inQuotes = false;
+    for (int i = 0; i < row.length; i++) {
+      final char = row[i];
+      if (char == '"') {
+        if (inQuotes && i + 1 < row.length && row[i + 1] == '"') {
+          buffer.write('"');
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (char == ',' && !inQuotes) {
+        fields.add(buffer.toString());
+        buffer.clear();
+        continue;
+      }
+      buffer.write(char);
+    }
+    fields.add(buffer.toString());
+    return fields;
+  }
+
+  static double _parseCsvNumber(String raw) {
+    final normalized = raw.trim().replaceAll(' ', '');
+    if (normalized.isEmpty) {
+      return 0;
+    }
+    return double.tryParse(normalized) ?? 0;
+  }
+
+  static bool _parseCsvFlag(String raw) {
+    final normalized = raw.trim().toLowerCase();
+    return normalized == '1' ||
+        normalized == 'true' ||
+        normalized == 'yes' ||
+        normalized == 'y';
+  }
+
+  static String _formatCsvNumber(double value) {
+    if (value.isNaN || value.isInfinite) {
+      return '0';
+    }
+    if ((value - value.roundToDouble()).abs() < 0.0001) {
+      return value.round().toString();
+    }
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  static String _normalizeCsvQuantityAmount(String raw) {
+    final cleaned = raw.trim();
+    if (cleaned.isEmpty) {
+      return '';
+    }
+    final parsed = _parseCsvNumber(cleaned);
+    if (parsed <= 0) {
+      return cleaned;
+    }
+    return _formatCsvNumber(parsed);
+  }
+
+  static Future<void> _ensureCsvFoodsLoaded() async {
+    if (_csvFoodsLoaded) {
+      return;
+    }
+    if (_csvLoadFuture != null) {
+      return _csvLoadFuture!;
+    }
+    _csvLoadFuture = _loadCsvFoods();
+    await _csvLoadFuture;
+  }
+
+  static Future<void> _loadCsvFoods() async {
+    try {
+      final rawCsv = await rootBundle.loadString(_mainFoodCsvAssetPath);
+      final rows = const LineSplitter()
+          .convert(rawCsv)
+          .where((row) => row.trim().isNotEmpty)
+          .toList(growable: false);
+      if (rows.length < 2) {
+        _csvFoodsLoaded = true;
+        _csvFoods = <_DailyFoodCatalogItem>[];
+        return;
+      }
+
+      final header = _parseCsvRow(rows.first)
+          .map((value) => value.trim().replaceFirst('\uFEFF', ''))
+          .toList(growable: false);
+      final indexByColumn = <String, int>{};
+      for (int i = 0; i < header.length; i++) {
+        indexByColumn[header[i]] = i;
+      }
+
+      String readAt(List<String> fields, String key) {
+        final idx = indexByColumn[key];
+        if (idx == null || idx < 0 || idx >= fields.length) {
+          return '';
+        }
+        return fields[idx].trim();
+      }
+
+      final parsedFoods = <_DailyFoodCatalogItem>[];
+      for (int rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+        final fields = _parseCsvRow(rows[rowIndex]);
+        final itemName = readAt(fields, 'item_name');
+        if (itemName.isEmpty) {
+          continue;
+        }
+        final country = readAt(fields, 'country');
+        final quantityType = readAt(fields, 'quantity_type');
+        final quantityAmountText = _normalizeCsvQuantityAmount(
+          readAt(fields, 'quantity'),
+        );
+
+        final calories = _parseCsvNumber(readAt(fields, 'calories_kcal'));
+        final protein = _parseCsvNumber(readAt(fields, 'protein_g'));
+        final fat = _parseCsvNumber(readAt(fields, 'fat_g'));
+        final carbs = _parseCsvNumber(readAt(fields, 'carbohydrates_g'));
+        final fiber = _parseCsvNumber(readAt(fields, 'fiber_g'));
+        final sugar = _parseCsvNumber(readAt(fields, 'sugar_g'));
+        final sodium = _parseCsvNumber(readAt(fields, 'sodium_mg'));
+        final isVegetarian = _parseCsvFlag(readAt(fields, 'veg'));
+        final isNonVegetarian = _parseCsvFlag(readAt(fields, 'non_veg'));
+        final isEggFriendly = _parseCsvFlag(readAt(fields, 'egg'));
+        final isVegan = _parseCsvFlag(readAt(fields, 'vegan'));
+
+        final priceByCurrency = <String, double>{};
+        for (final code in _mainFoodCurrencyColumns) {
+          priceByCurrency[code] = _parseCsvNumber(readAt(fields, code));
+        }
+
+        parsedFoods.add(
+          _DailyFoodCatalogItem(
+            id: 200000 + rowIndex,
+            name: itemName,
+            caloriesKcal: calories.round(),
+            caloriesText: _formatCsvNumber(calories),
+            proteinText: _formatCsvNumber(protein),
+            carbohydratesText: _formatCsvNumber(carbs),
+            fatText: _formatCsvNumber(fat),
+            fiberText: _formatCsvNumber(fiber),
+            sugarText: _formatCsvNumber(sugar),
+            sodiumText: _formatCsvNumber(sodium),
+            quantityType: quantityType,
+            quantityAmountText: quantityAmountText,
+            priceByCurrency: priceByCurrency,
+            countryName: country,
+            isVegetarian: isVegetarian,
+            isNonVegetarian: isNonVegetarian,
+            isEggFriendly: isEggFriendly,
+            isVegan: isVegan,
+          ),
+        );
+      }
+
+      parsedFoods.sort((a, b) => a.name.compareTo(b.name));
+      _csvFoods = parsedFoods;
+      _csvFoodsLoaded = true;
+    } catch (_) {
+      _csvFoodsLoaded = true;
+      _csvFoods = <_DailyFoodCatalogItem>[];
+    }
+  }
+
   static List<_DailyFoodCatalogItem> _applyFavoriteFlags(
     List<_DailyFoodCatalogItem> foods,
   ) {
@@ -1280,9 +1658,12 @@ class _DailyFoodDatabase {
     }
   }
 
-  static List<_DailyFoodCatalogItem> _searchLocalFoods(String query) {
+  static List<_DailyFoodCatalogItem> _searchFoodsFromList(
+    String query,
+    List<_DailyFoodCatalogItem> sourceFoods,
+  ) {
     final normalized = query.trim().toLowerCase();
-    final foods = _localFoods
+    final foods = sourceFoods
         .where((food) => food.name.toLowerCase().contains(normalized))
         .toList(growable: false);
     final sorted = [...foods]..sort((a, b) => a.name.compareTo(b.name));
@@ -1295,12 +1676,144 @@ class _DailyFoodDatabase {
       return <_DailyFoodCatalogItem>[];
     }
 
+    await _ensureCsvFoodsLoaded();
+    if (_csvFoods.isNotEmpty) {
+      return _searchFoodsFromList(normalized, _csvFoods);
+    }
+
     final remoteResults = await _searchRemoteFoods(normalized);
     if (remoteResults != null && remoteResults.isNotEmpty) {
       return remoteResults;
     }
 
-    return _searchLocalFoods(normalized);
+    return _searchFoodsFromList(normalized, _localFoods);
+  }
+
+  static String _normalizedCountry(String value) {
+    return value.trim().toLowerCase();
+  }
+
+  static bool _countryMatches(String itemCountry, String preferredCountry) {
+    final normalizedItemCountry = _normalizedCountry(itemCountry);
+    final normalizedPreferredCountry = _normalizedCountry(preferredCountry);
+    if (normalizedItemCountry.isEmpty || normalizedPreferredCountry.isEmpty) {
+      return false;
+    }
+    if (normalizedItemCountry == normalizedPreferredCountry) {
+      return true;
+    }
+    return normalizedItemCountry.contains(normalizedPreferredCountry) ||
+        normalizedPreferredCountry.contains(normalizedItemCountry);
+  }
+
+  static int _dietCompatibilityScore(
+    _DailyFoodCatalogItem food,
+    int selectedDietPreferenceIndex,
+  ) {
+    switch (selectedDietPreferenceIndex) {
+      case 0:
+        if (food.isVegan) {
+          return 3;
+        }
+        if (food.isVegetarian && !food.isNonVegetarian && !food.isEggFriendly) {
+          return 2;
+        }
+        return 0;
+      case 1:
+        if (food.isNonVegetarian) {
+          return 4;
+        }
+        if (food.isEggFriendly) {
+          return 3;
+        }
+        if (food.isVegetarian) {
+          return 2;
+        }
+        if (food.isVegan) {
+          return 1;
+        }
+        return 0;
+      case 2:
+        if (food.isEggFriendly) {
+          return 4;
+        }
+        if (food.isVegetarian) {
+          return 3;
+        }
+        if (food.isVegan) {
+          return 2;
+        }
+        return 0;
+      case 3:
+        return food.isVegan ? 4 : 0;
+      default:
+        return 1;
+    }
+  }
+
+  static Future<String> buildAssistantFoodContext({
+    required int selectedDietPreferenceIndex,
+    required String preferredCountry,
+  }) async {
+    await _ensureCsvFoodsLoaded();
+    final sourceFoods = _csvFoods.isNotEmpty ? _csvFoods : _localFoods;
+
+    final scoredFoods = sourceFoods
+        .map(
+          (food) => (
+            food: food,
+            score: _dietCompatibilityScore(food, selectedDietPreferenceIndex),
+          ),
+        )
+        .where((entry) => entry.score > 0)
+        .toList(growable: false);
+    scoredFoods.sort((a, b) {
+      final byScore = b.score.compareTo(a.score);
+      if (byScore != 0) {
+        return byScore;
+      }
+      return a.food.name.compareTo(b.food.name);
+    });
+    final compatibleFoods = scoredFoods
+        .map((entry) => entry.food)
+        .toList(growable: false);
+
+    if (compatibleFoods.isEmpty) {
+      return '';
+    }
+
+    final prioritizedFoods = preferredCountry.trim().isEmpty
+        ? const <_DailyFoodCatalogItem>[]
+        : compatibleFoods
+              .where(
+                (food) => _countryMatches(food.countryName, preferredCountry),
+              )
+              .toList(growable: false);
+
+    final priorityNames = prioritizedFoods
+        .map((food) => food.name)
+        .toSet()
+        .take(18)
+        .join(', ');
+    final compatibleNames = compatibleFoods
+        .map((food) => food.name)
+        .toSet()
+        .take(18)
+        .join(', ');
+
+    final contextParts = <String>[];
+    if (preferredCountry.trim().isNotEmpty) {
+      contextParts.add('Preferred country: ${preferredCountry.trim()}.');
+    }
+    if (priorityNames.isNotEmpty) {
+      contextParts.add(
+        'Prioritize these country dishes first when relevant: $priorityNames.',
+      );
+    }
+    contextParts.add(
+      'Compatible dishes based on profile diet preference: $compatibleNames.',
+    );
+    return contextParts.join(' ');
   }
 
   static void setFavorite(int foodId, bool isFavorite) {
@@ -1626,11 +2139,66 @@ class _FirstScreenState extends State<FirstScreen>
   late final AnimationController _controller;
   Timer? _nextScreenTimer;
 
+  String _countryFromDeviceLocale() {
+    final countryCode = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .locale
+        .countryCode
+        ?.trim()
+        .toUpperCase();
+    if (countryCode == null || countryCode.isEmpty) {
+      return '';
+    }
+    return _countryNameByIso2Code[countryCode] ?? countryCode;
+  }
+
+  Future<void> _captureCountryFromPermissionFlow() async {
+    final fallbackCountry = _countryFromDeviceLocale();
+    if (fallbackCountry.isNotEmpty) {
+      _OnboardingProfileState.selectedCountryName = fallbackCountry;
+    }
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (!serviceEnabled ||
+          permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (placemarks.isEmpty) {
+        return;
+      }
+      final country = placemarks.first.country?.trim();
+      if (country == null || country.isEmpty) {
+        return;
+      }
+      _OnboardingProfileState.selectedCountryName = country;
+    } catch (_) {
+      // Keep locale fallback when geolocation is unavailable or denied.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _OnboardingSkipFlags.reset();
     _OnboardingProfileState.reset();
+    unawaited(_captureCountryFromPermissionFlow());
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -2949,6 +3517,7 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
         authScreenLaunchMode: kIsWeb
             ? LaunchMode.platformDefault
             : LaunchMode.externalApplication,
+        queryParams: const <String, String>{'prompt': 'select_account'},
       );
     } catch (error) {
       if (!mounted) {
@@ -6870,161 +7439,18 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
   static const Map<String, String> _currencyGlyphByCode =
       _budgetCurrencyGlyphByCode;
   static const List<_CurrencyOption> _currencyOptions = <_CurrencyOption>[
-    _CurrencyOption(label: 'Afghan Afghani', symbol: 'AFN'),
-    _CurrencyOption(label: 'Albanian Lek', symbol: 'ALL'),
-    _CurrencyOption(label: 'Algerian Dinar', symbol: 'DZD'),
-    _CurrencyOption(label: 'Angolan Kwanza', symbol: 'AOA'),
-    _CurrencyOption(label: 'Argentine Peso', symbol: 'ARS'),
-    _CurrencyOption(label: 'Armenian Dram', symbol: 'AMD'),
-    _CurrencyOption(label: 'Aruban Florin', symbol: 'AWG'),
-    _CurrencyOption(label: 'Australian Dollar', symbol: 'AUD'),
-    _CurrencyOption(label: 'Azerbaijani Manat', symbol: 'AZN'),
-    _CurrencyOption(label: 'Bahamian Dollar', symbol: 'BSD'),
-    _CurrencyOption(label: 'Bahraini Dinar', symbol: 'BHD'),
-    _CurrencyOption(label: 'Bangladeshi Taka', symbol: 'BDT'),
-    _CurrencyOption(label: 'Barbadian Dollar', symbol: 'BBD'),
-    _CurrencyOption(label: 'Belarusian Ruble', symbol: 'BYN'),
-    _CurrencyOption(label: 'Belize Dollar', symbol: 'BZD'),
-    _CurrencyOption(label: 'Bermudian Dollar', symbol: 'BMD'),
-    _CurrencyOption(label: 'Bhutanese Ngultrum', symbol: 'BTN'),
-    _CurrencyOption(label: 'Bolivian Boliviano', symbol: 'BOB'),
-    _CurrencyOption(
-      label: 'Bosnia-Herzegovina Convertible Mark',
-      symbol: 'BAM',
-    ),
-    _CurrencyOption(label: 'Botswanan Pula', symbol: 'BWP'),
-    _CurrencyOption(label: 'Brazilian Real', symbol: 'BRL'),
-    _CurrencyOption(label: 'Brunei Dollar', symbol: 'BND'),
-    _CurrencyOption(label: 'Bulgarian Lev', symbol: 'BGN'),
-    _CurrencyOption(label: 'Burundian Franc', symbol: 'BIF'),
-    _CurrencyOption(label: 'Cabo Verdean Escudo', symbol: 'CVE'),
-    _CurrencyOption(label: 'Cambodian Riel', symbol: 'KHR'),
-    _CurrencyOption(label: 'Canadian Dollar', symbol: 'CAD'),
-    _CurrencyOption(label: 'Cayman Islands Dollar', symbol: 'KYD'),
-    _CurrencyOption(label: 'Central African CFA Franc', symbol: 'XAF'),
-    _CurrencyOption(label: 'Chilean Peso', symbol: 'CLP'),
-    _CurrencyOption(label: 'Chinese Yuan', symbol: 'CNY'),
-    _CurrencyOption(label: 'Colombian Peso', symbol: 'COP'),
-    _CurrencyOption(label: 'Comorian Franc', symbol: 'KMF'),
-    _CurrencyOption(label: 'Congolese Franc', symbol: 'CDF'),
-    _CurrencyOption(label: 'Costa Rican Colon', symbol: 'CRC'),
-    _CurrencyOption(label: 'Croatian Euro', symbol: 'EUR'),
-    _CurrencyOption(label: 'Cuban Peso', symbol: 'CUP'),
-    _CurrencyOption(label: 'Czech Koruna', symbol: 'CZK'),
-    _CurrencyOption(label: 'Danish Krone', symbol: 'DKK'),
-    _CurrencyOption(label: 'Djiboutian Franc', symbol: 'DJF'),
-    _CurrencyOption(label: 'Dominican Peso', symbol: 'DOP'),
-    _CurrencyOption(label: 'East Caribbean Dollar', symbol: 'XCD'),
-    _CurrencyOption(label: 'Egyptian Pound', symbol: 'EGP'),
-    _CurrencyOption(label: 'Eritrean Nakfa', symbol: 'ERN'),
-    _CurrencyOption(label: 'Ethiopian Birr', symbol: 'ETB'),
-    _CurrencyOption(label: 'Euro', symbol: 'EUR'),
-    _CurrencyOption(label: 'Falkland Islands Pound', symbol: 'FKP'),
-    _CurrencyOption(label: 'Fijian Dollar', symbol: 'FJD'),
-    _CurrencyOption(label: 'Gambian Dalasi', symbol: 'GMD'),
-    _CurrencyOption(label: 'Georgian Lari', symbol: 'GEL'),
-    _CurrencyOption(label: 'Ghanaian Cedi', symbol: 'GHS'),
-    _CurrencyOption(label: 'Gibraltar Pound', symbol: 'GIP'),
-    _CurrencyOption(label: 'Guatemalan Quetzal', symbol: 'GTQ'),
-    _CurrencyOption(label: 'Guinean Franc', symbol: 'GNF'),
-    _CurrencyOption(label: 'Guyanese Dollar', symbol: 'GYD'),
-    _CurrencyOption(label: 'Haitian Gourde', symbol: 'HTG'),
-    _CurrencyOption(label: 'Honduran Lempira', symbol: 'HNL'),
-    _CurrencyOption(label: 'Hong Kong Dollar', symbol: 'HKD'),
-    _CurrencyOption(label: 'Hungarian Forint', symbol: 'HUF'),
-    _CurrencyOption(label: 'Icelandic Krona', symbol: 'ISK'),
-    _CurrencyOption(label: 'Indian Rupee', symbol: 'INR'),
-    _CurrencyOption(label: 'Indonesian Rupiah', symbol: 'IDR'),
-    _CurrencyOption(label: 'Iranian Rial', symbol: 'IRR'),
-    _CurrencyOption(label: 'Iraqi Dinar', symbol: 'IQD'),
-    _CurrencyOption(label: 'Israeli New Shekel', symbol: 'ILS'),
-    _CurrencyOption(label: 'Jamaican Dollar', symbol: 'JMD'),
-    _CurrencyOption(label: 'Japanese Yen', symbol: 'JPY'),
-    _CurrencyOption(label: 'Jordanian Dinar', symbol: 'JOD'),
-    _CurrencyOption(label: 'Kazakhstani Tenge', symbol: 'KZT'),
-    _CurrencyOption(label: 'Kenyan Shilling', symbol: 'KES'),
-    _CurrencyOption(label: 'Kuwaiti Dinar', symbol: 'KWD'),
-    _CurrencyOption(label: 'Kyrgyzstani Som', symbol: 'KGS'),
-    _CurrencyOption(label: 'Lao Kip', symbol: 'LAK'),
-    _CurrencyOption(label: 'Lebanese Pound', symbol: 'LBP'),
-    _CurrencyOption(label: 'Lesotho Loti', symbol: 'LSL'),
-    _CurrencyOption(label: 'Liberian Dollar', symbol: 'LRD'),
-    _CurrencyOption(label: 'Libyan Dinar', symbol: 'LYD'),
-    _CurrencyOption(label: 'Macanese Pataca', symbol: 'MOP'),
-    _CurrencyOption(label: 'Malagasy Ariary', symbol: 'MGA'),
-    _CurrencyOption(label: 'Malawian Kwacha', symbol: 'MWK'),
-    _CurrencyOption(label: 'Malaysian Ringgit', symbol: 'MYR'),
-    _CurrencyOption(label: 'Maldivian Rufiyaa', symbol: 'MVR'),
-    _CurrencyOption(label: 'Mauritanian Ouguiya', symbol: 'MRU'),
-    _CurrencyOption(label: 'Mauritian Rupee', symbol: 'MUR'),
-    _CurrencyOption(label: 'Mexican Peso', symbol: 'MXN'),
-    _CurrencyOption(label: 'Moldovan Leu', symbol: 'MDL'),
-    _CurrencyOption(label: 'Mongolian Tugrik', symbol: 'MNT'),
-    _CurrencyOption(label: 'Moroccan Dirham', symbol: 'MAD'),
-    _CurrencyOption(label: 'Mozambican Metical', symbol: 'MZN'),
-    _CurrencyOption(label: 'Myanmar Kyat', symbol: 'MMK'),
-    _CurrencyOption(label: 'Namibian Dollar', symbol: 'NAD'),
-    _CurrencyOption(label: 'Nepalese Rupee', symbol: 'NPR'),
-    _CurrencyOption(label: 'Netherlands Antillean Guilder', symbol: 'ANG'),
-    _CurrencyOption(label: 'New Taiwan Dollar', symbol: 'TWD'),
-    _CurrencyOption(label: 'New Zealand Dollar', symbol: 'NZD'),
-    _CurrencyOption(label: 'Nicaraguan Cordoba', symbol: 'NIO'),
-    _CurrencyOption(label: 'Nigerian Naira', symbol: 'NGN'),
-    _CurrencyOption(label: 'North Korean Won', symbol: 'KPW'),
-    _CurrencyOption(label: 'North Macedonian Denar', symbol: 'MKD'),
-    _CurrencyOption(label: 'Norwegian Krone', symbol: 'NOK'),
-    _CurrencyOption(label: 'Omani Rial', symbol: 'OMR'),
-    _CurrencyOption(label: 'Pakistani Rupee', symbol: 'PKR'),
-    _CurrencyOption(label: 'Panamanian Balboa', symbol: 'PAB'),
-    _CurrencyOption(label: 'Papua New Guinean Kina', symbol: 'PGK'),
-    _CurrencyOption(label: 'Paraguayan Guarani', symbol: 'PYG'),
-    _CurrencyOption(label: 'Peruvian Sol', symbol: 'PEN'),
-    _CurrencyOption(label: 'Philippine Peso', symbol: 'PHP'),
-    _CurrencyOption(label: 'Polish Zloty', symbol: 'PLN'),
-    _CurrencyOption(label: 'Qatari Riyal', symbol: 'QAR'),
-    _CurrencyOption(label: 'Romanian Leu', symbol: 'RON'),
-    _CurrencyOption(label: 'Russian Ruble', symbol: 'RUB'),
-    _CurrencyOption(label: 'Rwandan Franc', symbol: 'RWF'),
-    _CurrencyOption(label: 'Samoan Tala', symbol: 'WST'),
-    _CurrencyOption(label: 'Sao Tome and Principe Dobra', symbol: 'STN'),
-    _CurrencyOption(label: 'Saudi Riyal', symbol: 'SAR'),
-    _CurrencyOption(label: 'Serbian Dinar', symbol: 'RSD'),
-    _CurrencyOption(label: 'Seychellois Rupee', symbol: 'SCR'),
-    _CurrencyOption(label: 'Sierra Leonean Leone', symbol: 'SLE'),
-    _CurrencyOption(label: 'Singapore Dollar', symbol: 'SGD'),
-    _CurrencyOption(label: 'Solomon Islands Dollar', symbol: 'SBD'),
-    _CurrencyOption(label: 'Somali Shilling', symbol: 'SOS'),
-    _CurrencyOption(label: 'South African Rand', symbol: 'ZAR'),
-    _CurrencyOption(label: 'South Korean Won', symbol: 'KRW'),
-    _CurrencyOption(label: 'South Sudanese Pound', symbol: 'SSP'),
-    _CurrencyOption(label: 'Sri Lankan Rupee', symbol: 'LKR'),
-    _CurrencyOption(label: 'Sudanese Pound', symbol: 'SDG'),
-    _CurrencyOption(label: 'Surinamese Dollar', symbol: 'SRD'),
-    _CurrencyOption(label: 'Swazi Lilangeni', symbol: 'SZL'),
-    _CurrencyOption(label: 'Swedish Krona', symbol: 'SEK'),
-    _CurrencyOption(label: 'Swiss Franc', symbol: 'CHF'),
-    _CurrencyOption(label: 'Syrian Pound', symbol: 'SYP'),
-    _CurrencyOption(label: 'Tajikistani Somoni', symbol: 'TJS'),
-    _CurrencyOption(label: 'Tanzanian Shilling', symbol: 'TZS'),
-    _CurrencyOption(label: 'Thai Baht', symbol: 'THB'),
-    _CurrencyOption(label: 'Tongan Paanga', symbol: 'TOP'),
-    _CurrencyOption(label: 'Trinidad and Tobago Dollar', symbol: 'TTD'),
-    _CurrencyOption(label: 'Tunisian Dinar', symbol: 'TND'),
-    _CurrencyOption(label: 'Turkish Lira', symbol: 'TRY'),
-    _CurrencyOption(label: 'Turkmenistani Manat', symbol: 'TMT'),
-    _CurrencyOption(label: 'Ugandan Shilling', symbol: 'UGX'),
-    _CurrencyOption(label: 'Ukrainian Hryvnia', symbol: 'UAH'),
-    _CurrencyOption(label: 'United Arab Emirates Dirham', symbol: 'AED'),
-    _CurrencyOption(label: 'United States Dollar', symbol: 'USD'),
-    _CurrencyOption(label: 'Uruguayan Peso', symbol: 'UYU'),
-    _CurrencyOption(label: 'Uzbekistani Som', symbol: 'UZS'),
-    _CurrencyOption(label: 'Vanuatu Vatu', symbol: 'VUV'),
-    _CurrencyOption(label: 'Venezuelan Bolivar', symbol: 'VES'),
-    _CurrencyOption(label: 'Vietnamese Dong', symbol: 'VND'),
-    _CurrencyOption(label: 'West African CFA Franc', symbol: 'XOF'),
-    _CurrencyOption(label: 'Yemeni Rial', symbol: 'YER'),
-    _CurrencyOption(label: 'Zambian Kwacha', symbol: 'ZMW'),
-    _CurrencyOption(label: 'Zimbabwe Gold', symbol: 'ZWG'),
+    _CurrencyOption(label: 'USD (\$)', symbol: 'USD'),
+    _CurrencyOption(label: 'EUR (€)', symbol: 'EUR'),
+    _CurrencyOption(label: 'GBP (£)', symbol: 'GBP'),
+    _CurrencyOption(label: 'INR (₹)', symbol: 'INR'),
+    _CurrencyOption(label: 'CNY (¥)', symbol: 'CNY'),
+    _CurrencyOption(label: 'BRL (R\$)', symbol: 'BRL'),
+    _CurrencyOption(label: 'JPY (¥)', symbol: 'JPY'),
+    _CurrencyOption(label: 'AUD (A\$)', symbol: 'AUD'),
+    _CurrencyOption(label: 'CAD (C\$)', symbol: 'CAD'),
+    _CurrencyOption(label: 'SGD (S\$)', symbol: 'SGD'),
+    _CurrencyOption(label: 'AED (د.إ)', symbol: 'AED'),
+    _CurrencyOption(label: 'SAR (﷼)', symbol: 'SAR'),
   ];
 
   @override
@@ -7289,29 +7715,11 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
   }
 
   String _currencyDisplayLabel(_CurrencyOption option) {
-    if (option.symbol == 'INR') {
-      return 'Indian Rupee (${_currencyBracketSymbol(option)})';
-    }
-    return '${option.symbol} (${_currencyBracketSymbol(option)})';
+    return option.label;
   }
 
   String _currencyDropdownLabel(_CurrencyOption option) {
-    switch (option.symbol) {
-      case 'USD':
-        return 'US Dollar (${_currencyBracketSymbol(option)})';
-      case 'AUD':
-        return 'AUD Dollar (${_currencyBracketSymbol(option)})';
-      case 'CAD':
-        return 'CAD Dollar (${_currencyBracketSymbol(option)})';
-      case 'EUR':
-        return 'Euro (${_currencyBracketSymbol(option)})';
-      case 'AED':
-        return 'UAE Dirham (${_currencyBracketSymbol(option)})';
-      case 'BRL':
-        return 'Brazilian Real (${_currencyBracketSymbol(option)})';
-      default:
-        return _currencyDisplayLabel(option);
-    }
+    return option.label;
   }
 
   Widget _buildCurrencySelector(double scale) {
@@ -10859,19 +11267,46 @@ class BellyoAssistantScreen extends StatefulWidget {
   State<BellyoAssistantScreen> createState() => _BellyoAssistantScreenState();
 }
 
-class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
+class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
+    with SingleTickerProviderStateMixin {
+  static const String _assistantSystemPromptBase =
+      'You are Bellyo, a practical diet assistant inside a food tracking app. '
+      'Answer in a friendly and concise way. '
+      'Give realistic food suggestions, simple portion ideas, and budget-aware tips. '
+      'If information is missing, ask one short follow-up question. '
+      'Do not invent medical facts. '
+      'Always respect the user diet preference and avoid suggesting foods outside that preference.';
+
   late final TextEditingController _promptController;
+  late final ScrollController _messageScrollController;
+  late final AnimationController _loadingDotsController;
+  final List<_BellyoAssistantMessage> _messages = <_BellyoAssistantMessage>[];
+  bool _isAsking = false;
 
   @override
   void initState() {
     super.initState();
-    _promptController = TextEditingController();
+    _promptController = TextEditingController()..addListener(_handlePromptEdit);
+    _messageScrollController = ScrollController();
+    _loadingDotsController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    )..repeat();
   }
 
   @override
   void dispose() {
+    _promptController.removeListener(_handlePromptEdit);
     _promptController.dispose();
+    _messageScrollController.dispose();
+    _loadingDotsController.dispose();
     super.dispose();
+  }
+
+  void _handlePromptEdit() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _applyPromptSuggestion(String suggestion) {
@@ -10879,8 +11314,290 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
       text: suggestion,
       selection: TextSelection.collapsed(offset: suggestion.length),
     );
-    if (mounted) {
-      setState(() {});
+  }
+
+  void _startNewChat() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _messages.clear();
+      _isAsking = false;
+    });
+  }
+
+  void _scheduleScrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_messageScrollController.hasClients) {
+        return;
+      }
+      final offset = _messageScrollController.position.maxScrollExtent;
+      _messageScrollController.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<String> _buildAssistantSystemPrompt() async {
+    final safeDietPreferenceIndex = _OnboardingProfileState
+        .selectedDietPreferenceIndex
+        .clamp(0, _dietPreferenceOptions.length - 1);
+    final dietPreference =
+        _dietPreferenceOptions[safeDietPreferenceIndex].label;
+    final preferredCountry = _OnboardingProfileState.selectedCountryName.trim();
+    final foodContext = await _DailyFoodDatabase.buildAssistantFoodContext(
+      selectedDietPreferenceIndex:
+          _OnboardingProfileState.selectedDietPreferenceIndex,
+      preferredCountry: preferredCountry,
+    );
+    final promptParts = <String>[
+      _assistantSystemPromptBase,
+      'User diet preference: $dietPreference.',
+    ];
+    if (preferredCountry.isNotEmpty) {
+      promptParts.add(
+        'User preferred country cuisine priority: $preferredCountry.',
+      );
+    }
+    if (foodContext.isNotEmpty) {
+      promptParts.add(foodContext);
+    }
+    return promptParts.join(' ');
+  }
+
+  Future<List<Map<String, String>>> _buildApiMessages() async {
+    final systemPrompt = await _buildAssistantSystemPrompt();
+    final startIndex = _messages.length > _bellyoAssistantHistoryLimit
+        ? _messages.length - _bellyoAssistantHistoryLimit
+        : 0;
+    final history = _messages.sublist(startIndex);
+    return <Map<String, String>>[
+      <String, String>{'role': 'system', 'content': systemPrompt},
+      ...history.map(
+        (message) => <String, String>{
+          'role': message.isUser ? 'user' : 'assistant',
+          'content': message.text,
+        },
+      ),
+    ];
+  }
+
+  String _resolveOllamaEndpoint() {
+    final configuredEndpoint = _bellyoAssistantOllamaEndpoint.trim();
+    if (configuredEndpoint.isNotEmpty) {
+      return configuredEndpoint;
+    }
+    if (kIsWeb) {
+      return 'http://127.0.0.1:11434/api/chat';
+    }
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        // Android emulator host-loopback bridge.
+        return 'http://10.0.2.2:11434/api/chat';
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        return 'http://127.0.0.1:11434/api/chat';
+    }
+  }
+
+  String _extractOllamaReply(Map<String, dynamic>? responseJson) {
+    if (responseJson == null) {
+      return '';
+    }
+    final message = responseJson['message'];
+    if (message is Map<String, dynamic>) {
+      final content = message['content'];
+      if (content is String && content.trim().isNotEmpty) {
+        return content.trim();
+      }
+    }
+    final content = responseJson['response'];
+    if (content is String && content.trim().isNotEmpty) {
+      return content.trim();
+    }
+    return '';
+  }
+
+  String _buildOfflineDietReply(String prompt) {
+    final query = prompt.toLowerCase();
+    final hasBudgetIntent =
+        query.contains('budget') ||
+        query.contains('cheap') ||
+        query.contains('under') ||
+        query.contains('₹') ||
+        query.contains('inr') ||
+        query.contains('rupee');
+    final hasProteinIntent =
+        query.contains('protein') || query.contains('muscle');
+    final hasWeightLossIntent =
+        query.contains('weight loss') ||
+        query.contains('lose weight') ||
+        query.contains('low calorie') ||
+        query.contains('fat loss');
+    final hasHydrationIntent =
+        query.contains('water') || query.contains('hydrate');
+    final hasMealTimingIntent =
+        query.contains('breakfast') ||
+        query.contains('lunch') ||
+        query.contains('dinner') ||
+        query.contains('snack') ||
+        query.contains('meal');
+
+    if (hasBudgetIntent && hasProteinIntent) {
+      return 'Try these high-protein, low-cost options:\n'
+          '1) Moong chilla + curd\n'
+          '2) Egg bhurji + 2 rotis\n'
+          '3) Soya chunks pulao + salad\n'
+          '4) Peanut chaat + buttermilk\n'
+          'Target ~20-30g protein per meal.';
+    }
+
+    if (hasProteinIntent) {
+      return 'Easy protein ideas:\n'
+          '1) Breakfast: 2 eggs + milk / paneer sandwich\n'
+          '2) Lunch: dal + rice + curd + salad\n'
+          '3) Snack: roasted chana + fruit\n'
+          '4) Dinner: paneer/tofu/egg curry + roti\n'
+          'Aim for protein in every meal.';
+    }
+
+    if (hasWeightLossIntent) {
+      return 'Simple fat-loss plate method:\n'
+          '1) Half plate vegetables\n'
+          '2) Quarter plate protein (dal/paneer/egg/chicken)\n'
+          '3) Quarter plate carbs (rice/roti)\n'
+          '4) Add one fruit and enough water\n'
+          'Keep snacks portion-controlled.';
+    }
+
+    if (hasHydrationIntent) {
+      return 'Hydration plan:\n'
+          '1) Start day with 300-500 ml water\n'
+          '2) Drink 200-250 ml every 2-3 hours\n'
+          '3) Add buttermilk/coconut water once daily\n'
+          '4) Extra water around workouts';
+    }
+
+    if (hasMealTimingIntent) {
+      return 'Balanced day example:\n'
+          '1) Breakfast: oats/upma + curd/eggs\n'
+          '2) Lunch: dal + rice/roti + sabzi\n'
+          '3) Snack: fruit + nuts/chana\n'
+          '4) Dinner: light protein + vegetables\n'
+          'Keep dinner 2-3 hours before sleep.';
+    }
+
+    return 'I can still help with quick diet guidance.\n'
+        'Ask like:\n'
+        '1) "High protein meal under ₹150"\n'
+        '2) "Low calorie dinner ideas"\n'
+        '3) "Quick healthy snacks"';
+  }
+
+  String _normalizeAssistantReply(String reply) {
+    final trimmedReply = reply.trim();
+    if (trimmedReply.isEmpty) {
+      return 'I did not catch that. Please ask again.';
+    }
+    return trimmedReply;
+  }
+
+  void _appendAssistantReply({required String reply}) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _messages.add(
+        _BellyoAssistantMessage(
+          role: _BellyoAssistantRole.assistant,
+          text: reply,
+        ),
+      );
+      _isAsking = false;
+    });
+    _scheduleScrollToBottom();
+  }
+
+  void _appendAssistantConnectionError({required String endpoint}) {
+    _appendAssistantReply(
+      reply:
+          'I could not connect to local AI at $endpoint.\n'
+          'Make sure Ollama is running and this endpoint matches your device type.',
+    );
+  }
+
+  Future<void> _sendPrompt() async {
+    final prompt = _promptController.text.trim();
+    if (prompt.isEmpty || _isAsking) {
+      return;
+    }
+
+    _promptController.clear();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _messages.add(
+        _BellyoAssistantMessage(role: _BellyoAssistantRole.user, text: prompt),
+      );
+      _isAsking = true;
+    });
+    _scheduleScrollToBottom();
+
+    try {
+      final endpoint = _resolveOllamaEndpoint();
+      final apiMessages = await _buildApiMessages();
+      final response = await http
+          .post(
+            Uri.parse(endpoint),
+            headers: <String, String>{'Content-Type': 'application/json'},
+            body: jsonEncode(<String, dynamic>{
+              'model': _bellyoAssistantOllamaModel,
+              'messages': apiMessages,
+              'stream': false,
+              'options': <String, dynamic>{'temperature': 0.4},
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      Map<String, dynamic>? responseJson;
+      if (response.body.isNotEmpty) {
+        final parsed = jsonDecode(response.body);
+        if (parsed is Map<String, dynamic>) {
+          responseJson = parsed;
+        }
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Ollama request failed (${response.statusCode}).');
+      }
+
+      final reply = _extractOllamaReply(responseJson);
+      if (reply.isEmpty) {
+        throw Exception('No reply from Ollama.');
+      }
+
+      _appendAssistantReply(reply: _normalizeAssistantReply(reply));
+    } on TimeoutException {
+      final endpoint = _resolveOllamaEndpoint();
+      if (_bellyoAssistantEnableOfflineFallback) {
+        _appendAssistantReply(reply: _buildOfflineDietReply(prompt));
+        return;
+      }
+      _appendAssistantConnectionError(endpoint: endpoint);
+    } catch (_) {
+      final endpoint = _resolveOllamaEndpoint();
+      if (_bellyoAssistantEnableOfflineFallback) {
+        _appendAssistantReply(reply: _buildOfflineDietReply(prompt));
+        return;
+      }
+      _appendAssistantConnectionError(endpoint: endpoint);
     }
   }
 
@@ -10918,7 +11635,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
 
   Widget _buildSuggestionRow({
     required double scale,
-    required List<String> prompts,
+    required List<_BellyoQuickPrompt> prompts,
   }) {
     return SizedBox(
       height: 40 * scale,
@@ -10931,8 +11648,225 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
           final prompt = prompts[index];
           return _buildSuggestionChip(
             scale: scale,
-            label: prompt,
-            onTap: () => _applyPromptSuggestion(prompt),
+            label: prompt.label,
+            onTap: () => _applyPromptSuggestion(prompt.prompt),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBellyoLoadingDots({required double scale}) {
+    final dotSize = (8 * scale).clamp(6.0, 10.0);
+    final spacing = dotSize * 1.35;
+    final trackWidth = (dotSize * 3) + (spacing * 2);
+
+    Widget buildStaticDot() {
+      return Container(
+        width: dotSize,
+        height: dotSize,
+        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+      );
+    }
+
+    return SizedBox(
+      width: trackWidth,
+      height: dotSize,
+      child: AnimatedBuilder(
+        animation: _loadingDotsController,
+        builder: (context, _) {
+          final step = (_loadingDotsController.value * 3).floor().clamp(0, 2);
+          final yellowLeft = step * (dotSize + spacing);
+
+          return Stack(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  buildStaticDot(),
+                  buildStaticDot(),
+                  buildStaticDot(),
+                ],
+              ),
+              Positioned(
+                left: yellowLeft,
+                child: Container(
+                  width: dotSize,
+                  height: dotSize,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFD206),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildChatBubble({
+    required double scale,
+    required _BellyoAssistantMessage message,
+    bool isPending = false,
+  }) {
+    if (isPending) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: 10 * scale),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14 * scale),
+                child: Image.asset(
+                  'assets/AI_Profile.png',
+                  width: 28 * scale,
+                  height: 28 * scale,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              SizedBox(width: 8 * scale),
+              _buildBellyoLoadingDots(scale: scale),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final isUser = message.isUser;
+    final horizontalInset = 52 * scale;
+    final bubble = Container(
+      constraints: BoxConstraints(maxWidth: isUser ? 280 * scale : 248 * scale),
+      margin: EdgeInsets.only(
+        left: isUser ? horizontalInset : 0,
+        right: isUser ? 0 : horizontalInset,
+        bottom: 10 * scale,
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: 14 * scale,
+        vertical: 10 * scale,
+      ),
+      decoration: BoxDecoration(
+        color: isUser ? const Color(0x61FFFFFF) : Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(18 * scale),
+          topRight: Radius.circular(18 * scale),
+          bottomLeft: Radius.circular(isUser ? 18 * scale : 4 * scale),
+          bottomRight: Radius.circular(isUser ? 4 * scale : 18 * scale),
+        ),
+        border: Border.all(color: const Color(0x8FFFFFFF), width: 1 * scale),
+      ),
+      child: Text(
+        message.text,
+        style: TextStyle(
+          fontFamily: _defaultNonBorelFontFamily,
+          fontSize: (15 * scale).clamp(13.0, 18.0),
+          color: Colors.black,
+          fontWeight: FontWeight.w400,
+          height: 1.35,
+        ),
+      ),
+    );
+
+    if (isUser) {
+      return Align(alignment: Alignment.centerRight, child: bubble);
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14 * scale),
+            child: Image.asset(
+              'assets/AI_Profile.png',
+              width: 28 * scale,
+              height: 28 * scale,
+              fit: BoxFit.cover,
+            ),
+          ),
+          SizedBox(width: 8 * scale),
+          Flexible(child: bubble),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConversationBody({
+    required double scale,
+    required double bottomInset,
+    required EdgeInsets viewPadding,
+  }) {
+    if (_messages.isEmpty) {
+      return Align(
+        alignment: const Alignment(0, -0.10),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24 * scale),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 168 * scale,
+                child: Image.asset(
+                  'assets/Bellyo_open_page.png',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+              SizedBox(height: 20 * scale),
+              Text(
+                'Ask me anything about food,\nmeals, calories, or what to eat next.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: _defaultNonBorelFontFamily,
+                  fontSize: (16 * scale).clamp(14.0, 18.0),
+                  color: Colors.black,
+                  fontWeight: FontWeight.w400,
+                  height: 1.42,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final itemCount = _messages.length + (_isAsking ? 1 : 0);
+    final topOffset = viewPadding.top + (72 * scale);
+    final promptAreaHeight = (204 * scale) + viewPadding.bottom + bottomInset;
+
+    return Positioned.fill(
+      top: topOffset,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: ListView.builder(
+        controller: _messageScrollController,
+        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(
+          24 * scale,
+          16 * scale,
+          24 * scale,
+          promptAreaHeight + (10 * scale),
+        ),
+        itemCount: itemCount,
+        itemBuilder: (context, index) {
+          if (index < _messages.length) {
+            return _buildChatBubble(scale: scale, message: _messages[index]);
+          }
+          return _buildChatBubble(
+            scale: scale,
+            message: const _BellyoAssistantMessage(
+              role: _BellyoAssistantRole.assistant,
+              text: '',
+            ),
+            isPending: true,
           );
         },
       ),
@@ -10945,6 +11879,8 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
     final scale = (media.size.width / 390).clamp(0.82, 1.08);
     final bottomInset = media.viewInsets.bottom;
     final hasPromptInput = _promptController.text.trim().isNotEmpty;
+    final canSendPrompt = hasPromptInput && !_isAsking;
+    final hasUserPrompted = _messages.any((message) => message.isUser);
     final firstRowItemCount = (_bellyoAssistantPromptSuggestions.length / 2)
         .ceil();
     final firstRowPrompts = _bellyoAssistantPromptSuggestions
@@ -11008,6 +11944,11 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
                 ),
               ),
             ),
+            _buildConversationBody(
+              scale: scale,
+              bottomInset: bottomInset,
+              viewPadding: media.padding,
+            ),
             SafeArea(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16 * scale),
@@ -11050,24 +11991,28 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
                       ),
                       Align(
                         alignment: Alignment.centerRight,
-                        child: Container(
-                          width: 48 * scale,
-                          height: 48 * scale,
-                          decoration: BoxDecoration(
-                            color: const Color(0x29FFFFFF),
-                            borderRadius: BorderRadius.circular(16 * scale),
-                            border: Border.all(
-                              color: const Color(0x8FFFFFFF),
-                              width: 1 * scale,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _startNewChat,
+                          child: Container(
+                            width: 48 * scale,
+                            height: 48 * scale,
+                            decoration: BoxDecoration(
+                              color: const Color(0x29FFFFFF),
+                              borderRadius: BorderRadius.circular(16 * scale),
+                              border: Border.all(
+                                color: const Color(0x8FFFFFFF),
+                                width: 1 * scale,
+                              ),
                             ),
-                          ),
-                          child: Center(
-                            child: SizedBox(
-                              width: 34 * scale,
-                              height: 25 * scale,
-                              child: SvgPicture.asset(
-                                'assets/New_chat.svg',
-                                fit: BoxFit.contain,
+                            child: Center(
+                              child: SizedBox(
+                                width: 34 * scale,
+                                height: 25 * scale,
+                                child: SvgPicture.asset(
+                                  'assets/New_chat.svg',
+                                  fit: BoxFit.contain,
+                                ),
                               ),
                             ),
                           ),
@@ -11079,149 +12024,156 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen> {
               ),
             ),
             Align(
-              alignment: Alignment(0, -0.10),
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24 * scale),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 168 * scale,
-                      child: Image.asset(
-                        'assets/Bellyo_open_page.png',
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                      ),
-                    ),
-                    SizedBox(height: 20 * scale),
-                    Text(
-                      'Ask me anything about food,\nmeals, calories, or what to eat next.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: _defaultNonBorelFontFamily,
-                        fontSize: (16 * scale).clamp(14.0, 18.0),
-                        color: Colors.black,
-                        fontWeight: FontWeight.w400,
-                        height: 1.42,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Align(
               alignment: Alignment.bottomCenter,
               child: AnimatedPadding(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOut,
                 padding: EdgeInsets.only(bottom: bottomInset),
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: 8 * scale,
-                      sigmaY: 8 * scale,
-                    ),
-                    child: Container(
-                      width: double.infinity,
-                      color: const Color(0x05FFFFFF),
-                      padding: EdgeInsets.fromLTRB(
-                        0,
-                        10 * scale,
-                        0,
-                        (8 * scale) + media.padding.bottom,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildSuggestionRow(
-                            scale: scale,
-                            prompts: firstRowPrompts,
-                          ),
-                          SizedBox(height: 8 * scale),
-                          _buildSuggestionRow(
-                            scale: scale,
-                            prompts: secondRowPrompts,
-                          ),
-                          SizedBox(height: 10 * scale),
-                          Padding(
-                            padding: EdgeInsets.only(right: 10 * scale),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ClipRect(
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Container(color: const Color(0xFFFF8E92)),
+                        ),
+                        Positioned(
+                          bottom: -84 * scale,
+                          left: -30 * scale,
+                          right: -30 * scale,
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(
+                              sigmaX: 100 * scale,
+                              sigmaY: 100 * scale,
+                            ),
                             child: Container(
-                              height: 56 * scale,
-                              decoration: BoxDecoration(
-                                color: const Color(0x52FFFFFF),
-                                borderRadius: BorderRadius.circular(32 * scale),
-                                border: Border.all(
-                                  color: const Color(0x8FFFFFFF),
-                                  width: 1 * scale,
-                                ),
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16 * scale,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _promptController,
-                                      textInputAction: TextInputAction.done,
-                                      onChanged: (_) {
-                                        if (mounted) {
-                                          setState(() {});
-                                        }
-                                      },
-                                      style: TextStyle(
-                                        fontFamily: _defaultNonBorelFontFamily,
-                                        fontSize: (16 * scale).clamp(
-                                          14.0,
-                                          18.0,
-                                        ),
-                                        color: Colors.black,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      cursorColor: Colors.black,
-                                      decoration: InputDecoration(
-                                        border: InputBorder.none,
-                                        isCollapsed: true,
-                                        hintText: 'Ask',
-                                        hintStyle: TextStyle(
-                                          fontFamily:
-                                              _defaultNonBorelFontFamily,
-                                          fontSize: (16 * scale).clamp(
-                                            14.0,
-                                            18.0,
-                                          ),
-                                          color: const Color(0x52000000),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8 * scale),
-                                  SizedBox(
-                                    width: 32 * scale,
-                                    height: 32 * scale,
-                                    child: _RotatingGlassButton(
-                                      scale: scale,
-                                      height: 32 * scale,
-                                      borderRadius: 16 * scale,
-                                      fillColor: hasPromptInput
-                                          ? Colors.white
-                                          : const Color(0x29FFFFFF),
-                                      enablePressShadeFeedback: true,
-                                      onTap: () {},
-                                      child: Icon(
-                                        Icons.arrow_upward,
-                                        color: Colors.black,
-                                        size: (18 * scale).clamp(14.0, 20.0),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              height: 240 * scale,
+                              color: const Color(0xFFFFDC92),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            0,
+                            10 * scale,
+                            0,
+                            (8 * scale) + media.padding.bottom,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (!hasUserPrompted) ...[
+                                _buildSuggestionRow(
+                                  scale: scale,
+                                  prompts: firstRowPrompts,
+                                ),
+                                SizedBox(height: 8 * scale),
+                                _buildSuggestionRow(
+                                  scale: scale,
+                                  prompts: secondRowPrompts,
+                                ),
+                                SizedBox(height: 10 * scale),
+                              ],
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16 * scale,
+                                ),
+                                child: Container(
+                                  height: 56 * scale,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0x52FFFFFF),
+                                    borderRadius: BorderRadius.circular(
+                                      32 * scale,
+                                    ),
+                                    border: Border.all(
+                                      color: const Color(0x8FFFFFFF),
+                                      width: 1 * scale,
+                                    ),
+                                  ),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16 * scale,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _promptController,
+                                          textInputAction: TextInputAction.send,
+                                          onSubmitted: (_) => _sendPrompt(),
+                                          style: TextStyle(
+                                            fontFamily:
+                                                _defaultNonBorelFontFamily,
+                                            fontSize: (16 * scale).clamp(
+                                              14.0,
+                                              18.0,
+                                            ),
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          cursorColor: Colors.black,
+                                          decoration: InputDecoration(
+                                            border: InputBorder.none,
+                                            isCollapsed: true,
+                                            hintText: 'Ask',
+                                            hintStyle: TextStyle(
+                                              fontFamily:
+                                                  _defaultNonBorelFontFamily,
+                                              fontSize: (16 * scale).clamp(
+                                                14.0,
+                                                18.0,
+                                              ),
+                                              color: const Color(0x52000000),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(width: 8 * scale),
+                                      SizedBox(
+                                        width: 32 * scale,
+                                        height: 32 * scale,
+                                        child: _RotatingGlassButton(
+                                          scale: scale,
+                                          height: 32 * scale,
+                                          borderRadius: 16 * scale,
+                                          fillColor: canSendPrompt
+                                              ? Colors.white
+                                              : const Color(0x29FFFFFF),
+                                          enablePressShadeFeedback: true,
+                                          onTap: canSendPrompt
+                                              ? _sendPrompt
+                                              : () {},
+                                          showBorderLight: canSendPrompt,
+                                          child: _isAsking
+                                              ? SizedBox(
+                                                  width: 14 * scale,
+                                                  height: 14 * scale,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2 * scale,
+                                                    valueColor:
+                                                        const AlwaysStoppedAnimation<
+                                                          Color
+                                                        >(Colors.black),
+                                                  ),
+                                                )
+                                              : Icon(
+                                                  Icons.arrow_upward,
+                                                  color: Colors.black,
+                                                  size: (18 * scale).clamp(
+                                                    14.0,
+                                                    20.0,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -12866,6 +13818,16 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
           item: item,
           isExchangeEntry: widget.isExchangeEntry,
           exchangeTargetEntryId: widget.exchangeTargetEntryId,
+          initialCaloriesText: item.caloriesText,
+          initialProteinText: item.proteinText,
+          initialCarbohydratesText: item.carbohydratesText,
+          initialFatText: item.fatText,
+          initialFiberText: item.fiberText,
+          initialSugarText: item.sugarText,
+          initialSodiumText: item.sodiumText,
+          initialBudgetText: item.budgetTextForCurrency(
+            _OnboardingProfileState.budgetCurrencyCode,
+          ),
         ),
       ),
     );
@@ -13330,8 +14292,10 @@ class _SearchFoodItemDetailsScreenState
   late TimeOfDay _selectedTime;
   bool _isAdvanceOpen = false;
   bool _isFavorite = false;
+  int _selectedQuantityUnitIndex = 0;
 
   late final TextEditingController _itemNameController;
+  late final TextEditingController _quantityController;
   late final TextEditingController _hourController;
   late final TextEditingController _minuteController;
   late final TextEditingController _budgetPriceController;
@@ -13344,6 +14308,7 @@ class _SearchFoodItemDetailsScreenState
   late final TextEditingController _sodiumController;
 
   late final FocusNode _itemNameFocusNode;
+  late final FocusNode _quantityFocusNode;
   late final FocusNode _hourFocusNode;
   late final FocusNode _minuteFocusNode;
   late final FocusNode _budgetPriceFocusNode;
@@ -13356,6 +14321,7 @@ class _SearchFoodItemDetailsScreenState
   late final FocusNode _sodiumFocusNode;
 
   final GlobalKey _itemNameFieldKey = GlobalKey();
+  final GlobalKey _quantityFieldKey = GlobalKey();
   final GlobalKey _hourFieldKey = GlobalKey();
   final GlobalKey _minuteFieldKey = GlobalKey();
   final GlobalKey _budgetPriceFieldKey = GlobalKey();
@@ -13367,6 +14333,30 @@ class _SearchFoodItemDetailsScreenState
   final GlobalKey _sugarFieldKey = GlobalKey();
   final GlobalKey _sodiumFieldKey = GlobalKey();
   static const List<double> _budgetPresetValues = <double>[100, 150, 200];
+  static const List<_CustomEntryQuantityUnitOption> _quantityUnitOptions =
+      <_CustomEntryQuantityUnitOption>[
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Unit',
+          displaySuffix: '',
+          usesStepControls: true,
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Grams (g)',
+          displaySuffix: 'g',
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Milligrams (mg)',
+          displaySuffix: 'mg',
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Liter (l)',
+          displaySuffix: 'liter (l)',
+        ),
+        _CustomEntryQuantityUnitOption(
+          dropdownLabel: 'Milliliter (ml)',
+          displaySuffix: 'ml',
+        ),
+      ];
 
   late String _initialName;
   late String _initialCalories;
@@ -13376,6 +14366,7 @@ class _SearchFoodItemDetailsScreenState
   late String _initialFiber;
   late String _initialSugar;
   late String _initialSodium;
+  late String _initialBudget;
   late int _initialHour24;
   late int _initialMinute;
   late bool _initialFavorite;
@@ -13390,6 +14381,23 @@ class _SearchFoodItemDetailsScreenState
   bool get _showTimelineActionIcon => !widget.isExchangeEntry;
 
   bool get _isAmSelected => _selectedTime.hour < 12;
+
+  bool get _showBudgetSection =>
+      _OnboardingProfileState.budgetEnabled &&
+      !_OnboardingSkipFlags.skippedBudgetSection;
+
+  String get _budgetCurrencyCode =>
+      _OnboardingProfileState.budgetCurrencyCode.trim().toUpperCase();
+
+  String get _budgetCurrencyGlyph =>
+      _budgetCurrencyGlyphByCode[_budgetCurrencyCode] ?? _budgetCurrencyCode;
+
+  _CustomEntryQuantityUnitOption get _selectedQuantityUnit =>
+      _quantityUnitOptions[_selectedQuantityUnitIndex];
+
+  bool get _showItemQuantity =>
+      widget.item.quantityTypeLabel.trim().isNotEmpty ||
+      widget.item.quantityAmountText.trim().isNotEmpty;
 
   String get _timeHourText {
     final hour = _selectedTime.hourOfPeriod == 0
@@ -13425,6 +14433,65 @@ class _SearchFoodItemDetailsScreenState
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
+  int _quantityUnitIndexFromType(String rawType) {
+    final normalized = rawType.trim().toLowerCase();
+    switch (normalized) {
+      case 'unit':
+        return 0;
+      case 'g':
+      case 'gram':
+      case 'grams':
+        return 1;
+      case 'mg':
+      case 'milligram':
+      case 'milligrams':
+        return 2;
+      case 'l':
+      case 'liter':
+      case 'liters':
+      case 'litre':
+      case 'litres':
+        return 3;
+      case 'ml':
+      case 'milliliter':
+      case 'milliliters':
+      case 'millilitre':
+      case 'millilitres':
+        return 4;
+      default:
+        return 0;
+    }
+  }
+
+  String _normalizedQuantityText(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return _selectedQuantityUnit.usesStepControls ? '1' : '';
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed <= 0) {
+      return _selectedQuantityUnit.usesStepControls ? '1' : '';
+    }
+    if (_selectedQuantityUnit.usesStepControls) {
+      return parsed.round().clamp(1, 9999).toString();
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _adjustUnitQuantity(int delta) {
+    final parsed = int.tryParse(_quantityController.text.trim()) ?? 1;
+    final next = (parsed + delta).clamp(1, 9999);
+    setState(() {
+      _quantityController.text = next.toString();
+    });
+  }
+
   void _captureInitialState() {
     _initialName = _normalizeItemName(_itemNameController.text);
     _initialCalories = _normalizedNumericText(_caloriesController.text);
@@ -13434,6 +14501,7 @@ class _SearchFoodItemDetailsScreenState
     _initialFiber = _normalizedNumericText(_fiberController.text);
     _initialSugar = _normalizedNumericText(_sugarController.text);
     _initialSodium = _normalizedNumericText(_sodiumController.text);
+    _initialBudget = _normalizedBudgetText(_budgetPriceController.text);
     _initialHour24 = _selectedTime.hour;
     _initialMinute = _selectedTime.minute;
     _initialFavorite = _isFavorite;
@@ -13448,6 +14516,9 @@ class _SearchFoodItemDetailsScreenState
         _normalizedNumericText(_fiberController.text) != _initialFiber ||
         _normalizedNumericText(_sugarController.text) != _initialSugar ||
         _normalizedNumericText(_sodiumController.text) != _initialSodium ||
+        (_showBudgetSection &&
+            _normalizedBudgetText(_budgetPriceController.text) !=
+                _initialBudget) ||
         _selectedTime.hour != _initialHour24 ||
         _selectedTime.minute != _initialMinute ||
         _isFavorite != _initialFavorite;
@@ -13631,6 +14702,9 @@ class _SearchFoodItemDetailsScreenState
       caloriesText: _normalizedNumericText(_caloriesController.text),
       timeText:
           '$_timeHourText:$_timeMinuteText ${_isAmSelected ? 'AM' : 'PM'}',
+      budgetAmountText: _showBudgetSection
+          ? _normalizedBudgetText(_budgetPriceController.text)
+          : '0',
       proteinText: _normalizedNumericText(_proteinController.text),
       carbohydratesText: _normalizedNumericText(_carbsController.text),
       fatText: _normalizedNumericText(_fatController.text),
@@ -13664,7 +14738,11 @@ class _SearchFoodItemDetailsScreenState
       fiberText: _normalizedNumericText(_fiberController.text),
       sugarText: _normalizedNumericText(_sugarController.text),
       sodiumText: _normalizedNumericText(_sodiumController.text),
-      budgetAmountText: _normalizedBudgetText(_budgetPriceController.text),
+      budgetAmountText: _showBudgetSection
+          ? _normalizedBudgetText(_budgetPriceController.text)
+          : (_normalizedBudgetText(widget.initialBudgetText ?? '').isNotEmpty
+                ? _normalizedBudgetText(widget.initialBudgetText ?? '')
+                : '0'),
     );
     if (mounted) {
       setState(() {});
@@ -13760,6 +14838,131 @@ class _SearchFoodItemDetailsScreenState
     );
   }
 
+  Widget _buildQuantityCard(double scale) {
+    final showsStepControls = _selectedQuantityUnit.usesStepControls;
+    final quantityHintText = showsStepControls
+        ? '1'
+        : (_quantityFocusNode.hasFocus ? '' : '0');
+    return Container(
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: const Color(0x3DFFFFFF),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      child: Row(
+        children: [
+          if (showsStepControls) ...[
+            _TodaysEntryGlassTile(
+              scale: scale,
+              width: 47 * scale,
+              height: 47 * scale,
+              borderRadius: 15 * scale,
+              padding: EdgeInsets.zero,
+              inactiveFillColor: const Color(0x52FFFFFF),
+              selectedFillColor: const Color(0x52FFFFFF),
+              unfocusOnLongPress: true,
+              onTap: () => _adjustUnitQuantity(-1),
+              child: Icon(
+                Icons.remove,
+                color: Colors.white,
+                size: (24 * scale).clamp(18.0, 28.0),
+              ),
+            ),
+            SizedBox(width: 8 * scale),
+          ],
+          _TodaysEntryGlassTile(
+            scale: scale,
+            width: 140 * scale,
+            height: 47 * scale,
+            borderRadius: 15 * scale,
+            padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+            inactiveFillColor: const Color(0x52FFFFFF),
+            selectedFillColor: Colors.white,
+            isSelected: _quantityFocusNode.hasFocus,
+            unfocusOnLongPress: true,
+            onTap: () => _quantityFocusNode.requestFocus(),
+            child: Center(
+              child: SizedBox(
+                key: _quantityFieldKey,
+                width: double.infinity,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onLongPressDown: (_) => _quantityFocusNode.unfocus(),
+                  onLongPressStart: (_) => _quantityFocusNode.unfocus(),
+                  onLongPressEnd: (_) => _quantityFocusNode.unfocus(),
+                  onLongPressCancel: _quantityFocusNode.unfocus,
+                  onLongPress: _quantityFocusNode.unfocus,
+                  child: TextField(
+                    controller: _quantityController,
+                    focusNode: _quantityFocusNode,
+                    scrollPadding: EdgeInsets.zero,
+                    textAlign: TextAlign.center,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                    ],
+                    textInputAction: TextInputAction.done,
+                    enableInteractiveSelection: false,
+                    onSubmitted: (_) => _quantityFocusNode.unfocus(),
+                    onTapOutside: (_) => _quantityFocusNode.unfocus(),
+                    decoration: InputDecoration.collapsed(
+                      hintText: quantityHintText,
+                      hintStyle: TextStyle(
+                        fontFamily: _defaultNonBorelFontFamily,
+                        fontSize: (24 * scale).clamp(18.0, 30.0),
+                        color: const Color(0x80000000),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    style: TextStyle(
+                      fontFamily: _defaultNonBorelFontFamily,
+                      fontSize: (24 * scale).clamp(18.0, 30.0),
+                      color: Colors.black,
+                      fontWeight: FontWeight.w500,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (showsStepControls) ...[
+            SizedBox(width: 8 * scale),
+            _TodaysEntryGlassTile(
+              scale: scale,
+              width: 47 * scale,
+              height: 47 * scale,
+              borderRadius: 15 * scale,
+              padding: EdgeInsets.zero,
+              inactiveFillColor: const Color(0x52FFFFFF),
+              selectedFillColor: const Color(0x52FFFFFF),
+              unfocusOnLongPress: true,
+              onTap: () => _adjustUnitQuantity(1),
+              child: Icon(
+                Icons.add,
+                color: Colors.white,
+                size: (24 * scale).clamp(18.0, 28.0),
+              ),
+            ),
+          ] else ...[
+            SizedBox(width: 16 * scale),
+            Text(
+              _selectedQuantityUnit.displaySuffix,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -13790,11 +14993,17 @@ class _SearchFoodItemDetailsScreenState
     final seededSodium = _normalizedNumericText(
       widget.initialSodiumText ?? '0',
     );
+    _selectedQuantityUnitIndex = _quantityUnitIndexFromType(
+      widget.item.quantityTypeLabel,
+    );
 
     _selectedTime = _parseTimeTextOrDefault(widget.initialTimeText);
     _isFavorite = widget.item.isFavorite;
 
     _itemNameController = TextEditingController(text: seededName);
+    _quantityController = TextEditingController(
+      text: _normalizedQuantityText(widget.item.quantityAmountText),
+    );
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _budgetPriceController = TextEditingController(
@@ -13809,6 +15018,7 @@ class _SearchFoodItemDetailsScreenState
     _sodiumController = TextEditingController(text: seededSodium);
 
     _itemNameFocusNode = FocusNode();
+    _quantityFocusNode = FocusNode();
     _hourFocusNode = FocusNode();
     _minuteFocusNode = FocusNode();
     _budgetPriceFocusNode = FocusNode();
@@ -13821,6 +15031,15 @@ class _SearchFoodItemDetailsScreenState
     _sodiumFocusNode = FocusNode();
 
     _bindFieldFocus(focusNode: _itemNameFocusNode, fieldKey: _itemNameFieldKey);
+    _bindFieldFocus(
+      focusNode: _quantityFocusNode,
+      fieldKey: _quantityFieldKey,
+      onFocusLost: () {
+        _quantityController.text = _normalizedQuantityText(
+          _quantityController.text,
+        );
+      },
+    );
     _bindFieldFocus(
       focusNode: _hourFocusNode,
       fieldKey: _hourFieldKey,
@@ -13846,6 +15065,7 @@ class _SearchFoodItemDetailsScreenState
 
     for (final controller in <TextEditingController>[
       _itemNameController,
+      _quantityController,
       _budgetPriceController,
       _caloriesController,
       _proteinController,
@@ -13872,6 +15092,7 @@ class _SearchFoodItemDetailsScreenState
   @override
   void dispose() {
     _itemNameFocusNode.dispose();
+    _quantityFocusNode.dispose();
     _hourFocusNode.dispose();
     _minuteFocusNode.dispose();
     _budgetPriceFocusNode.dispose();
@@ -13884,6 +15105,7 @@ class _SearchFoodItemDetailsScreenState
     _sodiumFocusNode.dispose();
 
     _itemNameController.dispose();
+    _quantityController.dispose();
     _hourController.dispose();
     _minuteController.dispose();
     _budgetPriceController.dispose();
@@ -14017,6 +15239,20 @@ class _SearchFoodItemDetailsScreenState
                       ],
                     ),
                     SizedBox(height: 24 * scale),
+                    if (_showItemQuantity) ...[
+                      Text(
+                        'Quantity',
+                        style: TextStyle(
+                          fontFamily: _defaultNonBorelFontFamily,
+                          fontSize: (16 * scale).clamp(14.0, 20.0),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 16 * scale),
+                      _buildQuantityCard(scale),
+                      SizedBox(height: 24 * scale),
+                    ],
                     Text(
                       'Meal Time',
                       style: TextStyle(
@@ -14173,209 +15409,214 @@ class _SearchFoodItemDetailsScreenState
                       ),
                     ),
                     SizedBox(height: 24 * scale),
-                    Text(
-                      'Budget',
-                      style: TextStyle(
-                        fontFamily: _defaultNonBorelFontFamily,
-                        fontSize: (16 * scale).clamp(14.0, 20.0),
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
+                    if (_showBudgetSection) ...[
+                      Text(
+                        'Budget',
+                        style: TextStyle(
+                          fontFamily: _defaultNonBorelFontFamily,
+                          fontSize: (16 * scale).clamp(14.0, 20.0),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 16 * scale),
-                    Container(
-                      padding: EdgeInsets.all(8 * scale),
-                      decoration: BoxDecoration(
-                        color: const Color(0x3DFFFFFF),
-                        borderRadius: BorderRadius.circular(16 * scale),
-                      ),
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: EdgeInsets.all(16 * scale),
-                            decoration: BoxDecoration(
-                              color: const Color(0x3DFFFFFF),
-                              borderRadius: BorderRadius.circular(16 * scale),
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  'Price',
-                                  style: TextStyle(
-                                    fontFamily: _defaultNonBorelFontFamily,
-                                    fontSize: (16 * scale).clamp(14.0, 20.0),
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w500,
+                      SizedBox(height: 16 * scale),
+                      Container(
+                        padding: EdgeInsets.all(8 * scale),
+                        decoration: BoxDecoration(
+                          color: const Color(0x3DFFFFFF),
+                          borderRadius: BorderRadius.circular(16 * scale),
+                        ),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(16 * scale),
+                              decoration: BoxDecoration(
+                                color: const Color(0x3DFFFFFF),
+                                borderRadius: BorderRadius.circular(16 * scale),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Price',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  '₹',
-                                  style: TextStyle(
-                                    fontFamily: _defaultNonBorelFontFamily,
-                                    fontSize: (14 * scale).clamp(12.0, 18.0),
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w500,
+                                  const Spacer(),
+                                  Text(
+                                    _budgetCurrencyGlyph,
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (14 * scale).clamp(12.0, 18.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                ),
-                                SizedBox(width: 8 * scale),
-                                _TodaysEntryGlassTile(
-                                  scale: scale,
-                                  width: (140 * scale).clamp(120.0, 168.0),
-                                  height: 47 * scale,
-                                  borderRadius: 15 * scale,
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 16 * scale,
-                                    vertical: 8 * scale,
-                                  ),
-                                  inactiveFillColor: const Color(0x3DFFFFFF),
-                                  selectedFillColor: Colors.white,
-                                  isSelected: _budgetPriceFocusNode.hasFocus,
-                                  unfocusOnLongPress: true,
-                                  onTap: () =>
-                                      _budgetPriceFocusNode.requestFocus(),
-                                  child: Center(
-                                    child: SizedBox(
-                                      key: _budgetPriceFieldKey,
-                                      width: double.infinity,
-                                      child: TextField(
-                                        controller: _budgetPriceController,
-                                        focusNode: _budgetPriceFocusNode,
-                                        scrollPadding: EdgeInsets.zero,
-                                        textAlign: TextAlign.center,
-                                        textAlignVertical:
-                                            TextAlignVertical.center,
-                                        keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                              decimal: true,
+                                  SizedBox(width: 8 * scale),
+                                  _TodaysEntryGlassTile(
+                                    scale: scale,
+                                    width: (140 * scale).clamp(120.0, 168.0),
+                                    height: 47 * scale,
+                                    borderRadius: 15 * scale,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16 * scale,
+                                      vertical: 8 * scale,
+                                    ),
+                                    inactiveFillColor: const Color(0x3DFFFFFF),
+                                    selectedFillColor: Colors.white,
+                                    isSelected: _budgetPriceFocusNode.hasFocus,
+                                    unfocusOnLongPress: true,
+                                    onTap: () =>
+                                        _budgetPriceFocusNode.requestFocus(),
+                                    child: Center(
+                                      child: SizedBox(
+                                        key: _budgetPriceFieldKey,
+                                        width: double.infinity,
+                                        child: TextField(
+                                          controller: _budgetPriceController,
+                                          focusNode: _budgetPriceFocusNode,
+                                          scrollPadding: EdgeInsets.zero,
+                                          textAlign: TextAlign.center,
+                                          textAlignVertical:
+                                              TextAlignVertical.center,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.allow(
+                                              RegExp(r'[0-9.,]'),
                                             ),
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter.allow(
-                                            RegExp(r'[0-9.,]'),
+                                          ],
+                                          textInputAction: TextInputAction.done,
+                                          enableInteractiveSelection: false,
+                                          onSubmitted: (_) =>
+                                              _budgetPriceFocusNode.unfocus(),
+                                          onTapOutside: (_) =>
+                                              _budgetPriceFocusNode.unfocus(),
+                                          decoration: InputDecoration.collapsed(
+                                            hintText: '0',
+                                            hintStyle: TextStyle(
+                                              fontFamily:
+                                                  _defaultNonBorelFontFamily,
+                                              fontSize: (24 * scale).clamp(
+                                                18.0,
+                                                30.0,
+                                              ),
+                                              color: const Color(0x29000000),
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                           ),
-                                        ],
-                                        textInputAction: TextInputAction.done,
-                                        enableInteractiveSelection: false,
-                                        onSubmitted: (_) =>
-                                            _budgetPriceFocusNode.unfocus(),
-                                        onTapOutside: (_) =>
-                                            _budgetPriceFocusNode.unfocus(),
-                                        decoration: InputDecoration.collapsed(
-                                          hintText: '0',
-                                          hintStyle: TextStyle(
+                                          style: TextStyle(
                                             fontFamily:
                                                 _defaultNonBorelFontFamily,
                                             fontSize: (24 * scale).clamp(
                                               18.0,
                                               30.0,
                                             ),
-                                            color: const Color(0x29000000),
+                                            color: Colors.black,
                                             fontWeight: FontWeight.w500,
+                                            height: 1.0,
                                           ),
-                                        ),
-                                        style: TextStyle(
-                                          fontFamily:
-                                              _defaultNonBorelFontFamily,
-                                          fontSize: (24 * scale).clamp(
-                                            18.0,
-                                            30.0,
-                                          ),
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.w500,
-                                          height: 1.0,
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                SizedBox(width: 8 * scale),
-                                Text(
-                                  '/meal',
-                                  style: TextStyle(
-                                    fontFamily: _defaultNonBorelFontFamily,
-                                    fontSize: (14 * scale).clamp(12.0, 18.0),
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w500,
+                                  SizedBox(width: 8 * scale),
+                                  Text(
+                                    '/meal',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (14 * scale).clamp(12.0, 18.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 16 * scale),
-                          Row(
-                            children: _budgetPresetValues
-                                .map((preset) {
-                                  final isSelected = _isBudgetPresetSelected(
-                                    preset,
-                                  );
-                                  return Expanded(
-                                    child: Padding(
-                                      padding: EdgeInsets.only(
-                                        right:
-                                            preset == _budgetPresetValues.last
-                                            ? 0
-                                            : 16 * scale,
-                                      ),
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () => _setBudgetPreset(preset),
-                                        child: Container(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 16 * scale,
-                                            vertical: 8 * scale,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: isSelected
-                                                ? Colors.white
-                                                : const Color(0x52FFFFFF),
-                                            borderRadius: BorderRadius.circular(
-                                              15 * scale,
+                            SizedBox(height: 16 * scale),
+                            Row(
+                              children: _budgetPresetValues
+                                  .map((preset) {
+                                    final isSelected = _isBudgetPresetSelected(
+                                      preset,
+                                    );
+                                    return Expanded(
+                                      child: Padding(
+                                        padding: EdgeInsets.only(
+                                          right:
+                                              preset == _budgetPresetValues.last
+                                              ? 0
+                                              : 16 * scale,
+                                        ),
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () => _setBudgetPreset(preset),
+                                          child: Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 16 * scale,
+                                              vertical: 8 * scale,
                                             ),
-                                            border: Border.all(
-                                              color: const Color(0x80FFFFFF),
-                                              width: (1 * scale).clamp(
-                                                0.8,
-                                                1.4,
-                                              ),
-                                            ),
-                                            boxShadow: isSelected
-                                                ? const <BoxShadow>[
-                                                    BoxShadow(
-                                                      color: Color(0xFFFF0000),
-                                                      blurRadius: 4,
-                                                      blurStyle:
-                                                          BlurStyle.outer,
-                                                    ),
-                                                  ]
-                                                : const <BoxShadow>[],
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              '₹ ${preset.toInt()}',
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                fontFamily:
-                                                    _defaultNonBorelFontFamily,
-                                                fontSize: (24 * scale).clamp(
-                                                  18.0,
-                                                  30.0,
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : const Color(0x52FFFFFF),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    15 * scale,
+                                                  ),
+                                              border: Border.all(
+                                                color: const Color(0x80FFFFFF),
+                                                width: (1 * scale).clamp(
+                                                  0.8,
+                                                  1.4,
                                                 ),
-                                                color: Colors.black,
-                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              boxShadow: isSelected
+                                                  ? const <BoxShadow>[
+                                                      BoxShadow(
+                                                        color: Color(
+                                                          0xFFFF0000,
+                                                        ),
+                                                        blurRadius: 4,
+                                                        blurStyle:
+                                                            BlurStyle.outer,
+                                                      ),
+                                                    ]
+                                                  : const <BoxShadow>[],
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '$_budgetCurrencyGlyph ${preset.toInt()}',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (24 * scale).clamp(
+                                                    18.0,
+                                                    30.0,
+                                                  ),
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
                                               ),
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                })
-                                .toList(growable: false),
-                          ),
-                        ],
+                                    );
+                                  })
+                                  .toList(growable: false),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 24 * scale),
+                      SizedBox(height: 24 * scale),
+                    ],
                     Text(
                       'Nutritional Value',
                       style: TextStyle(
@@ -14546,6 +15787,9 @@ class _SearchFoodItemDetailsScreenState
                           scale: scale,
                           label: 'Add to Custom',
                           showArrowIcon: false,
+                          baseColor: const Color(0xFF00B2FF),
+                          enabledAlpha: 0x8F,
+                          disabledAlpha: 0x29,
                           enabled: _canAddToCustom,
                           onTap: _addToCustomEntries,
                         ),
@@ -15093,6 +16337,7 @@ class _CustomEntriesScreenState extends State<CustomEntriesScreen>
           initialFiberText: entry.fiberText,
           initialSugarText: entry.sugarText,
           initialSodiumText: entry.sodiumText,
+          initialBudgetText: entry.budgetAmountText,
           initialTimeText: entry.timeText,
           showAddToCustom: false,
         ),
@@ -15875,6 +17120,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   late final TextEditingController _quantityController;
   late final TextEditingController _hourController;
   late final TextEditingController _minuteController;
+  late final TextEditingController _budgetPriceController;
   late final TextEditingController _caloriesController;
   late final TextEditingController _proteinController;
   late final TextEditingController _carbsController;
@@ -15887,6 +17133,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   late final FocusNode _quantityFocusNode;
   late final FocusNode _hourFocusNode;
   late final FocusNode _minuteFocusNode;
+  late final FocusNode _budgetPriceFocusNode;
   late final FocusNode _caloriesFocusNode;
   late final FocusNode _proteinFocusNode;
   late final FocusNode _carbsFocusNode;
@@ -15899,6 +17146,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   final GlobalKey _quantityFieldKey = GlobalKey();
   final GlobalKey _hourFieldKey = GlobalKey();
   final GlobalKey _minuteFieldKey = GlobalKey();
+  final GlobalKey _budgetPriceFieldKey = GlobalKey();
   final GlobalKey _caloriesFieldKey = GlobalKey();
   final GlobalKey _proteinFieldKey = GlobalKey();
   final GlobalKey _carbsFieldKey = GlobalKey();
@@ -15906,6 +17154,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   final GlobalKey _fiberFieldKey = GlobalKey();
   final GlobalKey _sugarFieldKey = GlobalKey();
   final GlobalKey _sodiumFieldKey = GlobalKey();
+  static const List<double> _budgetPresetValues = <double>[100, 150, 200];
   static const List<_CustomEntryQuantityUnitOption> _quantityUnitOptions =
       <_CustomEntryQuantityUnitOption>[
         _CustomEntryQuantityUnitOption(
@@ -15940,6 +17189,17 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   bool get _showTimelineActionIcon => !widget.isExchangeEntry;
 
   bool get _isAmSelected => _selectedTime.hour < 12;
+
+  bool get _showBudgetSection =>
+      _OnboardingProfileState.budgetEnabled &&
+      !_OnboardingSkipFlags.skippedBudgetSection;
+
+  String get _budgetCurrencyCode =>
+      _OnboardingProfileState.budgetCurrencyCode.trim().toUpperCase();
+
+  String get _budgetCurrencyGlyph =>
+      _budgetCurrencyGlyphByCode[_budgetCurrencyCode] ?? _budgetCurrencyCode;
+
   _CustomEntryQuantityUnitOption get _selectedQuantityUnit =>
       _quantityUnitOptions[_selectedQuantityUnitIndex];
 
@@ -16282,6 +17542,60 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
+  String _normalizedBudgetText(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return '';
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return '';
+    }
+    if ((parsed - parsed.roundToDouble()).abs() < 0.0001) {
+      return parsed.round().toString();
+    }
+    return parsed
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _commitBudgetFromController() {
+    final normalized = _normalizedBudgetText(_budgetPriceController.text);
+    setState(() {
+      _budgetPriceController.text = normalized;
+      _budgetPriceController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _budgetPriceController.text.length),
+      );
+    });
+  }
+
+  double? _parsedBudgetValue() {
+    final normalized = _normalizedBudgetText(_budgetPriceController.text);
+    if (normalized.isEmpty) {
+      return null;
+    }
+    return double.tryParse(normalized);
+  }
+
+  bool _isBudgetPresetSelected(double preset) {
+    final value = _parsedBudgetValue();
+    if (value == null) {
+      return false;
+    }
+    return (value - preset).abs() <= 0.0001;
+  }
+
+  void _setBudgetPreset(double value) {
+    final text = _normalizedBudgetText(value.toString());
+    setState(() {
+      _budgetPriceController.text = text;
+      _budgetPriceController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _budgetPriceController.text.length),
+      );
+    });
+  }
+
   bool get _canAddEntry {
     return _itemNameController.text.trim().isNotEmpty;
   }
@@ -16292,6 +17606,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       _quantityController.text = '1';
       _selectedQuantityUnitIndex = 0;
       _isQuantityUnitDropdownOpen = false;
+      _budgetPriceController.text = '';
       _caloriesController.text = '0';
       _proteinController.text = '0';
       _carbsController.text = '0';
@@ -16319,6 +17634,9 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       caloriesText: _normalizedNumericText(_caloriesController.text),
       timeText:
           '$_timeHourText:$_timeMinuteText ${_isAmSelected ? 'AM' : 'PM'}',
+      budgetAmountText: _showBudgetSection
+          ? _normalizedBudgetText(_budgetPriceController.text)
+          : '0',
       proteinText: _normalizedNumericText(_proteinController.text),
       carbohydratesText: _normalizedNumericText(_carbsController.text),
       fatText: _normalizedNumericText(_fatController.text),
@@ -16340,6 +17658,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       fiberText: entry.fiberText,
       sugarText: entry.sugarText,
       sodiumText: entry.sodiumText,
+      budgetAmountText: entry.budgetAmountText,
     );
     _resetAfterAdd();
   }
@@ -16374,6 +17693,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _quantityController = TextEditingController(text: '1');
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
+    _budgetPriceController = TextEditingController(text: '');
     _caloriesController = TextEditingController(text: '0');
     _proteinController = TextEditingController(text: '0');
     _carbsController = TextEditingController(text: '0');
@@ -16386,6 +17706,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _quantityFocusNode = FocusNode();
     _hourFocusNode = FocusNode();
     _minuteFocusNode = FocusNode();
+    _budgetPriceFocusNode = FocusNode();
     _caloriesFocusNode = FocusNode();
     _proteinFocusNode = FocusNode();
     _carbsFocusNode = FocusNode();
@@ -16414,6 +17735,11 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       fieldKey: _minuteFieldKey,
       onFocusLost: _commitMinuteFromController,
     );
+    _bindFieldFocus(
+      focusNode: _budgetPriceFocusNode,
+      fieldKey: _budgetPriceFieldKey,
+      onFocusLost: _commitBudgetFromController,
+    );
     _bindFieldFocus(focusNode: _caloriesFocusNode, fieldKey: _caloriesFieldKey);
     _bindFieldFocus(focusNode: _proteinFocusNode, fieldKey: _proteinFieldKey);
     _bindFieldFocus(focusNode: _carbsFocusNode, fieldKey: _carbsFieldKey);
@@ -16425,6 +17751,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     for (final controller in <TextEditingController>[
       _itemNameController,
       _quantityController,
+      _budgetPriceController,
       _caloriesController,
       _proteinController,
       _carbsController,
@@ -16452,6 +17779,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _quantityFocusNode.dispose();
     _hourFocusNode.dispose();
     _minuteFocusNode.dispose();
+    _budgetPriceFocusNode.dispose();
     _caloriesFocusNode.dispose();
     _proteinFocusNode.dispose();
     _carbsFocusNode.dispose();
@@ -16463,6 +17791,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _quantityController.dispose();
     _hourController.dispose();
     _minuteController.dispose();
+    _budgetPriceController.dispose();
     _caloriesController.dispose();
     _proteinController.dispose();
     _carbsController.dispose();
@@ -17065,6 +18394,214 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                       ),
                     ),
                     SizedBox(height: 24 * scale),
+                    if (_showBudgetSection) ...[
+                      Text(
+                        'Budget',
+                        style: TextStyle(
+                          fontFamily: _defaultNonBorelFontFamily,
+                          fontSize: (16 * scale).clamp(14.0, 20.0),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 16 * scale),
+                      Container(
+                        padding: EdgeInsets.all(8 * scale),
+                        decoration: BoxDecoration(
+                          color: const Color(0x3DFFFFFF),
+                          borderRadius: BorderRadius.circular(16 * scale),
+                        ),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(16 * scale),
+                              decoration: BoxDecoration(
+                                color: const Color(0x3DFFFFFF),
+                                borderRadius: BorderRadius.circular(16 * scale),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Price',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    _budgetCurrencyGlyph,
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (14 * scale).clamp(12.0, 18.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8 * scale),
+                                  _TodaysEntryGlassTile(
+                                    scale: scale,
+                                    width: (140 * scale).clamp(120.0, 168.0),
+                                    height: 47 * scale,
+                                    borderRadius: 15 * scale,
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16 * scale,
+                                      vertical: 8 * scale,
+                                    ),
+                                    inactiveFillColor: const Color(0x3DFFFFFF),
+                                    selectedFillColor: Colors.white,
+                                    isSelected: _budgetPriceFocusNode.hasFocus,
+                                    unfocusOnLongPress: true,
+                                    onTap: () =>
+                                        _budgetPriceFocusNode.requestFocus(),
+                                    child: Center(
+                                      child: SizedBox(
+                                        key: _budgetPriceFieldKey,
+                                        width: double.infinity,
+                                        child: TextField(
+                                          controller: _budgetPriceController,
+                                          focusNode: _budgetPriceFocusNode,
+                                          scrollPadding: EdgeInsets.zero,
+                                          textAlign: TextAlign.center,
+                                          textAlignVertical:
+                                              TextAlignVertical.center,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.allow(
+                                              RegExp(r'[0-9.,]'),
+                                            ),
+                                          ],
+                                          textInputAction: TextInputAction.done,
+                                          enableInteractiveSelection: false,
+                                          onSubmitted: (_) =>
+                                              _budgetPriceFocusNode.unfocus(),
+                                          onTapOutside: (_) =>
+                                              _budgetPriceFocusNode.unfocus(),
+                                          decoration: InputDecoration.collapsed(
+                                            hintText: '0',
+                                            hintStyle: TextStyle(
+                                              fontFamily:
+                                                  _defaultNonBorelFontFamily,
+                                              fontSize: (24 * scale).clamp(
+                                                18.0,
+                                                30.0,
+                                              ),
+                                              color: const Color(0x29000000),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          style: TextStyle(
+                                            fontFamily:
+                                                _defaultNonBorelFontFamily,
+                                            fontSize: (24 * scale).clamp(
+                                              18.0,
+                                              30.0,
+                                            ),
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.w500,
+                                            height: 1.0,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8 * scale),
+                                  Text(
+                                    '/meal',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      fontSize: (14 * scale).clamp(12.0, 18.0),
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: 16 * scale),
+                            Row(
+                              children: _budgetPresetValues
+                                  .map((preset) {
+                                    final isSelected = _isBudgetPresetSelected(
+                                      preset,
+                                    );
+                                    return Expanded(
+                                      child: Padding(
+                                        padding: EdgeInsets.only(
+                                          right:
+                                              preset == _budgetPresetValues.last
+                                              ? 0
+                                              : 16 * scale,
+                                        ),
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () => _setBudgetPreset(preset),
+                                          child: Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 16 * scale,
+                                              vertical: 8 * scale,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : const Color(0x52FFFFFF),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    15 * scale,
+                                                  ),
+                                              border: Border.all(
+                                                color: const Color(0x80FFFFFF),
+                                                width: (1 * scale).clamp(
+                                                  0.8,
+                                                  1.4,
+                                                ),
+                                              ),
+                                              boxShadow: isSelected
+                                                  ? const <BoxShadow>[
+                                                      BoxShadow(
+                                                        color: Color(
+                                                          0xFFFF0000,
+                                                        ),
+                                                        blurRadius: 4,
+                                                        blurStyle:
+                                                            BlurStyle.outer,
+                                                      ),
+                                                    ]
+                                                  : const <BoxShadow>[],
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '$_budgetCurrencyGlyph ${preset.toInt()}',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (24 * scale).clamp(
+                                                    18.0,
+                                                    30.0,
+                                                  ),
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  })
+                                  .toList(growable: false),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 24 * scale),
+                    ],
                     Text(
                       'Nutritional Value',
                       style: TextStyle(
@@ -20144,6 +21681,9 @@ class _GlassNextButton extends StatefulWidget {
     this.showArrowIcon = true,
     this.trailingIcon,
     this.trailingIconSize = 24,
+    this.baseColor = const Color(0xFFFFD206),
+    this.enabledAlpha = 0x8F,
+    this.disabledAlpha = 0x14,
   });
 
   final double scale;
@@ -20153,6 +21693,9 @@ class _GlassNextButton extends StatefulWidget {
   final bool showArrowIcon;
   final IconData? trailingIcon;
   final double trailingIconSize;
+  final Color baseColor;
+  final int enabledAlpha;
+  final int disabledAlpha;
 
   @override
   State<_GlassNextButton> createState() => _GlassNextButtonState();
@@ -20166,13 +21709,15 @@ class _GlassNextButtonState extends State<_GlassNextButton>
     final trailingIconData = widget.trailingIcon;
     final shouldShowArrow = widget.showArrowIcon && trailingIconData == null;
     final shouldShowTrailingIcon = shouldShowArrow || trailingIconData != null;
+    final fillAlpha =
+        (widget.enabled ? widget.enabledAlpha : widget.disabledAlpha)
+            .clamp(0, 255)
+            .toInt();
     return _RotatingGlassButton(
       scale: scale,
       height: 56 * scale,
       borderRadius: 32 * scale,
-      fillColor: widget.enabled
-          ? const Color(0x8FFFD206)
-          : const Color(0x14FFD206),
+      fillColor: widget.baseColor.withAlpha(fillAlpha),
       enablePressShadeFeedback: widget.enabled,
       onTap: widget.enabled ? widget.onTap : () {},
       child: FittedBox(
