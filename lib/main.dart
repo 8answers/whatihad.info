@@ -9,13 +9,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' as rendering;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const Duration _kScreenFadeDuration = Duration(milliseconds: 380);
 const Duration _kSplashDuration = Duration(milliseconds: 2500);
 const Duration _kLoadingFillDuration = Duration(milliseconds: 2600);
 const Duration _kBackgroundMotionDuration = Duration(seconds: 10);
+const Duration _bellyoAssistantMinThinkingDuration = Duration(
+  milliseconds: 1200,
+);
 
 const String _supabaseUrl = String.fromEnvironment(
   'SUPABASE_URL',
@@ -171,19 +173,6 @@ _bellyoAssistantPromptSuggestions = <_BellyoQuickPrompt>[
   _BellyoQuickPrompt(label: 'Lunch Ideas', prompt: 'Lunch Ideas'),
   _BellyoQuickPrompt(label: 'Dinner Ideas', prompt: 'Dinner Ideas'),
 ];
-const String _bellyoAssistantOllamaEndpoint = String.fromEnvironment(
-  'BELLYO_OLLAMA_ENDPOINT',
-  defaultValue: '',
-);
-const String _bellyoAssistantOllamaModel = String.fromEnvironment(
-  'BELLYO_OLLAMA_MODEL',
-  defaultValue: 'llama3.2',
-);
-const int _bellyoAssistantHistoryLimit = 12;
-const bool _bellyoAssistantEnableOfflineFallback = bool.fromEnvironment(
-  'BELLYO_ENABLE_OFFLINE_FALLBACK',
-  defaultValue: false,
-);
 
 enum _BellyoAssistantRole { user, assistant }
 
@@ -2118,18 +2107,21 @@ class _DailyFoodDatabase {
     }
   }
 
-  static Future<String> buildAssistantFoodContext({
+  static Future<List<_DailyFoodCatalogItem>> assistantCandidateFoods({
     required int selectedDietPreferenceIndex,
     required String preferredCountry,
   }) async {
     await _ensureCsvFoodsLoaded();
     final sourceFoods = _csvFoods.isNotEmpty ? _csvFoods : _localFoods;
+    final safeDietPreferenceIndex = selectedDietPreferenceIndex
+        .clamp(0, _dietPreferenceOptions.length - 1)
+        .toInt();
 
     final scoredFoods = sourceFoods
         .map(
           (food) => (
             food: food,
-            score: _dietCompatibilityScore(food, selectedDietPreferenceIndex),
+            score: _dietCompatibilityScore(food, safeDietPreferenceIndex),
           ),
         )
         .where((entry) => entry.score > 0)
@@ -2141,46 +2133,34 @@ class _DailyFoodDatabase {
       }
       return a.food.name.compareTo(b.food.name);
     });
+
     final compatibleFoods = scoredFoods
         .map((entry) => entry.food)
         .toList(growable: false);
-
     if (compatibleFoods.isEmpty) {
-      return '';
+      return sourceFoods.toList(growable: false);
     }
 
-    final prioritizedFoods = preferredCountry.trim().isEmpty
-        ? const <_DailyFoodCatalogItem>[]
-        : compatibleFoods
-              .where(
-                (food) => _countryMatches(food.countryName, preferredCountry),
-              )
-              .toList(growable: false);
-
-    final priorityNames = prioritizedFoods
-        .map((food) => food.name)
-        .toSet()
-        .take(18)
-        .join(', ');
-    final compatibleNames = compatibleFoods
-        .map((food) => food.name)
-        .toSet()
-        .take(18)
-        .join(', ');
-
-    final contextParts = <String>[];
-    if (preferredCountry.trim().isNotEmpty) {
-      contextParts.add('Preferred country: ${preferredCountry.trim()}.');
+    final normalizedPreferredCountry = preferredCountry.trim();
+    if (normalizedPreferredCountry.isEmpty) {
+      return compatibleFoods;
     }
-    if (priorityNames.isNotEmpty) {
-      contextParts.add(
-        'Prioritize these country dishes first when relevant: $priorityNames.',
-      );
+
+    final prioritizedFoods = compatibleFoods
+        .where(
+          (food) =>
+              _countryMatches(food.countryName, normalizedPreferredCountry),
+        )
+        .toList(growable: false);
+    if (prioritizedFoods.isEmpty) {
+      return compatibleFoods;
     }
-    contextParts.add(
-      'Compatible dishes based on profile diet preference: $compatibleNames.',
-    );
-    return contextParts.join(' ');
+
+    final prioritizedIds = prioritizedFoods.map((food) => food.id).toSet();
+    final remainingFoods = compatibleFoods
+        .where((food) => !prioritizedIds.contains(food.id))
+        .toList(growable: false);
+    return <_DailyFoodCatalogItem>[...prioritizedFoods, ...remainingFoods];
   }
 
   static void setFavorite(int foodId, bool isFavorite) {
@@ -8771,7 +8751,7 @@ class _BudgetPerMealScreenState extends State<BudgetPerMealScreen>
                       }),
                       SizedBox(height: 20 * scale),
                       Text(
-                        'Share your meal budget, so AI can suggest\nfoods for your goals.',
+                        'Share your meal budget, so Bellyo can suggest\nfoods for your goals.',
                         style: TextStyle(
                           fontSize: (16 * scale).clamp(14.0, 20.0),
                           color: Colors.black,
@@ -12424,14 +12404,6 @@ class BellyoAssistantScreen extends StatefulWidget {
 
 class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     with SingleTickerProviderStateMixin {
-  static const String _assistantSystemPromptBase =
-      'You are Bellyo, a practical diet assistant inside a food tracking app. '
-      'Answer in a friendly and concise way. '
-      'Give realistic food suggestions, simple portion ideas, and budget-aware tips. '
-      'If information is missing, ask one short follow-up question. '
-      'Do not invent medical facts. '
-      'Always respect the user diet preference and avoid suggesting foods outside that preference.';
-
   late final TextEditingController _promptController;
   late final ScrollController _messageScrollController;
   late final AnimationController _loadingDotsController;
@@ -12496,163 +12468,966 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     });
   }
 
-  Future<String> _buildAssistantSystemPrompt() async {
+  bool _containsAny(String haystack, List<String> needles) {
+    for (final needle in needles) {
+      if (haystack.contains(needle)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  double _parsePositiveNumber(String raw) {
+    final cleaned = raw.trim().replaceAll(',', '.');
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return 0;
+    }
+    return parsed;
+  }
+
+  String _formatCompactNumber(double value) {
+    if (value.isNaN || value.isInfinite || value < 0) {
+      return '0';
+    }
+    if ((value - value.roundToDouble()).abs() < 0.0001) {
+      return value.round().toString();
+    }
+    return value
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  double? _profileBudgetLimit() {
+    if (!_OnboardingProfileState.budgetEnabled) {
+      return null;
+    }
+    if (_OnboardingProfileState.isCustomBudgetPerMeal) {
+      final customParsed = _parsePositiveNumber(
+        _OnboardingProfileState.customBudgetPerMeal,
+      );
+      return customParsed > 0 ? customParsed : null;
+    }
+    final selected = _OnboardingProfileState.selectedBudgetPerMeal;
+    if (selected == null || selected <= 0) {
+      return null;
+    }
+    return selected.toDouble();
+  }
+
+  double? _promptBudgetLimit({
+    required String prompt,
+    required String currencyCode,
+    required String currencyGlyph,
+  }) {
+    final normalized = prompt.toLowerCase();
+    final hasBudgetIntent =
+        _containsAny(normalized, const <String>[
+          'budget',
+          'cheap',
+          'under',
+          'below',
+          'within',
+          'affordable',
+          'less than',
+          'up to',
+          'upto',
+        ]) ||
+        normalized.contains(currencyCode.toLowerCase()) ||
+        normalized.contains(currencyGlyph.toLowerCase()) ||
+        normalized.contains('₹') ||
+        normalized.contains('rupee') ||
+        normalized.contains('rs');
+    if (!hasBudgetIntent) {
+      return null;
+    }
+
+    final thresholdMatch = RegExp(
+      r'(?:under|below|within|less than|up to|upto)\s*[^\d]{0,6}(\d+(?:[.,]\d+)?)',
+      caseSensitive: false,
+    ).firstMatch(prompt);
+    if (thresholdMatch != null) {
+      final parsed = _parsePositiveNumber(thresholdMatch.group(1) ?? '');
+      if (parsed > 0) {
+        return parsed;
+      }
+    }
+
+    final currencyMatch = RegExp(
+      r'(?:₹|rs\.?|inr|\$|usd|eur|gbp|aed|sar)\s*(\d+(?:[.,]\d+)?)',
+      caseSensitive: false,
+    ).firstMatch(prompt);
+    if (currencyMatch != null) {
+      final parsed = _parsePositiveNumber(currencyMatch.group(1) ?? '');
+      if (parsed > 0) {
+        return parsed;
+      }
+    }
+
+    double? best;
+    for (final match in RegExp(r'(\d+(?:[.,]\d+)?)').allMatches(prompt)) {
+      final parsed = _parsePositiveNumber(match.group(1) ?? '');
+      if (parsed <= 0) {
+        continue;
+      }
+      if (best == null || parsed > best) {
+        best = parsed;
+      }
+    }
+    return best;
+  }
+
+  double? _effectiveBudgetLimit({
+    required double? promptBudget,
+    required double? profileBudget,
+  }) {
+    if (promptBudget != null && profileBudget != null) {
+      return math.min(promptBudget, profileBudget);
+    }
+    return promptBudget ?? profileBudget;
+  }
+
+  double _foodCalories(_DailyFoodCatalogItem food) {
+    final parsed = _parsePositiveNumber(food.caloriesText);
+    if (parsed > 0) {
+      return parsed;
+    }
+    return food.caloriesKcal.toDouble();
+  }
+
+  double _foodProtein(_DailyFoodCatalogItem food) {
+    return _parsePositiveNumber(food.proteinText);
+  }
+
+  double _foodCarbohydrates(_DailyFoodCatalogItem food) {
+    return _parsePositiveNumber(food.carbohydratesText);
+  }
+
+  double _foodFat(_DailyFoodCatalogItem food) {
+    return _parsePositiveNumber(food.fatText);
+  }
+
+  double _foodFiber(_DailyFoodCatalogItem food) {
+    return _parsePositiveNumber(food.fiberText);
+  }
+
+  double _foodSugar(_DailyFoodCatalogItem food) {
+    return _parsePositiveNumber(food.sugarText);
+  }
+
+  double _foodSodium(_DailyFoodCatalogItem food) {
+    return _parsePositiveNumber(food.sodiumText);
+  }
+
+  List<String> _requestedNutrientKeys(String query) {
+    final keys = <String>[];
+
+    void addKeyIf(bool condition, String key) {
+      if (condition && !keys.contains(key)) {
+        keys.add(key);
+      }
+    }
+
+    addKeyIf(
+      _containsAny(query, const <String>[
+        'carb',
+        'carbs',
+        'carbohydrate',
+        'carbohydrates',
+        'cars',
+      ]),
+      'carbs',
+    );
+    addKeyIf(
+      _containsAny(query, const <String>['protein', 'proteins']),
+      'protein',
+    );
+    addKeyIf(_containsAny(query, const <String>['fat', 'fats']), 'fat');
+    addKeyIf(_containsAny(query, const <String>['fiber', 'fibre']), 'fiber');
+    addKeyIf(_containsAny(query, const <String>['sugar', 'sugars']), 'sugar');
+    addKeyIf(_containsAny(query, const <String>['sodium', 'salt']), 'sodium');
+    addKeyIf(
+      _containsAny(query, const <String>['calorie', 'calories', 'kcal']),
+      'kcal',
+    );
+    return keys;
+  }
+
+  String _nutrientTextForFood({
+    required _DailyFoodCatalogItem food,
+    required List<String> nutrientKeys,
+  }) {
+    final activeKeys = nutrientKeys.isEmpty
+        ? const <String>['kcal', 'protein']
+        : nutrientKeys;
+    final parts = <String>[];
+    for (final key in activeKeys) {
+      switch (key) {
+        case 'kcal':
+          parts.add('${_formatCompactNumber(_foodCalories(food))} kcal');
+          break;
+        case 'protein':
+          parts.add('${_formatCompactNumber(_foodProtein(food))}g protein');
+          break;
+        case 'carbs':
+          parts.add('${_formatCompactNumber(_foodCarbohydrates(food))}g carbs');
+          break;
+        case 'fat':
+          parts.add('${_formatCompactNumber(_foodFat(food))}g fat');
+          break;
+        case 'fiber':
+          parts.add('${_formatCompactNumber(_foodFiber(food))}g fiber');
+          break;
+        case 'sugar':
+          parts.add('${_formatCompactNumber(_foodSugar(food))}g sugar');
+          break;
+        case 'sodium':
+          parts.add('${_formatCompactNumber(_foodSodium(food))}mg sodium');
+          break;
+      }
+    }
+    return parts.join(' • ');
+  }
+
+  double? _foodPriceForCurrency(
+    _DailyFoodCatalogItem food,
+    String currencyCode,
+  ) {
+    final value = food.priceByCurrency[currencyCode];
+    if (value == null || value.isNaN || value.isInfinite || value <= 0) {
+      return null;
+    }
+    return value;
+  }
+
+  int _assistantIntentScore({
+    required _DailyFoodCatalogItem food,
+    required String query,
+    required List<String> requestedNutrientKeys,
+    required bool hasProteinIntent,
+    required bool hasLowCalorieIntent,
+    required bool hasHydrationIntent,
+    required bool hasSnackIntent,
+    required bool hasBreakfastIntent,
+    required bool hasLunchIntent,
+    required bool hasDinnerIntent,
+    required bool hasRecoveryIntent,
+    required bool hasQuickIntent,
+    required String currencyCode,
+    required double? budgetLimit,
+  }) {
+    final name = food.name.toLowerCase();
+    final calories = _foodCalories(food);
+    final protein = _foodProtein(food);
+    final carbohydrates = _foodCarbohydrates(food);
+    final price = _foodPriceForCurrency(food, currencyCode);
+    int score = 0;
+
+    if (hasProteinIntent) {
+      score += (protein * 4).round();
+      if (protein >= 15) {
+        score += 28;
+      }
+    }
+    if (hasLowCalorieIntent) {
+      score += math.max(0, (320 - calories).round());
+    }
+    if (hasHydrationIntent &&
+        _containsAny(name, const <String>[
+          'water',
+          'buttermilk',
+          'lassi',
+          'juice',
+          'tea',
+        ])) {
+      score += 110;
+    }
+    if (hasSnackIntent &&
+        _containsAny(name, const <String>[
+          'snack',
+          'fruit',
+          'salad',
+          'nuts',
+          'chana',
+          'curd',
+          'yogurt',
+          'bar',
+          'sandwich',
+          'soup',
+        ])) {
+      score += 92;
+    }
+    if (hasBreakfastIntent &&
+        _containsAny(name, const <String>[
+          'oats',
+          'upma',
+          'poha',
+          'idli',
+          'dosa',
+          'egg',
+          'milk',
+          'toast',
+          'paratha',
+          'sandwich',
+        ])) {
+      score += 90;
+    }
+    if (hasLunchIntent &&
+        _containsAny(name, const <String>[
+          'rice',
+          'dal',
+          'curry',
+          'pulao',
+          'biryani',
+          'roti',
+          'chapati',
+          'rajma',
+          'chole',
+        ])) {
+      score += 88;
+    }
+    if (hasDinnerIntent &&
+        _containsAny(name, const <String>[
+          'curry',
+          'grilled',
+          'soup',
+          'paneer',
+          'tofu',
+          'fish',
+          'chicken',
+          'roti',
+          'salad',
+        ])) {
+      score += 80;
+    }
+    if (hasRecoveryIntent) {
+      score += (protein * 3).round();
+      score += (carbohydrates * 1.5).round();
+    }
+    for (final nutrientKey in requestedNutrientKeys) {
+      switch (nutrientKey) {
+        case 'protein':
+          score += (protein * 4).round();
+          break;
+        case 'carbs':
+          score += (carbohydrates * 4).round();
+          break;
+        case 'fat':
+          score += (_foodFat(food) * 4).round();
+          break;
+        case 'fiber':
+          score += (_foodFiber(food) * 5).round();
+          break;
+        case 'sugar':
+          score += (_foodSugar(food) * 3).round();
+          break;
+        case 'sodium':
+          score += (_foodSodium(food) / 40).round();
+          break;
+        case 'kcal':
+          score += (_foodCalories(food) / 8).round();
+          break;
+      }
+    }
+    if (hasQuickIntent &&
+        _containsAny(name, const <String>[
+          'salad',
+          'sandwich',
+          'omelette',
+          'fruit',
+          'curd',
+          'yogurt',
+          'soup',
+        ])) {
+      score += 65;
+    }
+
+    final words = query
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((word) => word.length >= 4);
+    for (final word in words) {
+      if (name.contains(word)) {
+        score += 22;
+      }
+    }
+
+    if (budgetLimit != null && price != null) {
+      if (price <= budgetLimit) {
+        score += 120 - math.min(90, (budgetLimit - price).abs().round());
+      } else {
+        score -= 150;
+      }
+    }
+
+    if (food.isFavorite) {
+      score += 25;
+    }
+    return score;
+  }
+
+  String _formatFoodSuggestionLine({
+    required _DailyFoodCatalogItem food,
+    required String currencyCode,
+    required String currencyGlyph,
+    required List<String> nutrientKeys,
+  }) {
+    final quantity = food.quantityDisplayText.trim();
+    final price = _foodPriceForCurrency(food, currencyCode);
+    final priceText = price == null
+        ? '$currencyCode n/a'
+        : '$currencyGlyph${_formatCompactNumber(price)}';
+    final nutrientText = _nutrientTextForFood(
+      food: food,
+      nutrientKeys: nutrientKeys,
+    );
+    final quantityText = quantity.isEmpty ? '' : ' ($quantity)';
+    return '${food.name}$quantityText • $nutrientText • $priceText';
+  }
+
+  String _buildProfileTargetSummary() {
+    final calories =
+        (_OnboardingProfileState.nutritionGoalValues['Calories'] ?? '').trim();
+    final protein =
+        (_OnboardingProfileState.nutritionGoalValues['Protein'] ?? '').trim();
+    final hydrationGoal = _OnboardingProfileState.hydrationGoalText.trim();
+    final hydrationUnit = _OnboardingProfileState.isHydrationInLiters
+        ? 'L'
+        : 'oz';
+    final parts = <String>[];
+    if (calories.isNotEmpty && calories != '0') {
+      parts.add('$calories kcal/day');
+    }
+    if (protein.isNotEmpty && protein != '0') {
+      parts.add('$protein g protein/day');
+    }
+    if (_OnboardingProfileState.hydrationEnabled &&
+        hydrationGoal.isNotEmpty &&
+        hydrationGoal != '0') {
+      parts.add('$hydrationGoal $hydrationUnit water/day');
+    }
+    if (parts.isEmpty) {
+      return '';
+    }
+    return 'Profile targets: ${parts.join(' | ')}.';
+  }
+
+  String _currencyPrefix({
+    required String currencyCode,
+    required String currencyGlyph,
+  }) {
+    final trimmedGlyph = currencyGlyph.trim();
+    if (trimmedGlyph.isNotEmpty) {
+      return trimmedGlyph;
+    }
+    return '$currencyCode ';
+  }
+
+  bool _isTodayMealPlanIntent(String query) {
+    return _containsAny(query, const <String>[
+      'what should i eat today',
+      'what to eat today',
+      'eat today',
+      'today meal',
+      'today diet',
+      'meal plan for today',
+      'food plan for today',
+    ]);
+  }
+
+  bool _hasNoCuisinePreferenceIntent(String query) {
+    return _containsAny(query, const <String>[
+      'any cuisine',
+      'all cuisines',
+      'no cuisine preference',
+      'cuisine is fine',
+      'cuisine fine',
+      'any food is fine',
+      'anything is fine',
+      "doesn't matter",
+      'doesnt matter',
+      'not a problem',
+      'no problem',
+      'not an issue',
+      'any country is fine',
+    ]);
+  }
+
+  String _formatProteinEstimate(double value) {
+    if (value <= 0) {
+      return '~0g';
+    }
+    if (value < 10) {
+      return '~${_formatCompactNumber(value)}g';
+    }
+    final low = math.max(0, (value * 0.9).round());
+    final high = (value * 1.1).round();
+    return '~$low-${high}g';
+  }
+
+  String _budgetRangeText({
+    required double budget,
+    required String currencyPrefix,
+    required double lowFactor,
+    required double highFactor,
+  }) {
+    final low = budget * lowFactor;
+    final high = budget * highFactor;
+    return '$currencyPrefix${_formatCompactNumber(low)}-$currencyPrefix${_formatCompactNumber(high)}';
+  }
+
+  List<_DailyFoodCatalogItem> _pickMealItemsForPlan({
+    required List<_DailyFoodCatalogItem> sourceFoods,
+    required Set<int> usedIds,
+    required List<String> mealKeywords,
+    required String currencyCode,
+    required double? mealBudgetUpper,
+    int maxItems = 3,
+  }) {
+    final available = sourceFoods
+        .where((food) => !usedIds.contains(food.id))
+        .toList(growable: false);
+    if (available.isEmpty) {
+      return const <_DailyFoodCatalogItem>[];
+    }
+
+    final keywordMatches = available
+        .where((food) => _containsAny(food.name.toLowerCase(), mealKeywords))
+        .toList(growable: false);
+    var pool = keywordMatches.isNotEmpty ? keywordMatches : available;
+    if (mealBudgetUpper != null) {
+      final withinBudget = pool
+          .where((food) {
+            final price = _foodPriceForCurrency(food, currencyCode);
+            return price != null && price <= mealBudgetUpper * 1.05;
+          })
+          .toList(growable: false);
+      if (withinBudget.isNotEmpty) {
+        pool = withinBudget;
+      }
+    }
+
+    final ranked = [...pool]
+      ..sort((a, b) {
+        final aName = a.name.toLowerCase();
+        final bName = b.name.toLowerCase();
+        int scoreA = (_foodProtein(a) * 3).round();
+        int scoreB = (_foodProtein(b) * 3).round();
+        if (_containsAny(aName, mealKeywords)) {
+          scoreA += 120;
+        }
+        if (_containsAny(bName, mealKeywords)) {
+          scoreB += 120;
+        }
+        final aPrice = _foodPriceForCurrency(a, currencyCode);
+        final bPrice = _foodPriceForCurrency(b, currencyCode);
+        if (mealBudgetUpper != null) {
+          if (aPrice != null && aPrice <= mealBudgetUpper) {
+            scoreA += 40;
+          }
+          if (bPrice != null && bPrice <= mealBudgetUpper) {
+            scoreB += 40;
+          }
+        }
+        if (a.isFavorite) {
+          scoreA += 15;
+        }
+        if (b.isFavorite) {
+          scoreB += 15;
+        }
+        final byScore = scoreB.compareTo(scoreA);
+        if (byScore != 0) {
+          return byScore;
+        }
+        return a.name.compareTo(b.name);
+      });
+
+    final picked = <_DailyFoodCatalogItem>[];
+    double runningCost = 0;
+    for (final food in ranked) {
+      if (picked.length >= maxItems) {
+        break;
+      }
+      final price = _foodPriceForCurrency(food, currencyCode);
+      if (mealBudgetUpper != null &&
+          price != null &&
+          picked.isNotEmpty &&
+          runningCost + price > mealBudgetUpper * 1.15) {
+        continue;
+      }
+      picked.add(food);
+      if (price != null) {
+        runningCost += price;
+      }
+    }
+
+    if (picked.isEmpty) {
+      picked.add(ranked.first);
+    }
+    usedIds.addAll(picked.map((food) => food.id));
+    return picked;
+  }
+
+  double _sumMealProtein(List<_DailyFoodCatalogItem> foods) {
+    return foods.fold<double>(0, (sum, food) => sum + _foodProtein(food));
+  }
+
+  double _sumMealCost(List<_DailyFoodCatalogItem> foods, String currencyCode) {
+    return foods.fold<double>(0, (sum, food) {
+      final price = _foodPriceForCurrency(food, currencyCode);
+      return sum + (price ?? 0);
+    });
+  }
+
+  String _buildTodayMealPlanReply({
+    required List<_DailyFoodCatalogItem> candidates,
+    required String dietLabel,
+    required String preferredCountry,
+    required String currencyCode,
+    required String currencyPrefix,
+    required double? effectiveBudget,
+    required List<String> requestedNutrientKeys,
+  }) {
+    final usedIds = <int>{};
+    final breakfastUpper = effectiveBudget == null
+        ? null
+        : effectiveBudget * 0.8;
+    final lunchUpper = effectiveBudget;
+    final dinnerUpper = effectiveBudget;
+
+    final breakfastItems = _pickMealItemsForPlan(
+      sourceFoods: candidates,
+      usedIds: usedIds,
+      mealKeywords: const <String>[
+        'oats',
+        'upma',
+        'poha',
+        'idli',
+        'dosa',
+        'egg',
+        'omelette',
+        'milk',
+        'banana',
+        'fruit',
+        'curd',
+        'toast',
+        'sandwich',
+      ],
+      currencyCode: currencyCode,
+      mealBudgetUpper: breakfastUpper,
+    );
+    final lunchItems = _pickMealItemsForPlan(
+      sourceFoods: candidates,
+      usedIds: usedIds,
+      mealKeywords: const <String>[
+        'rice',
+        'dal',
+        'rajma',
+        'chole',
+        'roti',
+        'chapati',
+        'pulao',
+        'biryani',
+        'curry',
+        'khichdi',
+        'salad',
+      ],
+      currencyCode: currencyCode,
+      mealBudgetUpper: lunchUpper,
+    );
+    final dinnerItems = _pickMealItemsForPlan(
+      sourceFoods: candidates,
+      usedIds: usedIds,
+      mealKeywords: const <String>[
+        'rice',
+        'dal',
+        'curry',
+        'paneer',
+        'tofu',
+        'chicken',
+        'fish',
+        'rajma',
+        'chole',
+        'roti',
+        'chapati',
+        'salad',
+        'soup',
+      ],
+      currencyCode: currencyCode,
+      mealBudgetUpper: dinnerUpper,
+    );
+
+    String itemLine(_DailyFoodCatalogItem food) {
+      final quantity = food.quantityDisplayText.trim();
+      final displayName = quantity.isEmpty
+          ? food.name
+          : '${food.name} ($quantity)';
+      final nutrientText = _nutrientTextForFood(
+        food: food,
+        nutrientKeys: requestedNutrientKeys,
+      );
+      return '$displayName • $nutrientText';
+    }
+
+    final breakfastProtein = _sumMealProtein(breakfastItems);
+    final lunchProtein = _sumMealProtein(lunchItems);
+    final dinnerProtein = _sumMealProtein(dinnerItems);
+    final totalProtein = breakfastProtein + lunchProtein + dinnerProtein;
+    final breakfastCost = _sumMealCost(breakfastItems, currencyCode);
+    final lunchCost = _sumMealCost(lunchItems, currencyCode);
+    final dinnerCost = _sumMealCost(dinnerItems, currencyCode);
+    final totalCost = breakfastCost + lunchCost + dinnerCost;
+
+    bool withinBudget = false;
+    if (effectiveBudget != null) {
+      withinBudget =
+          breakfastCost <= effectiveBudget &&
+          lunchCost <= effectiveBudget &&
+          dinnerCost <= effectiveBudget;
+    }
+
+    final lines = <String>[
+      'Here is a practical meal plan for today ($dietLabel${preferredCountry.isNotEmpty ? ', $preferredCountry priority' : ''}):',
+      '',
+      'A. Breakfast${effectiveBudget == null ? '' : ' (${_budgetRangeText(budget: effectiveBudget, currencyPrefix: currencyPrefix, lowFactor: 0.55, highFactor: 0.8)})'}',
+      ...breakfastItems.map((food) => '- ${itemLine(food)}'),
+      'Protein: ${_formatProteinEstimate(breakfastProtein)}',
+      '',
+      'B. Lunch${effectiveBudget == null ? '' : ' (${_budgetRangeText(budget: effectiveBudget, currencyPrefix: currencyPrefix, lowFactor: 0.8, highFactor: 1.0)})'}',
+      ...lunchItems.map((food) => '- ${itemLine(food)}'),
+      'Protein: ${_formatProteinEstimate(lunchProtein)}',
+      '',
+      'C. Dinner${effectiveBudget == null ? '' : ' (${_budgetRangeText(budget: effectiveBudget, currencyPrefix: currencyPrefix, lowFactor: 0.8, highFactor: 1.0)})'}',
+      ...dinnerItems.map((food) => '- ${itemLine(food)}'),
+      'Protein: ${_formatProteinEstimate(dinnerProtein)}',
+      '',
+      'Total',
+      'Protein: ${_formatProteinEstimate(totalProtein)} [OK]',
+    ];
+    if (effectiveBudget != null) {
+      lines.add('Cost: ${withinBudget ? 'within budget [OK]' : 'near budget'}');
+      lines.add(
+        'Estimated spend: $currencyPrefix${_formatCompactNumber(totalCost)} for the day.',
+      );
+    }
+    return lines.join('\n');
+  }
+
+  Future<String> _buildDatabaseAssistantReply(String prompt) async {
+    final query = prompt.toLowerCase();
+    final requestedNutrientKeys = _requestedNutrientKeys(query);
     final safeDietPreferenceIndex = _OnboardingProfileState
         .selectedDietPreferenceIndex
         .clamp(0, _dietPreferenceOptions.length - 1);
-    final dietPreference =
-        _dietPreferenceOptions[safeDietPreferenceIndex].label;
-    final preferredCountry = _OnboardingProfileState.selectedCountryName.trim();
-    final foodContext = await _DailyFoodDatabase.buildAssistantFoodContext(
+    final dietLabel =
+        _dietPreferenceOptions[safeDietPreferenceIndex.toInt()].label;
+    final savedPreferredCountry = _OnboardingProfileState.selectedCountryName
+        .trim();
+    final budgetCurrencyRaw = _OnboardingProfileState.budgetCurrencyCode
+        .trim()
+        .toUpperCase();
+    final budgetCurrencyCode = budgetCurrencyRaw.isEmpty
+        ? 'INR'
+        : budgetCurrencyRaw;
+    final budgetCurrencyGlyph =
+        _budgetCurrencyGlyphByCode[budgetCurrencyCode] ??
+        '$budgetCurrencyCode ';
+    final currencyPrefix = _currencyPrefix(
+      currencyCode: budgetCurrencyCode,
+      currencyGlyph: budgetCurrencyGlyph,
+    );
+
+    final promptBudget = _promptBudgetLimit(
+      prompt: prompt,
+      currencyCode: budgetCurrencyCode,
+      currencyGlyph: budgetCurrencyGlyph,
+    );
+    final profileBudget = _profileBudgetLimit();
+    final effectiveBudget = _effectiveBudgetLimit(
+      promptBudget: promptBudget,
+      profileBudget: profileBudget,
+    );
+
+    final hasProteinIntent = _containsAny(query, const <String>[
+      'protein',
+      'muscle',
+      'recovery',
+    ]);
+    final hasLowCalorieIntent = _containsAny(query, const <String>[
+      'low calorie',
+      'weight loss',
+      'lose weight',
+      'fat loss',
+      'deficit',
+      'light meal',
+    ]);
+    final hasHydrationIntent = _containsAny(query, const <String>[
+      'water',
+      'hydrate',
+      'hydration',
+      'drink',
+    ]);
+    final hasSnackIntent = _containsAny(query, const <String>[
+      'snack',
+      'quick bite',
+    ]);
+    final hasBreakfastIntent = query.contains('breakfast');
+    final hasLunchIntent = query.contains('lunch');
+    final hasDinnerIntent = query.contains('dinner');
+    final hasRecoveryIntent = _containsAny(query, const <String>[
+      'post workout',
+      'recovery',
+      'after workout',
+    ]);
+    final hasQuickIntent = _containsAny(query, const <String>[
+      'quick',
+      'fast',
+      'easy',
+    ]);
+    final hasNoCuisinePreference = _hasNoCuisinePreferenceIntent(query);
+    final preferredCountry = hasNoCuisinePreference
+        ? ''
+        : savedPreferredCountry;
+    final hasTodayPlanIntent = _isTodayMealPlanIntent(query);
+    final shouldShowTargets = _containsAny(query, const <String>[
+      'target',
+      'targets',
+      'goal',
+      'goals',
+      'macro',
+      'macros',
+      'protein goal',
+      'calorie goal',
+      'daily protein',
+      'daily calories',
+    ]);
+    final foods = await _DailyFoodDatabase.assistantCandidateFoods(
       selectedDietPreferenceIndex:
           _OnboardingProfileState.selectedDietPreferenceIndex,
       preferredCountry: preferredCountry,
     );
-    final promptParts = <String>[
-      _assistantSystemPromptBase,
-      'User diet preference: $dietPreference.',
-    ];
-    if (preferredCountry.isNotEmpty) {
-      promptParts.add(
-        'User preferred country cuisine priority: $preferredCountry.',
-      );
+    if (foods.isEmpty) {
+      return 'I could not load your food data right now. Please try again.';
     }
-    if (foodContext.isNotEmpty) {
-      promptParts.add(foodContext);
-    }
-    return promptParts.join(' ');
-  }
 
-  Future<List<Map<String, String>>> _buildApiMessages() async {
-    final systemPrompt = await _buildAssistantSystemPrompt();
-    final startIndex = _messages.length > _bellyoAssistantHistoryLimit
-        ? _messages.length - _bellyoAssistantHistoryLimit
-        : 0;
-    final history = _messages.sublist(startIndex);
-    return <Map<String, String>>[
-      <String, String>{'role': 'system', 'content': systemPrompt},
-      ...history.map(
-        (message) => <String, String>{
-          'role': message.isUser ? 'user' : 'assistant',
-          'content': message.text,
-        },
-      ),
-    ];
-  }
-
-  String _resolveOllamaEndpoint() {
-    final configuredEndpoint = _bellyoAssistantOllamaEndpoint.trim();
-    if (configuredEndpoint.isNotEmpty) {
-      return configuredEndpoint;
-    }
-    if (kIsWeb) {
-      return 'http://127.0.0.1:11434/api/chat';
-    }
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        // Android emulator host-loopback bridge.
-        return 'http://10.0.2.2:11434/api/chat';
-      case TargetPlatform.iOS:
-      case TargetPlatform.macOS:
-      case TargetPlatform.windows:
-      case TargetPlatform.linux:
-      case TargetPlatform.fuchsia:
-        return 'http://127.0.0.1:11434/api/chat';
-    }
-  }
-
-  String _extractOllamaReply(Map<String, dynamic>? responseJson) {
-    if (responseJson == null) {
-      return '';
-    }
-    final message = responseJson['message'];
-    if (message is Map<String, dynamic>) {
-      final content = message['content'];
-      if (content is String && content.trim().isNotEmpty) {
-        return content.trim();
+    List<_DailyFoodCatalogItem> candidates = foods;
+    bool budgetApplied = false;
+    if (effectiveBudget != null) {
+      final withinBudget = candidates
+          .where((food) {
+            final price = _foodPriceForCurrency(food, budgetCurrencyCode);
+            return price != null && price <= effectiveBudget;
+          })
+          .toList(growable: false);
+      if (withinBudget.isNotEmpty) {
+        candidates = withinBudget;
+        budgetApplied = true;
+      } else {
+        final withPrice = candidates
+            .where(
+              (food) => _foodPriceForCurrency(food, budgetCurrencyCode) != null,
+            )
+            .toList(growable: false);
+        if (withPrice.isNotEmpty) {
+          final sortedByPriceDistance = [...withPrice]
+            ..sort((a, b) {
+              final aDiff =
+                  (_foodPriceForCurrency(a, budgetCurrencyCode)! -
+                          effectiveBudget)
+                      .abs();
+              final bDiff =
+                  (_foodPriceForCurrency(b, budgetCurrencyCode)! -
+                          effectiveBudget)
+                      .abs();
+              return aDiff.compareTo(bDiff);
+            });
+          candidates = sortedByPriceDistance;
+        }
       }
     }
-    final content = responseJson['response'];
-    if (content is String && content.trim().isNotEmpty) {
-      return content.trim();
-    }
-    return '';
-  }
 
-  String _buildOfflineDietReply(String prompt) {
-    final query = prompt.toLowerCase();
-    final hasBudgetIntent =
-        query.contains('budget') ||
-        query.contains('cheap') ||
-        query.contains('under') ||
-        query.contains('₹') ||
-        query.contains('inr') ||
-        query.contains('rupee');
-    final hasProteinIntent =
-        query.contains('protein') || query.contains('muscle');
-    final hasWeightLossIntent =
-        query.contains('weight loss') ||
-        query.contains('lose weight') ||
-        query.contains('low calorie') ||
-        query.contains('fat loss');
-    final hasHydrationIntent =
-        query.contains('water') || query.contains('hydrate');
-    final hasMealTimingIntent =
-        query.contains('breakfast') ||
-        query.contains('lunch') ||
-        query.contains('dinner') ||
-        query.contains('snack') ||
-        query.contains('meal');
-
-    if (hasBudgetIntent && hasProteinIntent) {
-      return 'Try these high-protein, low-cost options:\n'
-          '1) Moong chilla + curd\n'
-          '2) Egg bhurji + 2 rotis\n'
-          '3) Soya chunks pulao + salad\n'
-          '4) Peanut chaat + buttermilk\n'
-          'Target ~20-30g protein per meal.';
+    if (hasTodayPlanIntent) {
+      return _buildTodayMealPlanReply(
+        candidates: candidates,
+        dietLabel: dietLabel,
+        preferredCountry: preferredCountry,
+        currencyCode: budgetCurrencyCode,
+        currencyPrefix: currencyPrefix,
+        effectiveBudget: effectiveBudget,
+        requestedNutrientKeys: requestedNutrientKeys,
+      );
     }
 
-    if (hasProteinIntent) {
-      return 'Easy protein ideas:\n'
-          '1) Breakfast: 2 eggs + milk / paneer sandwich\n'
-          '2) Lunch: dal + rice + curd + salad\n'
-          '3) Snack: roasted chana + fruit\n'
-          '4) Dinner: paneer/tofu/egg curry + roti\n'
-          'Aim for protein in every meal.';
+    final ranked = candidates
+        .map(
+          (food) => (
+            food: food,
+            score: _assistantIntentScore(
+              food: food,
+              query: query,
+              requestedNutrientKeys: requestedNutrientKeys,
+              hasProteinIntent: hasProteinIntent,
+              hasLowCalorieIntent: hasLowCalorieIntent,
+              hasHydrationIntent: hasHydrationIntent,
+              hasSnackIntent: hasSnackIntent,
+              hasBreakfastIntent: hasBreakfastIntent,
+              hasLunchIntent: hasLunchIntent,
+              hasDinnerIntent: hasDinnerIntent,
+              hasRecoveryIntent: hasRecoveryIntent,
+              hasQuickIntent: hasQuickIntent,
+              currencyCode: budgetCurrencyCode,
+              budgetLimit: effectiveBudget,
+            ),
+          ),
+        )
+        .toList(growable: false);
+    ranked.sort((a, b) {
+      final byScore = b.score.compareTo(a.score);
+      if (byScore != 0) {
+        return byScore;
+      }
+      final byProtein = _foodProtein(b.food).compareTo(_foodProtein(a.food));
+      if (byProtein != 0) {
+        return byProtein;
+      }
+      return a.food.name.compareTo(b.food.name);
+    });
+
+    final selectedFoods = ranked
+        .take(5)
+        .map((entry) => entry.food)
+        .toList(growable: false);
+    if (selectedFoods.isEmpty) {
+      return 'I could not find matching foods right now. Try a broader query like "high protein lunch".';
     }
 
-    if (hasWeightLossIntent) {
-      return 'Simple fat-loss plate method:\n'
-          '1) Half plate vegetables\n'
-          '2) Quarter plate protein (dal/paneer/egg/chicken)\n'
-          '3) Quarter plate carbs (rice/roti)\n'
-          '4) Add one fruit and enough water\n'
-          'Keep snacks portion-controlled.';
+    final lines = <String>[
+      'Based on your profile ($dietLabel${preferredCountry.isNotEmpty ? ', $preferredCountry cuisine priority' : ''}), here are practical options:',
+    ];
+    if (effectiveBudget != null) {
+      final budgetText = _formatCompactNumber(effectiveBudget);
+      if (budgetApplied) {
+        lines.add(
+          'Budget cap applied: up to $currencyPrefix$budgetText per meal.',
+        );
+      } else {
+        lines.add(
+          'No exact matches under $currencyPrefix$budgetText, so I picked closest-priced options.',
+        );
+      }
     }
 
-    if (hasHydrationIntent) {
-      return 'Hydration plan:\n'
-          '1) Start day with 300-500 ml water\n'
-          '2) Drink 200-250 ml every 2-3 hours\n'
-          '3) Add buttermilk/coconut water once daily\n'
-          '4) Extra water around workouts';
+    for (int i = 0; i < selectedFoods.length; i++) {
+      lines.add(
+        '${i + 1}) ${_formatFoodSuggestionLine(food: selectedFoods[i], currencyCode: budgetCurrencyCode, currencyGlyph: budgetCurrencyGlyph, nutrientKeys: requestedNutrientKeys)}',
+      );
     }
 
-    if (hasMealTimingIntent) {
-      return 'Balanced day example:\n'
-          '1) Breakfast: oats/upma + curd/eggs\n'
-          '2) Lunch: dal + rice/roti + sabzi\n'
-          '3) Snack: fruit + nuts/chana\n'
-          '4) Dinner: light protein + vegetables\n'
-          'Keep dinner 2-3 hours before sleep.';
+    final targetSummary = _buildProfileTargetSummary();
+    if (shouldShowTargets && targetSummary.isNotEmpty) {
+      lines.add(targetSummary);
     }
-
-    return 'I can still help with quick diet guidance.\n'
-        'Ask like:\n'
-        '1) "High protein meal under ₹150"\n'
-        '2) "Low calorie dinner ideas"\n'
-        '3) "Quick healthy snacks"';
+    return lines.join('\n');
   }
 
   String _normalizeAssistantReply(String reply) {
@@ -12679,14 +13454,6 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     _scheduleScrollToBottom();
   }
 
-  void _appendAssistantConnectionError({required String endpoint}) {
-    _appendAssistantReply(
-      reply:
-          'I could not connect to local AI at $endpoint.\n'
-          'Make sure Ollama is running and this endpoint matches your device type.',
-    );
-  }
-
   Future<void> _sendPrompt() async {
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty || _isAsking) {
@@ -12705,54 +13472,26 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     });
     _scheduleScrollToBottom();
 
+    final startedAt = DateTime.now();
     try {
-      final endpoint = _resolveOllamaEndpoint();
-      final apiMessages = await _buildApiMessages();
-      final response = await http
-          .post(
-            Uri.parse(endpoint),
-            headers: <String, String>{'Content-Type': 'application/json'},
-            body: jsonEncode(<String, dynamic>{
-              'model': _bellyoAssistantOllamaModel,
-              'messages': apiMessages,
-              'stream': false,
-              'options': <String, dynamic>{'temperature': 0.4},
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      Map<String, dynamic>? responseJson;
-      if (response.body.isNotEmpty) {
-        final parsed = jsonDecode(response.body);
-        if (parsed is Map<String, dynamic>) {
-          responseJson = parsed;
-        }
+      final reply = await _buildDatabaseAssistantReply(prompt);
+      final elapsed = DateTime.now().difference(startedAt);
+      if (elapsed < _bellyoAssistantMinThinkingDuration) {
+        await Future<void>.delayed(
+          _bellyoAssistantMinThinkingDuration - elapsed,
+        );
       }
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('Ollama request failed (${response.statusCode}).');
-      }
-
-      final reply = _extractOllamaReply(responseJson);
-      if (reply.isEmpty) {
-        throw Exception('No reply from Ollama.');
-      }
-
       _appendAssistantReply(reply: _normalizeAssistantReply(reply));
-    } on TimeoutException {
-      final endpoint = _resolveOllamaEndpoint();
-      if (_bellyoAssistantEnableOfflineFallback) {
-        _appendAssistantReply(reply: _buildOfflineDietReply(prompt));
-        return;
-      }
-      _appendAssistantConnectionError(endpoint: endpoint);
     } catch (_) {
-      final endpoint = _resolveOllamaEndpoint();
-      if (_bellyoAssistantEnableOfflineFallback) {
-        _appendAssistantReply(reply: _buildOfflineDietReply(prompt));
-        return;
+      final elapsed = DateTime.now().difference(startedAt);
+      if (elapsed < _bellyoAssistantMinThinkingDuration) {
+        await Future<void>.delayed(
+          _bellyoAssistantMinThinkingDuration - elapsed,
+        );
       }
-      _appendAssistantConnectionError(endpoint: endpoint);
+      _appendAssistantReply(
+        reply: 'I could not build suggestions right now. Please try again.',
+      );
     }
   }
 
@@ -12885,7 +13624,22 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
                 ),
               ),
               SizedBox(width: 8 * scale),
-              _buildBellyoLoadingDots(scale: scale),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Thinking...',
+                    style: TextStyle(
+                      fontFamily: _defaultNonBorelFontFamily,
+                      fontSize: (13 * scale).clamp(11.0, 16.0),
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 4 * scale),
+                  _buildBellyoLoadingDots(scale: scale),
+                ],
+              ),
             ],
           ),
         ),
