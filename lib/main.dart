@@ -10102,6 +10102,13 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     return (current / target).clamp(0.0, 1.0);
   }
 
+  double _overflowFraction(double current, double target) {
+    if (target <= 0) {
+      return 0;
+    }
+    return math.max(0.0, (current - target) / target);
+  }
+
   Future<void> _openMealsTimelineItemDetails(_MealTimelineEntry entry) async {
     if (!mounted) {
       return;
@@ -10224,9 +10231,25 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     String currentText = '0',
     double progressFraction = 0.0,
     bool highlightCurrent = true,
+    bool appendPlusToCurrent = false,
+    double overflowFraction = 0.0,
   }) {
     final clampedProgress = progressFraction.clamp(0.0, 1.0);
     final transparentStart = (clampedProgress + 0.0001).clamp(0.0, 1.0);
+    final rawOverflow = overflowFraction < 0 ? 0.0 : overflowFraction;
+    final clampedOverflow = rawOverflow.clamp(0.0, 1.0);
+    final refillFraction = (rawOverflow - 1.0).clamp(0.0, 1.0);
+    final hasOverflow = rawOverflow > 0;
+    final hasRefillStage = refillFraction > 0;
+    final overflowShadeColor = accentColor.withValues(alpha: 0.16);
+    final effectiveFillColor = hasOverflow ? overflowShadeColor : accentColor;
+    final progressStrokeWidth = 1 * scale;
+    final progressRadius = 16 * scale;
+    final innerRadius = (progressRadius - progressStrokeWidth).clamp(
+      0.0,
+      progressRadius,
+    );
+    final borderColor = hasRefillStage ? overflowShadeColor : Colors.white;
     return _innerPanel(
       scale: scale,
       child: Column(
@@ -10255,23 +10278,68 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
             ],
           ),
           SizedBox(height: 8 * scale),
-          Container(
+          SizedBox(
             width: double.infinity,
             height: 14 * scale,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16 * scale),
-              border: Border.all(color: Colors.white, width: 1 * scale),
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                stops: [0.0, clampedProgress, transparentStart, 1.0],
-                colors: [
-                  accentColor,
-                  accentColor,
-                  Colors.white.withValues(alpha: 0),
-                  Colors.white.withValues(alpha: 0),
-                ],
-              ),
+            child: Stack(
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: 14 * scale,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(progressRadius),
+                    border: Border.all(
+                      color: borderColor,
+                      width: progressStrokeWidth,
+                    ),
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      stops: [0.0, clampedProgress, transparentStart, 1.0],
+                      colors: [
+                        effectiveFillColor,
+                        effectiveFillColor,
+                        Colors.white.withValues(alpha: 0),
+                        Colors.white.withValues(alpha: 0),
+                      ],
+                    ),
+                  ),
+                ),
+                if (hasOverflow && !hasRefillStage)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _ProgressOverflowBorderPainter(
+                          color: accentColor,
+                          strokeWidth: progressStrokeWidth,
+                          borderRadius: progressRadius,
+                          fillFraction: clampedOverflow,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (hasRefillStage)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Padding(
+                        padding: EdgeInsets.all(progressStrokeWidth),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(innerRadius),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: refillFraction,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(color: accentColor),
+                                child: const SizedBox.expand(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           SizedBox(height: 8 * scale),
@@ -10286,7 +10354,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 ),
                 children: [
                   TextSpan(
-                    text: currentText,
+                    text: '${appendPlusToCurrent ? '+' : ''}$currentText',
                     style: TextStyle(
                       color: highlightCurrent ? Colors.white : Colors.black,
                     ),
@@ -10538,22 +10606,76 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     );
   }
 
+  Widget _buildMealsTimelineDot({required double scale}) {
+    return Container(
+      width: 6 * scale,
+      height: 6 * scale,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(3 * scale),
+      ),
+    );
+  }
+
+  Widget _buildMealsTimelineDotsWithContent({
+    required double scale,
+    required Widget content,
+  }) {
+    final dotSize = 6 * scale;
+    final edgeGap = 3 * scale;
+    final contentVerticalInset = dotSize + edgeGap;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: dotSize,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildMealsTimelineDot(scale: scale),
+                _buildMealsTimelineDot(scale: scale),
+                _buildMealsTimelineDot(scale: scale),
+              ],
+            ),
+          ),
+          SizedBox(width: 8 * scale),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: contentVerticalInset),
+              child: Align(alignment: Alignment.centerLeft, child: content),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMealsTimelineViewEntries({
     required double scale,
     required List<_MealTimelineEntry> entries,
   }) {
+    final groupedByTime = <String, List<_MealTimelineEntry>>{};
+    for (final entry in entries) {
+      groupedByTime.putIfAbsent(entry.timeText, () => <_MealTimelineEntry>[]);
+      groupedByTime[entry.timeText]!.add(entry);
+    }
+    final groups = groupedByTime.entries.toList(growable: false);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: List<Widget>.generate(entries.length, (index) {
-        final entry = entries[index];
-        final isLast = index == entries.length - 1;
+      children: List<Widget>.generate(groups.length, (groupIndex) {
+        final timeGroup = groups[groupIndex];
+        final isLastGroup = groupIndex == groups.length - 1;
+        final groupEntries = timeGroup.value;
         return Padding(
-          padding: EdgeInsets.only(bottom: isLast ? 0 : 10 * scale),
+          padding: EdgeInsets.only(bottom: isLastGroup ? 0 : 10 * scale),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                entry.timeText,
+                timeGroup.key,
                 style: TextStyle(
                   fontFamily: _defaultNonBorelFontFamily,
                   fontSize: (14 * scale).clamp(12.0, 16.0),
@@ -10562,22 +10684,16 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 ),
               ),
               SizedBox(height: 4 * scale),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(top: 6 * scale, right: 8 * scale),
-                    child: Container(
-                      width: 6 * scale,
-                      height: 6 * scale,
-                      decoration: BoxDecoration(
-                        color: const Color(0x99FFFFFF),
-                        borderRadius: BorderRadius.circular(3 * scale),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
+              ...List<Widget>.generate(groupEntries.length, (mealIndex) {
+                final entry = groupEntries[mealIndex];
+                final isLastMeal = mealIndex == groupEntries.length - 1;
+                final showCalories = _parseNumericText(entry.caloriesText) > 0;
+                return Padding(
+                  padding: EdgeInsets.only(bottom: isLastMeal ? 0 : 8 * scale),
+                  child: _buildMealsTimelineDotsWithContent(
+                    scale: scale,
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
@@ -10589,20 +10705,21 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        Text(
-                          '( ${entry.caloriesText} Kcal )',
-                          style: TextStyle(
-                            fontFamily: _defaultNonBorelFontFamily,
-                            fontSize: (14 * scale).clamp(12.0, 16.0),
-                            color: Colors.black,
-                            fontWeight: FontWeight.w500,
+                        if (showCalories)
+                          Text(
+                            '( ${entry.caloriesText} Kcal )',
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (14 * scale).clamp(12.0, 16.0),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                );
+              }),
             ],
           ),
         );
@@ -10614,13 +10731,21 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     required double scale,
     required List<_MealTimelineEntry> entries,
   }) {
+    final groupedByTime = <String, List<_MealTimelineEntry>>{};
+    for (final entry in entries) {
+      groupedByTime.putIfAbsent(entry.timeText, () => <_MealTimelineEntry>[]);
+      groupedByTime[entry.timeText]!.add(entry);
+    }
+    final groups = groupedByTime.entries.toList(growable: false);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: List<Widget>.generate(entries.length, (index) {
-        final entry = entries[index];
-        final isLast = index == entries.length - 1;
+      children: List<Widget>.generate(groups.length, (groupIndex) {
+        final timeGroup = groups[groupIndex];
+        final groupEntries = timeGroup.value;
+        final isLastGroup = groupIndex == groups.length - 1;
         return Padding(
-          padding: EdgeInsets.only(bottom: isLast ? 0 : 8 * scale),
+          padding: EdgeInsets.only(bottom: isLastGroup ? 0 : 8 * scale),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -10634,7 +10759,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      entry.timeText,
+                      timeGroup.key,
                       style: TextStyle(
                         fontFamily: _defaultNonBorelFontFamily,
                         fontSize: (14 * scale).clamp(12.0, 16.0),
@@ -10643,77 +10768,80 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                       ),
                     ),
                     SizedBox(height: 4 * scale),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${entry.itemName}\n( ${entry.caloriesText} Kcal )',
-                            style: TextStyle(
-                              fontFamily: _defaultNonBorelFontFamily,
-                              fontSize: (14 * scale).clamp(12.0, 16.0),
-                              color: Colors.black,
-                              fontWeight: FontWeight.w500,
-                              height: 1.2,
-                            ),
-                          ),
+                    ...List<Widget>.generate(groupEntries.length, (mealIndex) {
+                      final entry = groupEntries[mealIndex];
+                      final isLastMeal = mealIndex == groupEntries.length - 1;
+                      final showCalories =
+                          _parseNumericText(entry.caloriesText) > 0;
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: isLastMeal ? 0 : 8 * scale,
                         ),
-                        SizedBox(width: 8 * scale),
-                        Row(
-                          children: [
-                            _buildMealsTimelineActionButton(
-                              scale: scale,
-                              onTap: () => _openExchangeEntryScreen(entry.id),
-                              child: SizedBox(
-                                width: 16 * scale,
-                                height: 17 * scale,
-                                child: SvgPicture.asset(
-                                  'assets/Food__exchange.svg',
-                                  fit: BoxFit.contain,
+                        child: _buildMealsTimelineDotsWithContent(
+                          scale: scale,
+                          content: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  showCalories
+                                      ? '${entry.itemName}\n( ${entry.caloriesText} Kcal )'
+                                      : entry.itemName,
+                                  style: TextStyle(
+                                    fontFamily: _defaultNonBorelFontFamily,
+                                    fontSize: (14 * scale).clamp(12.0, 16.0),
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.2,
+                                  ),
                                 ),
                               ),
-                            ),
-                            SizedBox(width: 8 * scale),
-                            _buildMealsTimelineActionButton(
-                              scale: scale,
-                              onTap: () => _openMealsTimelineItemDetails(entry),
-                              child: SvgPicture.asset(
-                                'assets/Edit_food.svg',
-                                fit: BoxFit.contain,
+                              SizedBox(width: 8 * scale),
+                              Row(
+                                children: [
+                                  _buildMealsTimelineActionButton(
+                                    scale: scale,
+                                    onTap: () =>
+                                        _openExchangeEntryScreen(entry.id),
+                                    child: SizedBox(
+                                      width: 16 * scale,
+                                      height: 17 * scale,
+                                      child: SvgPicture.asset(
+                                        'assets/Food__exchange.svg',
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8 * scale),
+                                  _buildMealsTimelineActionButton(
+                                    scale: scale,
+                                    onTap: () =>
+                                        _openMealsTimelineItemDetails(entry),
+                                    child: SvgPicture.asset(
+                                      'assets/Edit_food.svg',
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8 * scale),
+                                  _buildMealsTimelineActionButton(
+                                    scale: scale,
+                                    onTap: () =>
+                                        _confirmDeleteMealsTimelineEntry(entry),
+                                    child: SvgPicture.asset(
+                                      'assets/Delete.svg',
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            SizedBox(width: 8 * scale),
-                            _buildMealsTimelineActionButton(
-                              scale: scale,
-                              onTap: () =>
-                                  _confirmDeleteMealsTimelineEntry(entry),
-                              child: SvgPicture.asset(
-                                'assets/Delete.svg',
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      );
+                    }),
                   ],
                 ),
               ),
-              if (!isLast)
-                Align(
-                  alignment: Alignment.center,
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 8 * scale),
-                    child: Container(
-                      width: 6 * scale,
-                      height: 6 * scale,
-                      decoration: BoxDecoration(
-                        color: const Color(0x99FFFFFF),
-                        borderRadius: BorderRadius.circular(3 * scale),
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         );
@@ -10903,7 +11031,13 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                   consumedWaterLiters,
                                   targetWaterLiters,
                                 ),
+                                overflowFraction: _overflowFraction(
+                                  consumedWaterLiters,
+                                  targetWaterLiters,
+                                ),
                                 highlightCurrent: false,
+                                appendPlusToCurrent:
+                                    consumedWaterLiters > targetWaterLiters,
                               ),
                               SizedBox(height: 8 * scale),
                             ],
@@ -10927,6 +11061,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       consumedCalories,
                                       targetCalories,
                                     ),
+                                    overflowFraction: _overflowFraction(
+                                      consumedCalories,
+                                      targetCalories,
+                                    ),
+                                    appendPlusToCurrent:
+                                        consumedCalories > targetCalories,
                                   ),
                                 ),
                                 SizedBox(width: 8 * scale),
@@ -10948,6 +11088,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       consumedProtein,
                                       targetProtein,
                                     ),
+                                    overflowFraction: _overflowFraction(
+                                      consumedProtein,
+                                      targetProtein,
+                                    ),
+                                    appendPlusToCurrent:
+                                        consumedProtein > targetProtein,
                                   ),
                                 ),
                               ],
@@ -10973,6 +11119,13 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       consumedCarbohydrates,
                                       targetCarbohydrates,
                                     ),
+                                    overflowFraction: _overflowFraction(
+                                      consumedCarbohydrates,
+                                      targetCarbohydrates,
+                                    ),
+                                    appendPlusToCurrent:
+                                        consumedCarbohydrates >
+                                        targetCarbohydrates,
                                   ),
                                 ),
                                 SizedBox(width: 8 * scale),
@@ -10994,6 +11147,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       consumedFat,
                                       targetFat,
                                     ),
+                                    overflowFraction: _overflowFraction(
+                                      consumedFat,
+                                      targetFat,
+                                    ),
+                                    appendPlusToCurrent:
+                                        consumedFat > targetFat,
                                   ),
                                 ),
                               ],
@@ -11054,6 +11213,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                         consumedFiber,
                                         targetFiber,
                                       ),
+                                      overflowFraction: _overflowFraction(
+                                        consumedFiber,
+                                        targetFiber,
+                                      ),
+                                      appendPlusToCurrent:
+                                          consumedFiber > targetFiber,
                                     ),
                                   ),
                                   SizedBox(width: 8 * scale),
@@ -11075,6 +11240,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                         consumedSodium,
                                         targetSodium,
                                       ),
+                                      overflowFraction: _overflowFraction(
+                                        consumedSodium,
+                                        targetSodium,
+                                      ),
+                                      appendPlusToCurrent:
+                                          consumedSodium > targetSodium,
                                     ),
                                   ),
                                 ],
@@ -11101,6 +11272,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       consumedSugar,
                                       targetSugar,
                                     ),
+                                    overflowFraction: _overflowFraction(
+                                      consumedSugar,
+                                      targetSugar,
+                                    ),
+                                    appendPlusToCurrent:
+                                        consumedSugar > targetSugar,
                                   ),
                                 ),
                               ),
@@ -11130,6 +11307,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                               consumedBudget,
                               chosenBudgetTarget,
                             ),
+                            overflowFraction: _overflowFraction(
+                              consumedBudget,
+                              chosenBudgetTarget,
+                            ),
+                            appendPlusToCurrent:
+                                consumedBudget > chosenBudgetTarget,
                           ),
                         ),
                       ],
@@ -22405,6 +22588,58 @@ class _RotatingGlassButtonState extends State<_RotatingGlassButton>
         ),
       ),
     );
+  }
+}
+
+class _ProgressOverflowBorderPainter extends CustomPainter {
+  const _ProgressOverflowBorderPainter({
+    required this.color,
+    required this.strokeWidth,
+    required this.borderRadius,
+    required this.fillFraction,
+  });
+
+  final Color color;
+  final double strokeWidth;
+  final double borderRadius;
+  final double fillFraction;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final clampedFraction = fillFraction.clamp(0.0, 1.0);
+    if (clampedFraction <= 0 || size.width <= 0 || size.height <= 0) {
+      return;
+    }
+    final safeStrokeWidth = strokeWidth.clamp(0.6, 8.0);
+    final inset = safeStrokeWidth / 2;
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        inset,
+        inset,
+        size.width - (inset * 2),
+        size.height - (inset * 2),
+      ),
+      Radius.circular((borderRadius - inset).clamp(0.0, borderRadius)),
+    );
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = safeStrokeWidth
+      ..color = color;
+
+    canvas.save();
+    canvas.clipRect(
+      Rect.fromLTWH(0, 0, size.width * clampedFraction, size.height),
+    );
+    canvas.drawRRect(rrect, paint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _ProgressOverflowBorderPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.borderRadius != borderRadius ||
+        oldDelegate.fillFraction != fillFraction;
   }
 }
 
