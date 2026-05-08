@@ -592,6 +592,13 @@ bool _isSameDate(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
+String _dateKey(DateTime date) {
+  final normalized = _dateOnly(date);
+  final month = normalized.month.toString().padLeft(2, '0');
+  final day = normalized.day.toString().padLeft(2, '0');
+  return '${normalized.year}-$month-$day';
+}
+
 const List<String> _historyMonthNames = <String>[
   'January',
   'February',
@@ -869,6 +876,20 @@ class _MealsTimelineStore {
 
   static DateTime get today => _dateOnly(DateTime.now());
 
+  static DateTime get earliestTrackedDate {
+    if (_entries.isEmpty) {
+      return today;
+    }
+    var earliest = _dateOnly(_entries.first.entryDate);
+    for (final entry in _entries.skip(1)) {
+      final current = _dateOnly(entry.entryDate);
+      if (current.isBefore(earliest)) {
+        earliest = current;
+      }
+    }
+    return earliest;
+  }
+
   static List<_MealTimelineEntry> get entries =>
       List<_MealTimelineEntry>.unmodifiable(_entries);
 
@@ -879,6 +900,36 @@ class _MealsTimelineStore {
         (entry) => _isSameDate(_dateOnly(entry.entryDate), normalizedDate),
       ),
     );
+  }
+
+  static DateTime? previousTrackedDateBefore(DateTime date) {
+    final normalizedDate = _dateOnly(date);
+    DateTime? previous;
+    for (final entry in _entries) {
+      final entryDate = _dateOnly(entry.entryDate);
+      if (!entryDate.isBefore(normalizedDate)) {
+        continue;
+      }
+      if (previous == null || entryDate.isAfter(previous)) {
+        previous = entryDate;
+      }
+    }
+    return previous;
+  }
+
+  static DateTime? nextTrackedDateAfter(DateTime date) {
+    final normalizedDate = _dateOnly(date);
+    DateTime? next;
+    for (final entry in _entries) {
+      final entryDate = _dateOnly(entry.entryDate);
+      if (!entryDate.isAfter(normalizedDate)) {
+        continue;
+      }
+      if (next == null || entryDate.isBefore(next)) {
+        next = entryDate;
+      }
+    }
+    return next;
   }
 
   static String normalizeTimeText(String raw) {
@@ -9732,11 +9783,12 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     if (!_isHistoryViewOpen || !mounted || dayDelta == 0) {
       return;
     }
-    final today = _MealsTimelineStore.today;
-    final shiftedDate = _dateOnly(
-      _historySelectedDate.add(Duration(days: dayDelta)),
-    );
-    final nextDate = shiftedDate.isAfter(today) ? today : shiftedDate;
+    final nextDate = dayDelta < 0
+        ? _MealsTimelineStore.previousTrackedDateBefore(_historySelectedDate)
+        : _MealsTimelineStore.nextTrackedDateAfter(_historySelectedDate);
+    if (nextDate == null) {
+      return;
+    }
     setState(() {
       _historySelectedDate = nextDate;
       _isMealsTimelineEditMode = false;
@@ -9749,6 +9801,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       return;
     }
     final today = _MealsTimelineStore.today;
+    final earliestTrackedDate = _MealsTimelineStore.earliestTrackedDate;
+    final trackedDateKeys = _MealsTimelineStore.entries
+        .map((entry) => _dateKey(entry.entryDate))
+        .toSet();
     final pickedDate = await showDialog<DateTime>(
       context: context,
       barrierColor: Colors.transparent,
@@ -9756,8 +9812,9 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       builder: (dialogContext) {
         return _HistoryCalendarDialog(
           initialDate: _historySelectedDate,
-          firstDate: DateTime(today.year - 5, 1, 1),
+          firstDate: earliestTrackedDate,
           lastDate: today,
+          trackedDateKeys: trackedDateKeys,
         );
       },
     );
@@ -10706,6 +10763,15 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           final selectedProgressDate = _isHistoryViewOpen
               ? _historySelectedDate
               : todayDate;
+          final previousTrackedDate =
+              _MealsTimelineStore.previousTrackedDateBefore(
+                selectedProgressDate,
+              );
+          final nextTrackedDate = _MealsTimelineStore.nextTrackedDateAfter(
+            selectedProgressDate,
+          );
+          final canGoToPreviousTrackedDate = previousTrackedDate != null;
+          final canGoToNextTrackedDate = nextTrackedDate != null;
           final isViewingToday = _isSameDate(selectedProgressDate, todayDate);
           final progressSectionTitle = isViewingToday
               ? 'Daily Progress'
@@ -11217,7 +11283,9 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                             _historyArrowButton(
                               scale: scale,
                               assetPath: 'assets/Back_arrow.svg',
-                              onTap: () => _shiftHistoryDateByDays(-1),
+                              onTap: canGoToPreviousTrackedDate
+                                  ? () => _shiftHistoryDateByDays(-1)
+                                  : null,
                             ),
                             SizedBox(width: 16 * scale),
                             Expanded(
@@ -11233,7 +11301,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                             _historyArrowButton(
                               scale: scale,
                               assetPath: 'assets/Front_arrow.svg',
-                              onTap: selectedProgressDate.isBefore(todayDate)
+                              onTap: canGoToNextTrackedDate
                                   ? () => _shiftHistoryDateByDays(1)
                                   : null,
                             ),
@@ -12402,11 +12470,13 @@ class _HistoryCalendarDialog extends StatefulWidget {
     required this.initialDate,
     required this.firstDate,
     required this.lastDate,
+    required this.trackedDateKeys,
   });
 
   final DateTime initialDate;
   final DateTime firstDate;
   final DateTime lastDate;
+  final Set<String> trackedDateKeys;
 
   @override
   State<_HistoryCalendarDialog> createState() => _HistoryCalendarDialogState();
@@ -12522,6 +12592,8 @@ class _HistoryCalendarDialogState extends State<_HistoryCalendarDialog> {
     final isEnabled = _isDateEnabled(dayDate);
     final isSelected = _isSameDate(dayDate, _selectedDate);
     final isToday = _isSameDate(dayDate, _MealsTimelineStore.today);
+    final hasEntries = widget.trackedDateKeys.contains(_dateKey(dayDate));
+    final showMissingEntryStrike = isEnabled && !hasEntries;
     final hasSelectedStyle = isSelected;
     final fillColor = (isSelected || isToday)
         ? Colors.white
@@ -12556,14 +12628,31 @@ class _HistoryCalendarDialogState extends State<_HistoryCalendarDialog> {
               showBorderLight: false,
               onTap: () =>
                   Navigator.of(context).pop<DateTime>(_dateOnly(dayDate)),
-              child: Text(
-                '${dayDate.day}',
-                style: TextStyle(
-                  fontFamily: _defaultNonBorelFontFamily,
-                  fontSize: (16 * scale).clamp(14.0, 20.0),
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black,
-                ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Text(
+                    '${dayDate.day}',
+                    style: TextStyle(
+                      fontFamily: _defaultNonBorelFontFamily,
+                      fontSize: (16 * scale).clamp(14.0, 20.0),
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black,
+                    ),
+                  ),
+                  if (showMissingEntryStrike)
+                    Transform.rotate(
+                      angle: -0.45,
+                      child: Container(
+                        width: 20 * scale,
+                        height: 2 * scale,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF4144),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
