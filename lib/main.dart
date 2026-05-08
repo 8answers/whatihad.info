@@ -198,6 +198,7 @@ class _BellyoAssistantMessage {
 
 const int _maleGenderIndex = 0;
 const int _unselectedGenderIndex = -1;
+const int _unselectedDietPreferenceIndex = -1;
 
 enum _NutritionGoalType { loseWeight, maintain, gainWeight, gainMuscle }
 
@@ -656,21 +657,33 @@ class _OnboardingSkipFlags {
     skippedBudgetSection = false;
     skippedWaterSection = false;
   }
+
+  static Map<String, dynamic> toJsonMap() {
+    return <String, dynamic>{
+      'skippedBudgetSection': skippedBudgetSection,
+      'skippedWaterSection': skippedWaterSection,
+    };
+  }
+
+  static void restoreFromJsonMap(Map<String, dynamic> json) {
+    skippedBudgetSection = json['skippedBudgetSection'] == true;
+    skippedWaterSection = json['skippedWaterSection'] == true;
+  }
 }
 
 class _OnboardingProfileState {
   static String selectedName = '';
   static int selectedGenderIndex = _unselectedGenderIndex;
-  static int selectedGoalIndex = 2;
+  static int selectedGoalIndex = -1;
   static int selectedAge = 21;
   static int selectedWeightKg = 66;
   static bool isWeightInKg = true;
   static int selectedHeightCm = 160;
   static bool isHeightInCm = true;
-  static int selectedActivityIndex = 1;
+  static int selectedActivityIndex = -1;
   static bool budgetEnabled = true;
   static String budgetCurrencyCode = 'INR';
-  static int? selectedBudgetPerMeal = 200;
+  static int? selectedBudgetPerMeal;
   static String customBudgetPerMeal = '';
   static bool isCustomBudgetPerMeal = false;
   static Map<String, String> nutritionGoalValues =
@@ -697,22 +710,22 @@ class _OnboardingProfileState {
     activityIndex: selectedActivityIndex,
   );
   static bool isHydrationInLiters = true;
-  static int selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
+  static int selectedDietPreferenceIndex = _unselectedDietPreferenceIndex;
   static String selectedCountryName = '';
 
   static void reset() {
     selectedName = '';
     selectedGenderIndex = _unselectedGenderIndex;
-    selectedGoalIndex = 2;
+    selectedGoalIndex = -1;
     selectedAge = 21;
     selectedWeightKg = 66;
     isWeightInKg = true;
     selectedHeightCm = 160;
     isHeightInCm = true;
-    selectedActivityIndex = 1;
+    selectedActivityIndex = -1;
     budgetEnabled = true;
     budgetCurrencyCode = 'INR';
-    selectedBudgetPerMeal = 200;
+    selectedBudgetPerMeal = null;
     customBudgetPerMeal = '';
     isCustomBudgetPerMeal = false;
     final recommendation = _computeNutritionRecommendation(
@@ -733,8 +746,127 @@ class _OnboardingProfileState {
       activityIndex: selectedActivityIndex,
     );
     isHydrationInLiters = true;
-    selectedDietPreferenceIndex = _defaultDietPreferenceIndex;
+    selectedDietPreferenceIndex = _unselectedDietPreferenceIndex;
     selectedCountryName = '';
+  }
+
+  static Map<String, dynamic> toJsonMap() {
+    return <String, dynamic>{
+      'selectedName': selectedName,
+      'selectedGenderIndex': selectedGenderIndex,
+      'selectedGoalIndex': selectedGoalIndex,
+      'selectedAge': selectedAge,
+      'selectedWeightKg': selectedWeightKg,
+      'isWeightInKg': isWeightInKg,
+      'selectedHeightCm': selectedHeightCm,
+      'isHeightInCm': isHeightInCm,
+      'selectedActivityIndex': selectedActivityIndex,
+      'budgetEnabled': budgetEnabled,
+      'budgetCurrencyCode': budgetCurrencyCode,
+      'selectedBudgetPerMeal': selectedBudgetPerMeal,
+      'customBudgetPerMeal': customBudgetPerMeal,
+      'isCustomBudgetPerMeal': isCustomBudgetPerMeal,
+      'nutritionGoalValues': nutritionGoalValues,
+      'advancedNutritionGoalValues': advancedNutritionGoalValues,
+      'hydrationEnabled': hydrationEnabled,
+      'hydrationGoalText': hydrationGoalText,
+      'isHydrationInLiters': isHydrationInLiters,
+      'selectedDietPreferenceIndex': selectedDietPreferenceIndex,
+      'selectedCountryName': selectedCountryName,
+    };
+  }
+
+  static void restoreFromJsonMap(Map<String, dynamic> json) {
+    int parseInt(dynamic raw, int fallback) {
+      if (raw is int) {
+        return raw;
+      }
+      if (raw is num) {
+        return raw.toInt();
+      }
+      return int.tryParse('${raw ?? ''}') ?? fallback;
+    }
+
+    String parseString(dynamic raw, String fallback) {
+      final value = '${raw ?? ''}'.trim();
+      return value.isEmpty ? fallback : value;
+    }
+
+    Map<String, String> parseStringMap(
+      dynamic raw,
+      Map<String, String> fallback,
+    ) {
+      if (raw is! Map) {
+        return Map<String, String>.from(fallback);
+      }
+      final mapped = <String, String>{};
+      raw.forEach((key, value) {
+        final normalizedKey = '$key'.trim();
+        if (normalizedKey.isEmpty) {
+          return;
+        }
+        mapped[normalizedKey] = '${value ?? ''}'.trim();
+      });
+      return mapped.isEmpty ? Map<String, String>.from(fallback) : mapped;
+    }
+
+    final fallbackRecommendation = _computeNutritionRecommendation(
+      goalIndex: selectedGoalIndex,
+      ageYears: selectedAge,
+      weightKg: selectedWeightKg,
+      heightCm: selectedHeightCm,
+      activityIndex: selectedActivityIndex,
+      genderIndex: selectedGenderIndex,
+    );
+
+    selectedName = parseString(json['selectedName'], '');
+    selectedGenderIndex = parseInt(
+      json['selectedGenderIndex'],
+      _unselectedGenderIndex,
+    );
+    selectedGoalIndex = parseInt(json['selectedGoalIndex'], -1);
+    selectedAge = parseInt(json['selectedAge'], 21).clamp(0, 110).toInt();
+    selectedWeightKg = parseInt(json['selectedWeightKg'], 66).clamp(20, 300);
+    isWeightInKg = json['isWeightInKg'] != false;
+    selectedHeightCm = parseInt(json['selectedHeightCm'], 160).clamp(100, 240);
+    isHeightInCm = json['isHeightInCm'] != false;
+    selectedActivityIndex = parseInt(json['selectedActivityIndex'], -1);
+    budgetEnabled = json['budgetEnabled'] != false;
+    budgetCurrencyCode = parseString(
+      json['budgetCurrencyCode'],
+      'INR',
+    ).toUpperCase();
+    final selectedBudgetRaw = json['selectedBudgetPerMeal'];
+    if (selectedBudgetRaw == null) {
+      selectedBudgetPerMeal = null;
+    } else {
+      selectedBudgetPerMeal = parseInt(selectedBudgetRaw, 0);
+    }
+    customBudgetPerMeal = '${json['customBudgetPerMeal'] ?? ''}'.trim();
+    isCustomBudgetPerMeal = json['isCustomBudgetPerMeal'] == true;
+    nutritionGoalValues = parseStringMap(
+      json['nutritionGoalValues'],
+      fallbackRecommendation.goalValues,
+    );
+    advancedNutritionGoalValues = parseStringMap(
+      json['advancedNutritionGoalValues'],
+      fallbackRecommendation.advancedGoalValues,
+    );
+    hydrationEnabled = json['hydrationEnabled'] != false;
+    hydrationGoalText = parseString(
+      json['hydrationGoalText'],
+      _computeHydrationGoalTextFromProfile(
+        goalIndex: selectedGoalIndex,
+        weightKg: selectedWeightKg,
+        activityIndex: selectedActivityIndex,
+      ),
+    );
+    isHydrationInLiters = json['isHydrationInLiters'] != false;
+    selectedDietPreferenceIndex = parseInt(
+      json['selectedDietPreferenceIndex'],
+      _unselectedDietPreferenceIndex,
+    );
+    selectedCountryName = '${json['selectedCountryName'] ?? ''}'.trim();
   }
 }
 
@@ -783,6 +915,50 @@ class _CustomFoodEntry {
       isFavorite: isFavorite ?? this.isFavorite,
     );
   }
+
+  Map<String, dynamic> toJsonMap() {
+    return <String, dynamic>{
+      'id': id,
+      'name': name,
+      'caloriesText': caloriesText,
+      'timeText': timeText,
+      'budgetAmountText': budgetAmountText,
+      'proteinText': proteinText,
+      'carbohydratesText': carbohydratesText,
+      'fatText': fatText,
+      'fiberText': fiberText,
+      'sugarText': sugarText,
+      'sodiumText': sodiumText,
+      'isFavorite': isFavorite,
+    };
+  }
+
+  static _CustomFoodEntry fromJsonMap(Map<String, dynamic> json) {
+    int parseInt(dynamic raw, int fallback) {
+      if (raw is int) {
+        return raw;
+      }
+      if (raw is num) {
+        return raw.toInt();
+      }
+      return int.tryParse('${raw ?? ''}') ?? fallback;
+    }
+
+    return _CustomFoodEntry(
+      id: parseInt(json['id'], 0),
+      name: '${json['name'] ?? ''}'.trim(),
+      caloriesText: '${json['caloriesText'] ?? '0'}'.trim(),
+      timeText: '${json['timeText'] ?? ''}'.trim(),
+      budgetAmountText: '${json['budgetAmountText'] ?? '0'}'.trim(),
+      proteinText: '${json['proteinText'] ?? '0'}'.trim(),
+      carbohydratesText: '${json['carbohydratesText'] ?? '0'}'.trim(),
+      fatText: '${json['fatText'] ?? '0'}'.trim(),
+      fiberText: '${json['fiberText'] ?? '0'}'.trim(),
+      sugarText: '${json['sugarText'] ?? '0'}'.trim(),
+      sodiumText: '${json['sodiumText'] ?? '0'}'.trim(),
+      isFavorite: json['isFavorite'] == true,
+    );
+  }
 }
 
 class _CustomFoodEntryStore {
@@ -823,10 +999,12 @@ class _CustomFoodEntryStore {
 
   static void add(_CustomFoodEntry entry) {
     _entries.insert(0, entry);
+    _UserDataSync.requestSave();
   }
 
   static void removeById(int id) {
     _entries.removeWhere((entry) => entry.id == id);
+    _UserDataSync.requestSave();
   }
 
   static void setFavoriteById(int id, bool isFavorite) {
@@ -835,6 +1013,40 @@ class _CustomFoodEntryStore {
       return;
     }
     _entries[index] = _entries[index].copyWith(isFavorite: isFavorite);
+    _UserDataSync.requestSave();
+  }
+
+  static List<Map<String, dynamic>> toJsonList() {
+    return _entries.map((entry) => entry.toJsonMap()).toList(growable: false);
+  }
+
+  static void restoreFromJsonList(List<dynamic> rawEntries) {
+    final restoredEntries = <_CustomFoodEntry>[];
+    var maxId = 0;
+    for (final rawEntry in rawEntries) {
+      if (rawEntry is! Map) {
+        continue;
+      }
+      final entry = _CustomFoodEntry.fromJsonMap(
+        Map<String, dynamic>.from(rawEntry),
+      );
+      if (entry.name.trim().isEmpty || entry.timeText.trim().isEmpty) {
+        continue;
+      }
+      restoredEntries.add(entry);
+      if (entry.id > maxId) {
+        maxId = entry.id;
+      }
+    }
+    _entries
+      ..clear()
+      ..addAll(restoredEntries);
+    _nextId = maxId + 1;
+  }
+
+  static void clear() {
+    _entries.clear();
+    _nextId = 1;
   }
 }
 
@@ -868,6 +1080,57 @@ class _MealTimelineEntry {
   final String sodiumText;
   final String waterLitersText;
   final String budgetAmountText;
+
+  Map<String, dynamic> toJsonMap() {
+    return <String, dynamic>{
+      'id': id,
+      'entryDate': entryDate.toIso8601String(),
+      'timeText': timeText,
+      'itemName': itemName,
+      'caloriesText': caloriesText,
+      'proteinText': proteinText,
+      'carbohydratesText': carbohydratesText,
+      'fatText': fatText,
+      'fiberText': fiberText,
+      'sugarText': sugarText,
+      'sodiumText': sodiumText,
+      'waterLitersText': waterLitersText,
+      'budgetAmountText': budgetAmountText,
+    };
+  }
+
+  static _MealTimelineEntry fromJsonMap(Map<String, dynamic> json) {
+    int parseInt(dynamic raw, int fallback) {
+      if (raw is int) {
+        return raw;
+      }
+      if (raw is num) {
+        return raw.toInt();
+      }
+      return int.tryParse('${raw ?? ''}') ?? fallback;
+    }
+
+    DateTime parseDate(dynamic raw) {
+      final parsed = DateTime.tryParse('${raw ?? ''}');
+      return parsed ?? DateTime.now();
+    }
+
+    return _MealTimelineEntry(
+      id: parseInt(json['id'], 0),
+      entryDate: parseDate(json['entryDate']),
+      timeText: '${json['timeText'] ?? ''}'.trim(),
+      itemName: '${json['itemName'] ?? ''}'.trim(),
+      caloriesText: '${json['caloriesText'] ?? '0'}'.trim(),
+      proteinText: '${json['proteinText'] ?? '0'}'.trim(),
+      carbohydratesText: '${json['carbohydratesText'] ?? '0'}'.trim(),
+      fatText: '${json['fatText'] ?? '0'}'.trim(),
+      fiberText: '${json['fiberText'] ?? '0'}'.trim(),
+      sugarText: '${json['sugarText'] ?? '0'}'.trim(),
+      sodiumText: '${json['sodiumText'] ?? '0'}'.trim(),
+      waterLitersText: '${json['waterLitersText'] ?? '0'}'.trim(),
+      budgetAmountText: '${json['budgetAmountText'] ?? '0'}'.trim(),
+    );
+  }
 }
 
 class _MealsTimelineStore {
@@ -1008,6 +1271,7 @@ class _MealsTimelineStore {
         budgetAmountText: _normalizedAmountText(budgetAmountText),
       ),
     );
+    _UserDataSync.requestSave();
   }
 
   static bool replaceById({
@@ -1049,6 +1313,7 @@ class _MealsTimelineStore {
       waterLitersText: _normalizedAmountText(waterLitersText),
       budgetAmountText: _normalizedAmountText(budgetAmountText),
     );
+    _UserDataSync.requestSave();
     return true;
   }
 
@@ -1107,6 +1372,7 @@ class _MealsTimelineStore {
 
   static void removeById(int id) {
     _entries.removeWhere((entry) => entry.id == id);
+    _UserDataSync.requestSave();
   }
 
   static List<_MealTimelineEntry> createSnapshot() {
@@ -1124,6 +1390,39 @@ class _MealsTimelineStore {
       }
     }
     _nextId = maxId + 1;
+  }
+
+  static List<Map<String, dynamic>> toJsonList() {
+    return _entries.map((entry) => entry.toJsonMap()).toList(growable: false);
+  }
+
+  static void restoreFromJsonList(List<dynamic> rawEntries) {
+    final restoredEntries = <_MealTimelineEntry>[];
+    var maxId = 0;
+    for (final rawEntry in rawEntries) {
+      if (rawEntry is! Map) {
+        continue;
+      }
+      final entry = _MealTimelineEntry.fromJsonMap(
+        Map<String, dynamic>.from(rawEntry),
+      );
+      if (entry.itemName.trim().isEmpty || entry.timeText.trim().isEmpty) {
+        continue;
+      }
+      restoredEntries.add(entry);
+      if (entry.id > maxId) {
+        maxId = entry.id;
+      }
+    }
+    _entries
+      ..clear()
+      ..addAll(restoredEntries);
+    _nextId = maxId + 1;
+  }
+
+  static void clear() {
+    _entries.clear();
+    _nextId = 1;
   }
 }
 
@@ -1887,12 +2186,333 @@ class _DailyFoodDatabase {
   static void setFavorite(int foodId, bool isFavorite) {
     if (isFavorite) {
       _favoriteFoodIds.add(foodId);
+      _UserDataSync.requestSave();
       return;
     }
     _favoriteFoodIds.remove(foodId);
+    _UserDataSync.requestSave();
   }
 
   static bool isFavorite(int foodId) => _favoriteFoodIds.contains(foodId);
+
+  static List<int> favoriteFoodIds() {
+    final ids = _favoriteFoodIds.toList(growable: false)..sort();
+    return ids;
+  }
+
+  static void restoreFavoriteFoodIds(List<int> ids) {
+    _favoriteFoodIds
+      ..clear()
+      ..addAll(ids);
+  }
+
+  static void clearFavorites() {
+    _favoriteFoodIds.clear();
+  }
+}
+
+class _UserDataSync {
+  static const String _stateTableName = 'user_app_state';
+  static const String _profileTableName = 'user_profiles';
+  static const Duration _saveDebounceDelay = Duration(milliseconds: 800);
+  static const Duration _autosaveInterval = Duration(seconds: 4);
+
+  static Timer? _saveDebounceTimer;
+  static Timer? _autosaveTimer;
+  static String? _loadedUserId;
+  static String? _lastSavedSnapshot;
+  static bool _isLoading = false;
+  static bool _isSaving = false;
+  static bool _pendingSaveAfterCurrent = false;
+  static bool _stateTableMissing = false;
+  static bool _profileTableMissing = false;
+
+  static void startAutoSync() {
+    _autosaveTimer ??= Timer.periodic(_autosaveInterval, (_) {
+      requestSave(delay: Duration.zero);
+    });
+  }
+
+  static void stopAutoSync() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+  }
+
+  static Future<void> handleSignedOut() async {
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = null;
+    stopAutoSync();
+    _loadedUserId = null;
+    _lastSavedSnapshot = null;
+    _isSaving = false;
+    _isLoading = false;
+    _pendingSaveAfterCurrent = false;
+    _stateTableMissing = false;
+    _profileTableMissing = false;
+    _resetAllLocalState();
+  }
+
+  static Future<void> loadForCurrentUser({bool force = false}) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      await handleSignedOut();
+      return;
+    }
+    if (_stateTableMissing || _isLoading) {
+      return;
+    }
+    if (!force && _loadedUserId == user.id) {
+      startAutoSync();
+      return;
+    }
+
+    _isLoading = true;
+    try {
+      final row = await supabase
+          .from(_stateTableName)
+          .select('state')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      final dynamic rawState = row?['state'];
+      if (rawState is Map) {
+        _restoreStateFromMap(Map<String, dynamic>.from(rawState));
+      } else if (rawState is String && rawState.trim().isNotEmpty) {
+        final decoded = jsonDecode(rawState);
+        if (decoded is Map) {
+          _restoreStateFromMap(Map<String, dynamic>.from(decoded));
+        }
+      }
+      _loadedUserId = user.id;
+      _lastSavedSnapshot = _buildSnapshotJson();
+      await _upsertUserProfile(user.id);
+      startAutoSync();
+    } catch (error) {
+      final message = '$error';
+      if (message.contains(_stateTableName) &&
+          (message.contains('relation') ||
+              message.contains('does not exist'))) {
+        _stateTableMissing = true;
+        debugPrint(
+          'User data table "$_stateTableName" is missing. Create it to enable persistence.',
+        );
+      } else {
+        debugPrint('Failed to load user app state: $error');
+      }
+    } finally {
+      _isLoading = false;
+    }
+  }
+
+  static void requestSave({Duration delay = _saveDebounceDelay}) {
+    if (_stateTableMissing) {
+      return;
+    }
+    if (supabase.auth.currentUser == null) {
+      return;
+    }
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(delay, () {
+      unawaited(flushNow());
+    });
+  }
+
+  static Future<void> flushNow({bool force = false}) async {
+    if (_stateTableMissing) {
+      return;
+    }
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final snapshotJson = _buildSnapshotJson();
+    if (!force && snapshotJson == _lastSavedSnapshot) {
+      return;
+    }
+
+    if (_isSaving) {
+      _pendingSaveAfterCurrent = true;
+      return;
+    }
+
+    _isSaving = true;
+    try {
+      await supabase.from(_stateTableName).upsert(<String, dynamic>{
+        'user_id': user.id,
+        'state': jsonDecode(snapshotJson),
+      }, onConflict: 'user_id');
+      await _upsertUserProfile(user.id);
+      _lastSavedSnapshot = snapshotJson;
+    } catch (error) {
+      final message = '$error';
+      if (message.contains(_stateTableName) &&
+          (message.contains('relation') ||
+              message.contains('does not exist'))) {
+        _stateTableMissing = true;
+        debugPrint(
+          'User data table "$_stateTableName" is missing. Create it to enable persistence.',
+        );
+      } else {
+        debugPrint('Failed to save user app state: $error');
+      }
+    } finally {
+      _isSaving = false;
+      if (_pendingSaveAfterCurrent) {
+        _pendingSaveAfterCurrent = false;
+        requestSave(delay: Duration.zero);
+      }
+    }
+  }
+
+  static String _buildSnapshotJson() {
+    return jsonEncode(_buildStateMap());
+  }
+
+  static Map<String, dynamic> _buildUserProfileRow(String userId) {
+    final profile = _OnboardingProfileState.toJsonMap();
+    final customBudgetRaw = _OnboardingProfileState.customBudgetPerMeal.trim();
+    final customBudgetForDb = customBudgetRaw.isEmpty ? '0' : customBudgetRaw;
+    return <String, dynamic>{
+      'user_id': userId,
+      'name': _OnboardingProfileState.selectedName.trim(),
+      'gender_index': _OnboardingProfileState.selectedGenderIndex,
+      'goal_index': _OnboardingProfileState.selectedGoalIndex,
+      'age_years': _OnboardingProfileState.selectedAge,
+      'weight_kg': _OnboardingProfileState.selectedWeightKg,
+      'is_weight_in_kg': _OnboardingProfileState.isWeightInKg,
+      'height_cm': _OnboardingProfileState.selectedHeightCm,
+      'is_height_in_cm': _OnboardingProfileState.isHeightInCm,
+      'activity_index': _OnboardingProfileState.selectedActivityIndex,
+      'diet_preference_index':
+          _OnboardingProfileState.selectedDietPreferenceIndex,
+      'country_name': _OnboardingProfileState.selectedCountryName.trim(),
+      'budget_enabled': _OnboardingProfileState.budgetEnabled,
+      'budget_currency_code': _OnboardingProfileState.budgetCurrencyCode,
+      'budget_per_meal': _OnboardingProfileState.selectedBudgetPerMeal,
+      'custom_budget_per_meal': customBudgetForDb,
+      'is_custom_budget_per_meal':
+          _OnboardingProfileState.isCustomBudgetPerMeal,
+      'hydration_enabled': _OnboardingProfileState.hydrationEnabled,
+      'hydration_goal_text': _OnboardingProfileState.hydrationGoalText.trim(),
+      'is_hydration_in_liters': _OnboardingProfileState.isHydrationInLiters,
+      'skipped_budget_section': _OnboardingSkipFlags.skippedBudgetSection,
+      'skipped_water_section': _OnboardingSkipFlags.skippedWaterSection,
+      'nutrition_goal_values': Map<String, String>.from(
+        _OnboardingProfileState.nutritionGoalValues,
+      ),
+      'advanced_nutrition_goal_values': Map<String, String>.from(
+        _OnboardingProfileState.advancedNutritionGoalValues,
+      ),
+      'profile_json': profile,
+    };
+  }
+
+  static Future<void> _upsertUserProfile(String userId) async {
+    if (_profileTableMissing) {
+      return;
+    }
+    try {
+      await supabase
+          .from(_profileTableName)
+          .upsert(_buildUserProfileRow(userId), onConflict: 'user_id');
+    } catch (error) {
+      final message = '$error';
+      if (message.contains(_profileTableName) &&
+          (message.contains('relation') ||
+              message.contains('does not exist'))) {
+        _profileTableMissing = true;
+        debugPrint(
+          'User profile table "$_profileTableName" is missing. Create it to persist profile fields separately.',
+        );
+        return;
+      }
+      if (message.contains('22P02') &&
+          message.contains('invalid input syntax for type numeric')) {
+        _profileTableMissing = true;
+        debugPrint(
+          'User profile table "$_profileTableName" has incompatible column types. Run scripts/sql/user_profiles_migration.sql in Supabase, then restart app.',
+        );
+        return;
+      }
+      if (message.contains('PGRST204') ||
+          message.contains('schema cache') ||
+          message.contains("Could not find the '")) {
+        _profileTableMissing = true;
+        debugPrint(
+          'User profile table "$_profileTableName" schema mismatch. Run scripts/sql/user_profiles.sql (or migration) in Supabase, then restart app.',
+        );
+        return;
+      }
+      debugPrint('Failed to save user profile row: $error');
+    }
+  }
+
+  static Map<String, dynamic> _buildStateMap() {
+    return <String, dynamic>{
+      'schemaVersion': 1,
+      'onboardingSkipFlags': _OnboardingSkipFlags.toJsonMap(),
+      'onboardingProfile': _OnboardingProfileState.toJsonMap(),
+      'customFoodEntries': _CustomFoodEntryStore.toJsonList(),
+      'mealTimelineEntries': _MealsTimelineStore.toJsonList(),
+      'favoriteFoodIds': _DailyFoodDatabase.favoriteFoodIds(),
+    };
+  }
+
+  static void _restoreStateFromMap(Map<String, dynamic> state) {
+    _resetAllLocalState();
+
+    final skipFlagsRaw = state['onboardingSkipFlags'];
+    if (skipFlagsRaw is Map) {
+      _OnboardingSkipFlags.restoreFromJsonMap(
+        Map<String, dynamic>.from(skipFlagsRaw),
+      );
+    }
+
+    final onboardingRaw = state['onboardingProfile'];
+    if (onboardingRaw is Map) {
+      _OnboardingProfileState.restoreFromJsonMap(
+        Map<String, dynamic>.from(onboardingRaw),
+      );
+    }
+
+    final customEntriesRaw = state['customFoodEntries'];
+    if (customEntriesRaw is List) {
+      _CustomFoodEntryStore.restoreFromJsonList(customEntriesRaw);
+    }
+
+    final mealTimelineRaw = state['mealTimelineEntries'];
+    if (mealTimelineRaw is List) {
+      _MealsTimelineStore.restoreFromJsonList(mealTimelineRaw);
+    }
+
+    final favoriteIdsRaw = state['favoriteFoodIds'];
+    if (favoriteIdsRaw is List) {
+      final ids = <int>[];
+      for (final idRaw in favoriteIdsRaw) {
+        if (idRaw is int) {
+          ids.add(idRaw);
+          continue;
+        }
+        if (idRaw is num) {
+          ids.add(idRaw.toInt());
+          continue;
+        }
+        final parsed = int.tryParse('$idRaw');
+        if (parsed != null) {
+          ids.add(parsed);
+        }
+      }
+      _DailyFoodDatabase.restoreFavoriteFoodIds(ids);
+    }
+  }
+
+  static void _resetAllLocalState() {
+    _OnboardingSkipFlags.reset();
+    _OnboardingProfileState.reset();
+    _CustomFoodEntryStore.clear();
+    _MealsTimelineStore.clear();
+    _DailyFoodDatabase.clearFavorites();
+  }
 }
 
 class _AccountWeightSelection {
@@ -2174,8 +2794,61 @@ Future<void> main() async {
 
 final SupabaseClient supabase = Supabase.instance.client;
 
-class WhatIHadApp extends StatelessWidget {
+class WhatIHadApp extends StatefulWidget {
   const WhatIHadApp({super.key});
+
+  @override
+  State<WhatIHadApp> createState() => _WhatIHadAppState();
+}
+
+class _WhatIHadAppState extends State<WhatIHadApp> with WidgetsBindingObserver {
+  StreamSubscription<AuthState>? _authStateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser != null) {
+      unawaited(_UserDataSync.loadForCurrentUser(force: true));
+      _UserDataSync.startAutoSync();
+    } else {
+      unawaited(_UserDataSync.handleSignedOut());
+    }
+
+    _authStateSubscription = supabase.auth.onAuthStateChange.listen((event) {
+      final authEvent = event.event;
+      if (authEvent == AuthChangeEvent.signedIn ||
+          authEvent == AuthChangeEvent.tokenRefreshed ||
+          authEvent == AuthChangeEvent.userUpdated) {
+        unawaited(_UserDataSync.loadForCurrentUser(force: true));
+        _UserDataSync.startAutoSync();
+        return;
+      }
+      if (authEvent == AuthChangeEvent.signedOut) {
+        unawaited(_UserDataSync.handleSignedOut());
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_UserDataSync.flushNow());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _authStateSubscription?.cancel();
+    _UserDataSync.stopAutoSync();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2222,9 +2895,14 @@ class _FirstScreenState extends State<FirstScreen>
   }
 
   Future<void> _captureCountryFromPermissionFlow() async {
+    if (_OnboardingProfileState.selectedCountryName.trim().isNotEmpty) {
+      return;
+    }
     final fallbackCountry = _countryFromDeviceLocale();
-    if (fallbackCountry.isNotEmpty) {
+    if (fallbackCountry.isNotEmpty &&
+        _OnboardingProfileState.selectedCountryName.trim().isEmpty) {
       _OnboardingProfileState.selectedCountryName = fallbackCountry;
+      _UserDataSync.requestSave();
     }
 
     try {
@@ -2256,6 +2934,7 @@ class _FirstScreenState extends State<FirstScreen>
         return;
       }
       _OnboardingProfileState.selectedCountryName = country;
+      _UserDataSync.requestSave();
     } catch (_) {
       // Keep locale fallback when geolocation is unavailable or denied.
     }
@@ -2264,8 +2943,6 @@ class _FirstScreenState extends State<FirstScreen>
   @override
   void initState() {
     super.initState();
-    _OnboardingSkipFlags.reset();
-    _OnboardingProfileState.reset();
     unawaited(_captureCountryFromPermissionFlow());
     _controller = AnimationController(
       vsync: this,
@@ -3539,11 +4216,12 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
       }
       if (authState.event == AuthChangeEvent.signedIn) {
         setState(() => _isGoogleSigningIn = false);
-        _goToWelcomeScreen();
+        unawaited(_goToWelcomeScreenAfterDataLoad());
         return;
       }
       if (authState.event == AuthChangeEvent.signedOut) {
         setState(() => _isGoogleSigningIn = false);
+        unawaited(_UserDataSync.handleSignedOut());
       }
     });
   }
@@ -3676,6 +4354,14 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
     Navigator.of(
       context,
     ).pushReplacement(_buildFadeRoute(screen: const WelcomeScreen()));
+  }
+
+  Future<void> _goToWelcomeScreenAfterDataLoad() async {
+    await _UserDataSync.loadForCurrentUser(force: true);
+    if (!mounted) {
+      return;
+    }
+    _goToWelcomeScreen();
   }
 
   @override
@@ -4534,6 +5220,11 @@ class _GoalScreenState extends State<GoalScreen>
   @override
   void initState() {
     super.initState();
+    final savedGoalIndex = _OnboardingProfileState.selectedGoalIndex;
+    _selectedGoalIndex =
+        savedGoalIndex >= 0 && savedGoalIndex < _goalOptions.length
+        ? savedGoalIndex
+        : -1;
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -9248,9 +9939,11 @@ class _DietPreferenceScreenState extends State<DietPreferenceScreen>
   @override
   void initState() {
     super.initState();
-    _selectedIndex = _OnboardingProfileState.selectedDietPreferenceIndex
-        .clamp(0, _dietPreferenceOptions.length - 1)
-        .toInt();
+    final savedIndex = _OnboardingProfileState.selectedDietPreferenceIndex;
+    _selectedIndex =
+        savedIndex >= 0 && savedIndex < _dietPreferenceOptions.length
+        ? savedIndex
+        : null;
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
