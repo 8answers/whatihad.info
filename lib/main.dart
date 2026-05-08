@@ -1057,6 +1057,23 @@ class _MealsTimelineStore {
   static void removeById(int id) {
     _entries.removeWhere((entry) => entry.id == id);
   }
+
+  static List<_MealTimelineEntry> createSnapshot() {
+    return List<_MealTimelineEntry>.from(_entries);
+  }
+
+  static void restoreFromSnapshot(List<_MealTimelineEntry> snapshot) {
+    _entries
+      ..clear()
+      ..addAll(snapshot);
+    var maxId = 0;
+    for (final entry in _entries) {
+      if (entry.id > maxId) {
+        maxId = entry.id;
+      }
+    }
+    _nextId = maxId + 1;
+  }
 }
 
 class _DailyFoodCatalogItem {
@@ -9514,9 +9531,11 @@ class DailyProgressScreen extends StatefulWidget {
   const DailyProgressScreen({
     super.key,
     this.initialSelectedBottomNavIndex = 0,
+    this.scrollToMealsTimelineOnOpen = false,
   });
 
   final int initialSelectedBottomNavIndex;
+  final bool scrollToMealsTimelineOnOpen;
 
   @override
   State<DailyProgressScreen> createState() => _DailyProgressScreenState();
@@ -9529,7 +9548,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
   bool _isAdvanceOpen = false;
   bool _isMealsTimelineEditMode = false;
   bool _isHistoryViewOpen = false;
+  bool _didAutoScrollToMealsTimeline = false;
+  List<_MealTimelineEntry>? _mealsTimelineEditSnapshot;
   DateTime _historySelectedDate = _MealsTimelineStore.today;
+  final GlobalKey _mealsTimelineSectionKey = GlobalKey();
 
   @override
   void initState() {
@@ -9539,12 +9561,35 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       vsync: this,
       duration: _kBackgroundMotionDuration,
     )..repeat();
+    _scheduleAutoScrollToMealsTimeline();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _scheduleAutoScrollToMealsTimeline() {
+    if (!widget.scrollToMealsTimelineOnOpen || _didAutoScrollToMealsTimeline) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _didAutoScrollToMealsTimeline) {
+        return;
+      }
+      final targetContext = _mealsTimelineSectionKey.currentContext;
+      if (targetContext == null) {
+        return;
+      }
+      _didAutoScrollToMealsTimeline = true;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+        alignment: 0.06,
+      );
+    });
   }
 
   void _toggleAdvance() {
@@ -9564,7 +9609,91 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       return;
     }
     setState(() {
-      _isMealsTimelineEditMode = !_isMealsTimelineEditMode;
+      if (_isMealsTimelineEditMode) {
+        if (_hasMealsTimelinePendingChanges) {
+          return;
+        }
+        _isMealsTimelineEditMode = false;
+        _mealsTimelineEditSnapshot = null;
+        return;
+      }
+      _isMealsTimelineEditMode = true;
+      _mealsTimelineEditSnapshot = _MealsTimelineStore.createSnapshot();
+    });
+  }
+
+  bool _areTimelineEntriesEqual(_MealTimelineEntry a, _MealTimelineEntry b) {
+    return a.id == b.id &&
+        _isSameDate(a.entryDate, b.entryDate) &&
+        a.timeText == b.timeText &&
+        a.itemName == b.itemName &&
+        a.caloriesText == b.caloriesText &&
+        a.proteinText == b.proteinText &&
+        a.carbohydratesText == b.carbohydratesText &&
+        a.fatText == b.fatText &&
+        a.fiberText == b.fiberText &&
+        a.sugarText == b.sugarText &&
+        a.sodiumText == b.sodiumText &&
+        a.waterLitersText == b.waterLitersText &&
+        a.budgetAmountText == b.budgetAmountText;
+  }
+
+  bool get _hasMealsTimelinePendingChanges {
+    if (!_isMealsTimelineEditMode) {
+      return false;
+    }
+    final snapshot = _mealsTimelineEditSnapshot;
+    if (snapshot == null) {
+      return false;
+    }
+    final current = _MealsTimelineStore.entries;
+    if (current.length != snapshot.length) {
+      return true;
+    }
+    for (var i = 0; i < current.length; i++) {
+      if (!_areTimelineEntriesEqual(current[i], snapshot[i])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _cancelMealsTimelineEditMode() {
+    if (!_isMealsTimelineEditMode ||
+        _hasMealsTimelinePendingChanges ||
+        !mounted) {
+      return;
+    }
+    setState(() {
+      _isMealsTimelineEditMode = false;
+      _mealsTimelineEditSnapshot = null;
+    });
+  }
+
+  void _discardMealsTimelineEdits() {
+    final snapshot = _mealsTimelineEditSnapshot;
+    if (!_isMealsTimelineEditMode ||
+        !_hasMealsTimelinePendingChanges ||
+        snapshot == null ||
+        !mounted) {
+      return;
+    }
+    setState(() {
+      _MealsTimelineStore.restoreFromSnapshot(snapshot);
+      _isMealsTimelineEditMode = false;
+      _mealsTimelineEditSnapshot = null;
+    });
+  }
+
+  void _saveMealsTimelineEdits() {
+    if (!_isMealsTimelineEditMode ||
+        !_hasMealsTimelinePendingChanges ||
+        !mounted) {
+      return;
+    }
+    setState(() {
+      _isMealsTimelineEditMode = false;
+      _mealsTimelineEditSnapshot = null;
     });
   }
 
@@ -9583,6 +9712,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       _isHistoryViewOpen = true;
       _historySelectedDate = _MealsTimelineStore.today;
       _isMealsTimelineEditMode = false;
+      _mealsTimelineEditSnapshot = null;
     });
   }
 
@@ -9594,6 +9724,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
       _isHistoryViewOpen = false;
       _historySelectedDate = _MealsTimelineStore.today;
       _isMealsTimelineEditMode = false;
+      _mealsTimelineEditSnapshot = null;
     });
   }
 
@@ -9609,6 +9740,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     setState(() {
       _historySelectedDate = nextDate;
       _isMealsTimelineEditMode = false;
+      _mealsTimelineEditSnapshot = null;
     });
   }
 
@@ -9635,6 +9767,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     setState(() {
       _historySelectedDate = _dateOnly(pickedDate);
       _isMealsTimelineEditMode = false;
+      _mealsTimelineEditSnapshot = null;
     });
   }
 
@@ -9644,9 +9777,6 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     }
     setState(() {
       _MealsTimelineStore.removeById(id);
-      if (_MealsTimelineStore.entries.isEmpty) {
-        _isMealsTimelineEditMode = false;
-      }
     });
   }
 
@@ -9941,6 +10071,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           initialTimeText: entry.timeText,
           showAddToCustom: false,
           timelineActionLabelOverride: 'Save',
+          returnToPreviousOnSave: true,
         ),
       ),
     );
@@ -10585,6 +10716,8 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           final mealsTimelineEntries = _MealsTimelineStore.entriesForDate(
             selectedProgressDate,
           );
+          final hasMealsTimelinePendingChanges =
+              _hasMealsTimelinePendingChanges;
           final nutritionTargets = _OnboardingProfileState.nutritionGoalValues;
           final advancedNutritionTargets =
               _OnboardingProfileState.advancedNutritionGoalValues;
@@ -10985,7 +11118,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                       ],
                       if (!hideMealsTimelineSection) ...[
                         SizedBox(height: 30 * scale),
-                        _sectionTitle('Meals Timeline', scale),
+                        KeyedSubtree(
+                          key: _mealsTimelineSectionKey,
+                          child: _sectionTitle('Meals Timeline', scale),
+                        ),
                         SizedBox(height: 8 * scale),
                         Container(
                           decoration: BoxDecoration(
@@ -11114,12 +11250,17 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                             ),
                             GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTap: _openHistoryView,
-                              child: Transform.translate(
-                                offset: Offset(0, -8 * scale),
-                                child: _navIconTile(
-                                  scale: scale,
-                                  icon: Icons.history,
+                              onTap: _isMealsTimelineEditMode
+                                  ? null
+                                  : _openHistoryView,
+                              child: Opacity(
+                                opacity: _isMealsTimelineEditMode ? 0.45 : 1.0,
+                                child: Transform.translate(
+                                  offset: Offset(0, -8 * scale),
+                                  child: _navIconTile(
+                                    scale: scale,
+                                    icon: Icons.history,
+                                  ),
                                 ),
                               ),
                             ),
@@ -11178,6 +11319,76 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                             fit: BoxFit.contain,
                           ),
                         ),
+                      )
+                    : _isMealsTimelineEditMode
+                    ? Row(
+                        children: [
+                          SizedBox(
+                            width: 56 * scale,
+                            child: Opacity(
+                              opacity: !hasMealsTimelinePendingChanges
+                                  ? 1.0
+                                  : 0.45,
+                              child: _RotatingGlassButton(
+                                scale: scale,
+                                height: 56 * scale,
+                                borderRadius: 32 * scale,
+                                fillColor: Colors.white,
+                                enablePressShadeFeedback:
+                                    !hasMealsTimelinePendingChanges,
+                                onTap: !hasMealsTimelinePendingChanges
+                                    ? _cancelMealsTimelineEditMode
+                                    : () {},
+                                child: SizedBox(
+                                  width: 18 * scale,
+                                  height: 18 * scale,
+                                  child: SvgPicture.asset(
+                                    'assets/Below_back.svg',
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 12 * scale),
+                          Expanded(
+                            child: _RotatingGlassButton(
+                              scale: scale,
+                              height: 56 * scale,
+                              borderRadius: 32 * scale,
+                              fillColor: hasMealsTimelinePendingChanges
+                                  ? const Color(0x8FFF0606)
+                                  : const Color(0x14FF0606),
+                              enablePressShadeFeedback:
+                                  hasMealsTimelinePendingChanges,
+                              onTap: hasMealsTimelinePendingChanges
+                                  ? _discardMealsTimelineEdits
+                                  : () {},
+                              child: Text(
+                                'Discard',
+                                style: TextStyle(
+                                  fontFamily: _defaultNonBorelFontFamily,
+                                  fontSize: (34 * scale / 1.7).clamp(
+                                    18.0,
+                                    28.0,
+                                  ),
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 12 * scale),
+                          Expanded(
+                            child: _GlassNextButton(
+                              scale: scale,
+                              label: 'Save',
+                              showArrowIcon: false,
+                              enabled: hasMealsTimelinePendingChanges,
+                              onTap: _saveMealsTimelineEdits,
+                            ),
+                          ),
+                        ],
                       )
                     : Row(
                         children: [
@@ -12721,9 +12932,17 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
       preserveExistingTimeText: _isExchangeMode,
       waterLitersText: waterLitersText,
     );
-    if (mounted) {
-      setState(() {});
+    if (!mounted) {
+      return;
     }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(
+        screen: const DailyProgressScreen(
+          initialSelectedBottomNavIndex: 0,
+          scrollToMealsTimelineOnOpen: true,
+        ),
+      ),
+    );
   }
 
   @override
@@ -14262,6 +14481,7 @@ class _SearchFoodItemDetailsScreen extends StatefulWidget {
     this.initialTimeText,
     this.showAddToCustom = true,
     this.timelineActionLabelOverride,
+    this.returnToPreviousOnSave = false,
   });
 
   final _DailyFoodCatalogItem item;
@@ -14279,6 +14499,7 @@ class _SearchFoodItemDetailsScreen extends StatefulWidget {
   final String? initialTimeText;
   final bool showAddToCustom;
   final String? timelineActionLabelOverride;
+  final bool returnToPreviousOnSave;
 
   @override
   State<_SearchFoodItemDetailsScreen> createState() =>
@@ -14744,9 +14965,24 @@ class _SearchFoodItemDetailsScreenState
                 ? _normalizedBudgetText(widget.initialBudgetText ?? '')
                 : '0'),
     );
-    if (mounted) {
-      setState(() {});
+    if (widget.returnToPreviousOnSave) {
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(true);
+      return;
     }
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(
+        screen: const DailyProgressScreen(
+          initialSelectedBottomNavIndex: 0,
+          scrollToMealsTimelineOnOpen: true,
+        ),
+      ),
+    );
   }
 
   Widget _nutritionCard({
@@ -17600,28 +17836,6 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     return _itemNameController.text.trim().isNotEmpty;
   }
 
-  void _resetAfterAdd() {
-    setState(() {
-      _itemNameController.text = '';
-      _quantityController.text = '1';
-      _selectedQuantityUnitIndex = 0;
-      _isQuantityUnitDropdownOpen = false;
-      _budgetPriceController.text = '';
-      _caloriesController.text = '0';
-      _proteinController.text = '0';
-      _carbsController.text = '0';
-      _fatController.text = '0';
-      _fiberController.text = '0';
-      _sugarController.text = '0';
-      _sodiumController.text = '0';
-      _selectedTime = _currentLocalTimeOfDay();
-      _hourController.text = _timeHourText;
-      _minuteController.text = _timeMinuteText;
-      _isFavorite = false;
-      _isAdvanceOpen = false;
-    });
-  }
-
   void _addCustomEntry() {
     if (!_canAddEntry) {
       return;
@@ -17660,7 +17874,17 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
       sodiumText: entry.sodiumText,
       budgetAmountText: entry.budgetAmountText,
     );
-    _resetAfterAdd();
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      _buildNoTransitionRoute(
+        screen: const DailyProgressScreen(
+          initialSelectedBottomNavIndex: 0,
+          scrollToMealsTimelineOnOpen: true,
+        ),
+      ),
+    );
   }
 
   void _bindFieldFocus({
