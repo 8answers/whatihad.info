@@ -2068,6 +2068,7 @@ class _DailyFoodDatabase {
   ) {
     switch (selectedDietPreferenceIndex) {
       case 0:
+        // Vegetarian: allow vegetarian and vegan only.
         if (food.isVegan) {
           return 3;
         }
@@ -2076,6 +2077,7 @@ class _DailyFoodDatabase {
         }
         return 0;
       case 1:
+        // Non-vegetarian: allow all items, but prioritize non-veg first.
         if (food.isNonVegetarian) {
           return 4;
         }
@@ -2088,10 +2090,14 @@ class _DailyFoodDatabase {
         if (food.isVegan) {
           return 1;
         }
-        return 0;
+        return 1;
       case 2:
+        // Eggetarian: allow egg + vegetarian + vegan, but exclude non-veg.
         if (food.isEggFriendly) {
           return 4;
+        }
+        if (food.isNonVegetarian) {
+          return 0;
         }
         if (food.isVegetarian) {
           return 3;
@@ -2101,6 +2107,7 @@ class _DailyFoodDatabase {
         }
         return 0;
       case 3:
+        // Vegan: allow vegan only.
         return food.isVegan ? 4 : 0;
       default:
         return 1;
