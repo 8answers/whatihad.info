@@ -2007,7 +2007,8 @@ class _DailyFoodDatabase {
         return <_DailyFoodCatalogItem>[];
       }
 
-      foods.sort((a, b) => a.name.compareTo(b.name));
+      final normalized = query.trim().toLowerCase();
+      foods.sort((a, b) => _compareFoodsForSearchOrder(a, b, normalized));
       _remoteSearchAvailable = true;
       return _applyFavoriteFlags(foods);
     } catch (_) {
@@ -2024,8 +2025,32 @@ class _DailyFoodDatabase {
     final foods = sourceFoods
         .where((food) => food.name.toLowerCase().contains(normalized))
         .toList(growable: false);
-    final sorted = [...foods]..sort((a, b) => a.name.compareTo(b.name));
+    final sorted = [...foods]
+      ..sort((a, b) => _compareFoodsForSearchOrder(a, b, normalized));
     return _applyFavoriteFlags(sorted);
+  }
+
+  static int _compareFoodsForSearchOrder(
+    _DailyFoodCatalogItem a,
+    _DailyFoodCatalogItem b,
+    String normalizedQuery,
+  ) {
+    final aName = a.name.toLowerCase();
+    final bName = b.name.toLowerCase();
+
+    final aStartsWith = aName.startsWith(normalizedQuery);
+    final bStartsWith = bName.startsWith(normalizedQuery);
+    if (aStartsWith != bStartsWith) {
+      return aStartsWith ? -1 : 1;
+    }
+
+    final aIndex = aName.indexOf(normalizedQuery);
+    final bIndex = bName.indexOf(normalizedQuery);
+    if (aIndex != bIndex) {
+      return aIndex.compareTo(bIndex);
+    }
+
+    return aName.compareTo(bName);
   }
 
   static Future<List<_DailyFoodCatalogItem>> searchFoods(String query) async {
@@ -11636,6 +11661,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                       child: SvgPicture.asset(
                                         'assets/Food__exchange.svg',
                                         fit: BoxFit.contain,
+                                        colorFilter: const ColorFilter.mode(
+                                          Colors.black,
+                                          BlendMode.srcIn,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -11647,6 +11676,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                                     child: SvgPicture.asset(
                                       'assets/Edit_food.svg',
                                       fit: BoxFit.contain,
+                                      colorFilter: const ColorFilter.mode(
+                                        Colors.black,
+                                        BlendMode.srcIn,
+                                      ),
                                     ),
                                   ),
                                   SizedBox(width: 8 * scale),
@@ -12597,6 +12630,14 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     );
   }
 
+  Future<void> _submitPromptSuggestion(String suggestion) async {
+    if (_isAsking) {
+      return;
+    }
+    _applyPromptSuggestion(suggestion);
+    await _sendPrompt();
+  }
+
   void _startNewChat() {
     FocusManager.instance.primaryFocus?.unfocus();
     if (!mounted) {
@@ -12859,6 +12900,17 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     return parts.join(' • ');
   }
 
+  List<String> _nutrientLinesForFood({
+    required _DailyFoodCatalogItem food,
+    required List<String> nutrientKeys,
+  }) {
+    return _nutrientTextForFood(food: food, nutrientKeys: nutrientKeys)
+        .split('•')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+  }
+
   double? _foodPriceForCurrency(
     _DailyFoodCatalogItem food,
     String currencyCode,
@@ -13035,10 +13087,11 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     return score;
   }
 
-  String _formatFoodSuggestionLine({
+  String _formatFoodSuggestionDetails({
     required _DailyFoodCatalogItem food,
     required String currencyCode,
     required String currencyGlyph,
+    required String linePrefix,
     required List<String> nutrientKeys,
   }) {
     final quantity = food.quantityDisplayText.trim();
@@ -13046,12 +13099,18 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     final priceText = price == null
         ? '$currencyCode n/a'
         : '$currencyGlyph${_formatCompactNumber(price)}';
-    final nutrientText = _nutrientTextForFood(
+    final nutrientLines = _nutrientLinesForFood(
       food: food,
       nutrientKeys: nutrientKeys,
     );
-    final quantityText = quantity.isEmpty ? '' : ' ($quantity)';
-    return '${food.name}$quantityText • $nutrientText • $priceText';
+    final displayName = quantity.isEmpty
+        ? food.name
+        : '${food.name} ($quantity)';
+    final detailLines = <String>[
+      ...nutrientLines.map((line) => '   • $line'),
+      '   • Price: $priceText',
+    ];
+    return '$linePrefix$displayName\n${detailLines.join('\n')}';
   }
 
   String _buildProfileTargetSummary() {
@@ -13331,11 +13390,19 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
       final displayName = quantity.isEmpty
           ? food.name
           : '${food.name} ($quantity)';
-      final nutrientText = _nutrientTextForFood(
+      final nutrientLines = _nutrientLinesForFood(
         food: food,
         nutrientKeys: requestedNutrientKeys,
       );
-      return '$displayName • $nutrientText';
+      final price = _foodPriceForCurrency(food, currencyCode);
+      final priceText = price == null
+          ? '$currencyCode n/a'
+          : '$currencyPrefix${_formatCompactNumber(price)}';
+      final detailLines = <String>[
+        ...nutrientLines.map((line) => '  • $line'),
+        '  • Price: $priceText',
+      ];
+      return '$displayName\n${detailLines.join('\n')}';
     }
 
     final breakfastProtein = _sumMealProtein(breakfastItems);
@@ -13588,8 +13655,17 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
 
     for (int i = 0; i < selectedFoods.length; i++) {
       lines.add(
-        '${i + 1}) ${_formatFoodSuggestionLine(food: selectedFoods[i], currencyCode: budgetCurrencyCode, currencyGlyph: budgetCurrencyGlyph, nutrientKeys: requestedNutrientKeys)}',
+        _formatFoodSuggestionDetails(
+          food: selectedFoods[i],
+          currencyCode: budgetCurrencyCode,
+          currencyGlyph: budgetCurrencyGlyph,
+          linePrefix: '${i + 1}) ',
+          nutrientKeys: requestedNutrientKeys,
+        ),
       );
+      if (i != selectedFoods.length - 1) {
+        lines.add('');
+      }
     }
 
     final targetSummary = _buildProfileTargetSummary();
@@ -13705,6 +13781,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.only(left: 8 * scale),
         itemCount: prompts.length,
         separatorBuilder: (context, index) => SizedBox(width: 8 * scale),
         itemBuilder: (context, index) {
@@ -13712,7 +13789,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
           return _buildSuggestionChip(
             scale: scale,
             label: prompt.label,
-            onTap: () => _applyPromptSuggestion(prompt.prompt),
+            onTap: () => _submitPromptSuggestion(prompt.prompt),
           );
         },
       ),
@@ -14136,56 +14213,56 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
             ),
             Align(
               alignment: Alignment.bottomCenter,
-              child: AnimatedPadding(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                padding: EdgeInsets.only(bottom: bottomInset),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ClipRect(
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Container(color: const Color(0xFFFF8E92)),
-                        ),
-                        Positioned(
-                          bottom: -84 * scale,
-                          left: -30 * scale,
-                          right: -30 * scale,
-                          child: ImageFiltered(
-                            imageFilter: ImageFilter.blur(
-                              sigmaX: 100 * scale,
-                              sigmaY: 100 * scale,
-                            ),
-                            child: Container(
-                              height: 240 * scale,
-                              color: const Color(0xFFFFDC92),
-                            ),
+              child: SizedBox(
+                width: double.infinity,
+                child: ClipRect(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Container(color: const Color(0xFFFF8E92)),
+                      ),
+                      Positioned(
+                        bottom: -84 * scale,
+                        left: -30 * scale,
+                        right: -30 * scale,
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(
+                            sigmaX: 100 * scale,
+                            sigmaY: 100 * scale,
+                          ),
+                          child: Container(
+                            height: 240 * scale,
+                            color: const Color(0xFFFFDC92),
                           ),
                         ),
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            0,
-                            10 * scale,
-                            0,
-                            (8 * scale) + media.padding.bottom,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (!hasUserPrompted) ...[
-                                _buildSuggestionRow(
-                                  scale: scale,
-                                  prompts: firstRowPrompts,
-                                ),
-                                SizedBox(height: 8 * scale),
-                                _buildSuggestionRow(
-                                  scale: scale,
-                                  prompts: secondRowPrompts,
-                                ),
-                                SizedBox(height: 10 * scale),
-                              ],
-                              Padding(
+                      ),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          0,
+                          10 * scale,
+                          0,
+                          (8 * scale) + media.padding.bottom,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (!hasUserPrompted) ...[
+                              _buildSuggestionRow(
+                                scale: scale,
+                                prompts: firstRowPrompts,
+                              ),
+                              SizedBox(height: 8 * scale),
+                              _buildSuggestionRow(
+                                scale: scale,
+                                prompts: secondRowPrompts,
+                              ),
+                              SizedBox(height: 10 * scale),
+                            ],
+                            AnimatedPadding(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              padding: EdgeInsets.only(bottom: bottomInset),
+                              child: Padding(
                                 padding: EdgeInsets.symmetric(
                                   horizontal: 16 * scale,
                                 ),
@@ -14281,11 +14358,11 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -14425,7 +14502,7 @@ class _HistoryCalendarDialogState extends State<_HistoryCalendarDialog> {
     final isSelected = _isSameDate(dayDate, _selectedDate);
     final isToday = _isSameDate(dayDate, _MealsTimelineStore.today);
     final hasEntries = widget.trackedDateKeys.contains(_dateKey(dayDate));
-    final showMissingEntryStrike = isEnabled && !hasEntries;
+    final showMissingEntryStrike = isEnabled && !hasEntries && !isToday;
     final hasSelectedStyle = isSelected;
     final fillColor = (isSelected || isToday)
         ? Colors.white
@@ -14476,7 +14553,7 @@ class _HistoryCalendarDialogState extends State<_HistoryCalendarDialog> {
                     Transform.rotate(
                       angle: -0.45,
                       child: Container(
-                        width: 20 * scale,
+                        width: 32 * scale,
                         height: 2 * scale,
                         decoration: BoxDecoration(
                           color: const Color(0xFFFF4144),
@@ -14635,6 +14712,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   double _waterIntakeLiters = 0.0;
   bool _waterEditedManually = false;
   bool _isCustomWaterEntrySelected = false;
+  bool _consumeNextWaterPresetTap = false;
   TimeOfDay _selectedTime = _currentLocalTimeOfDay();
   late final TextEditingController _waterController;
   late final TextEditingController _hourController;
@@ -14864,6 +14942,45 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
         ),
       ),
     );
+  }
+
+  void _dismissWaterKeyboardFromOutsideTap() {
+    if (!_waterFocusNode.hasFocus) {
+      return;
+    }
+    _consumeNextWaterPresetTap = true;
+    _waterFocusNode.unfocus();
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) {
+        return;
+      }
+      _consumeNextWaterPresetTap = false;
+    });
+  }
+
+  void _handleWaterPresetTap(int index) {
+    if (!mounted || index < 0 || index >= _waterPresetAmountsLiters.length) {
+      return;
+    }
+    if (_consumeNextWaterPresetTap) {
+      _consumeNextWaterPresetTap = false;
+      return;
+    }
+    if (_waterFocusNode.hasFocus) {
+      _waterFocusNode.unfocus();
+      return;
+    }
+    final waterAmountLiters = _waterPresetAmountsLiters[index];
+    setState(() {
+      _waterEditedManually = false;
+      _isCustomWaterEntrySelected = false;
+      _selectedWaterAmountIndex = index;
+      _waterIntakeLiters = waterAmountLiters;
+      _waterController.text = _formatDisplayedWaterValue(_waterIntakeLiters);
+      _waterController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _waterController.text.length),
+      );
+    });
   }
 
   @override
@@ -15382,8 +15499,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                                           _waterFocusNode
                                                               .unfocus(),
                                                       onTapOutside: (_) =>
-                                                          _waterFocusNode
-                                                              .unfocus(),
+                                                          _dismissWaterKeyboardFromOutsideTap(),
                                                       decoration:
                                                           const InputDecoration.collapsed(
                                                             hintText: '',
@@ -15442,34 +15558,8 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                                             selected:
                                                 _selectedWaterAmountIndex ==
                                                 index,
-                                            onTap: () {
-                                              if (!mounted) {
-                                                return;
-                                              }
-                                              final waterAmountLiters =
-                                                  _waterPresetAmountsLiters[index];
-                                              setState(() {
-                                                _waterEditedManually = false;
-                                                _isCustomWaterEntrySelected =
-                                                    false;
-                                                _selectedWaterAmountIndex =
-                                                    index;
-                                                _waterIntakeLiters =
-                                                    waterAmountLiters;
-                                                _waterController.text =
-                                                    _formatDisplayedWaterValue(
-                                                      _waterIntakeLiters,
-                                                    );
-                                                _waterController.selection =
-                                                    TextSelection.fromPosition(
-                                                      TextPosition(
-                                                        offset: _waterController
-                                                            .text
-                                                            .length,
-                                                      ),
-                                                    );
-                                              });
-                                            },
+                                            onTap: () =>
+                                                _handleWaterPresetTap(index),
                                           ),
                                         ),
                                       ),
@@ -16435,6 +16525,7 @@ class _SearchFoodItemDetailsScreenState
   bool _isAdvanceOpen = false;
   bool _isFavorite = false;
   int _selectedQuantityUnitIndex = 0;
+  bool _consumeNextBudgetPresetTap = false;
 
   late final TextEditingController _itemNameController;
   late final TextEditingController _quantityController;
@@ -16792,6 +16883,32 @@ class _SearchFoodItemDetailsScreenState
     return (value - preset).abs() <= 0.0001;
   }
 
+  void _dismissBudgetKeyboardFromOutsideTap() {
+    if (!_budgetPriceFocusNode.hasFocus) {
+      return;
+    }
+    _consumeNextBudgetPresetTap = true;
+    _budgetPriceFocusNode.unfocus();
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) {
+        return;
+      }
+      _consumeNextBudgetPresetTap = false;
+    });
+  }
+
+  bool _consumeBudgetPresetTapIfNeeded() {
+    if (_consumeNextBudgetPresetTap) {
+      _consumeNextBudgetPresetTap = false;
+      return true;
+    }
+    if (_budgetPriceFocusNode.hasFocus) {
+      _budgetPriceFocusNode.unfocus();
+      return true;
+    }
+    return false;
+  }
+
   void _setBudgetPreset(double value) {
     final text = _normalizedBudgetText(value.toString());
     setState(() {
@@ -17007,6 +17124,7 @@ class _SearchFoodItemDetailsScreenState
         borderRadius: BorderRadius.circular(16 * scale),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (showsStepControls) ...[
             _TodaysEntryGlassTile(
@@ -17054,6 +17172,7 @@ class _SearchFoodItemDetailsScreenState
                     focusNode: _quantityFocusNode,
                     scrollPadding: EdgeInsets.zero,
                     textAlign: TextAlign.center,
+                    textAlignVertical: TextAlignVertical.center,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -17302,6 +17421,26 @@ class _SearchFoodItemDetailsScreenState
           final blurPanelHeight = bottomRowHeight + controlsBottom;
           final scrollBottomPadding =
               blurPanelHeight + keyboardInset + (24 * scale);
+          final addToCustomBaseWidth = (166 * scale).clamp(136.0, 186.0);
+          final minTimelineButtonWidth = (92 * scale).clamp(76.0, 120.0);
+          final rowWidthReservedForTimeline = (56 * scale) + (16 * scale);
+          final rowWidthNeededWithAddButton =
+              rowWidthReservedForTimeline +
+              (16 * scale) +
+              addToCustomBaseWidth +
+              minTimelineButtonWidth;
+          final addToCustomButtonWidth = widget.showAddToCustom
+              ? math.min(
+                  addToCustomBaseWidth,
+                  math.max(
+                    0.0,
+                    contentWidth -
+                        (rowWidthNeededWithAddButton - addToCustomBaseWidth),
+                  ),
+                )
+              : 0.0;
+          final showAddToCustomButton =
+              widget.showAddToCustom && addToCustomButtonWidth > 0;
 
           return Stack(
             children: [
@@ -17653,7 +17792,7 @@ class _SearchFoodItemDetailsScreenState
                                           onSubmitted: (_) =>
                                               _budgetPriceFocusNode.unfocus(),
                                           onTapOutside: (_) =>
-                                              _budgetPriceFocusNode.unfocus(),
+                                              _dismissBudgetKeyboardFromOutsideTap(),
                                           decoration: InputDecoration.collapsed(
                                             hintText: '0',
                                             hintStyle: TextStyle(
@@ -17712,7 +17851,12 @@ class _SearchFoodItemDetailsScreenState
                                         ),
                                         child: GestureDetector(
                                           behavior: HitTestBehavior.opaque,
-                                          onTap: () => _setBudgetPreset(preset),
+                                          onTap: () {
+                                            if (_consumeBudgetPresetTapIfNeeded()) {
+                                              return;
+                                            }
+                                            _setBudgetPreset(preset);
+                                          },
                                           child: Container(
                                             padding: EdgeInsets.symmetric(
                                               horizontal: 16 * scale,
@@ -17936,10 +18080,10 @@ class _SearchFoodItemDetailsScreenState
                         ),
                       ),
                     ),
-                    if (widget.showAddToCustom) ...[
+                    if (showAddToCustomButton) ...[
                       SizedBox(width: 16 * scale),
                       SizedBox(
-                        width: (150 * scale).clamp(120.0, 170.0),
+                        width: addToCustomButtonWidth,
                         child: _GlassNextButton(
                           scale: scale,
                           label: 'Add to Custom',
@@ -19270,6 +19414,8 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   bool _isAdvanceOpen = false;
   bool _isFavorite = false;
   bool _isQuantityUnitDropdownOpen = false;
+  bool _isQuantityUnitDropdownPressed = false;
+  bool _consumeNextBudgetPresetTap = false;
   int _selectedQuantityUnitIndex = 0;
   final List<_CustomFoodEntry> _pendingCustomEntries = <_CustomFoodEntry>[];
 
@@ -19743,6 +19889,32 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     return (value - preset).abs() <= 0.0001;
   }
 
+  void _dismissBudgetKeyboardFromOutsideTap() {
+    if (!_budgetPriceFocusNode.hasFocus) {
+      return;
+    }
+    _consumeNextBudgetPresetTap = true;
+    _budgetPriceFocusNode.unfocus();
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (!mounted) {
+        return;
+      }
+      _consumeNextBudgetPresetTap = false;
+    });
+  }
+
+  bool _consumeBudgetPresetTapIfNeeded() {
+    if (_consumeNextBudgetPresetTap) {
+      _consumeNextBudgetPresetTap = false;
+      return true;
+    }
+    if (_budgetPriceFocusNode.hasFocus) {
+      _budgetPriceFocusNode.unfocus();
+      return true;
+    }
+    return false;
+  }
+
   void _setBudgetPreset(double value) {
     final text = _normalizedBudgetText(value.toString());
     setState(() {
@@ -20159,6 +20331,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                         focusNode: _quantityFocusNode,
                         scrollPadding: EdgeInsets.zero,
                         textAlign: TextAlign.center,
+                        textAlignVertical: TextAlignVertical.center,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -20224,16 +20397,57 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
           ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
+            onTapDown: (_) {
+              if (_isQuantityUnitDropdownPressed) {
+                return;
+              }
+              setState(() {
+                _isQuantityUnitDropdownPressed = true;
+              });
+            },
+            onTapCancel: () {
+              if (!_isQuantityUnitDropdownPressed) {
+                return;
+              }
+              setState(() {
+                _isQuantityUnitDropdownPressed = false;
+              });
+            },
+            onTapUp: (_) {
+              if (!_isQuantityUnitDropdownPressed) {
+                return;
+              }
+              setState(() {
+                _isQuantityUnitDropdownPressed = false;
+              });
+            },
             onTap: _toggleQuantityUnitDropdown,
             child: SizedBox(
-              width: 16 * scale,
-              height: 16 * scale,
-              child: Icon(
-                _isQuantityUnitDropdownOpen
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                color: Colors.white,
-                size: (20 * scale).clamp(16.0, 24.0),
+              width: 48 * scale,
+              height: 48 * scale,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: AnimatedScale(
+                  scale: _isQuantityUnitDropdownPressed ? 0.88 : 1,
+                  duration: const Duration(milliseconds: 100),
+                  curve: Curves.easeOut,
+                  child: SizedBox(
+                    width: 24 * scale,
+                    height: 48 * scale,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: Icon(
+                        _isQuantityUnitDropdownOpen
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: _isQuantityUnitDropdownPressed
+                            ? Colors.white70
+                            : Colors.white,
+                        size: 48 * scale,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -20626,7 +20840,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                           onSubmitted: (_) =>
                                               _budgetPriceFocusNode.unfocus(),
                                           onTapOutside: (_) =>
-                                              _budgetPriceFocusNode.unfocus(),
+                                              _dismissBudgetKeyboardFromOutsideTap(),
                                           decoration: InputDecoration.collapsed(
                                             hintText: '0',
                                             hintStyle: TextStyle(
@@ -20685,7 +20899,12 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
                                         ),
                                         child: GestureDetector(
                                           behavior: HitTestBehavior.opaque,
-                                          onTap: () => _setBudgetPreset(preset),
+                                          onTap: () {
+                                            if (_consumeBudgetPresetTapIfNeeded()) {
+                                              return;
+                                            }
+                                            _setBudgetPreset(preset);
+                                          },
                                           child: Container(
                                             padding: EdgeInsets.symmetric(
                                               horizontal: 16 * scale,
