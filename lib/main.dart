@@ -2209,6 +2209,7 @@ class _UserDataSync {
   static String? _loadedUserId;
   static String? _lastSavedSnapshot;
   static bool _isLoading = false;
+  static Future<void>? _activeLoadFuture;
   static bool _isSaving = false;
   static bool _pendingSaveAfterCurrent = false;
   static bool _stateTableMissing = false;
@@ -2233,6 +2234,7 @@ class _UserDataSync {
     _lastSavedSnapshot = null;
     _isSaving = false;
     _isLoading = false;
+    _activeLoadFuture = null;
     _pendingSaveAfterCurrent = false;
     _stateTableMissing = false;
     _profileTableMissing = false;
@@ -2245,7 +2247,17 @@ class _UserDataSync {
       await handleSignedOut();
       return;
     }
-    if (_stateTableMissing || _isLoading) {
+    if (_stateTableMissing) {
+      return;
+    }
+    if (_isLoading) {
+      final activeLoad = _activeLoadFuture;
+      if (activeLoad != null) {
+        await activeLoad;
+      }
+      if (!force && _loadedUserId == user.id) {
+        startAutoSync();
+      }
       return;
     }
     if (!force && _loadedUserId == user.id) {
@@ -2254,39 +2266,49 @@ class _UserDataSync {
     }
 
     _isLoading = true;
-    try {
-      final row = await supabase
-          .from(_stateTableName)
-          .select('state')
-          .eq('user_id', user.id)
-          .maybeSingle();
-      final dynamic rawState = row?['state'];
-      if (rawState is Map) {
-        _restoreStateFromMap(Map<String, dynamic>.from(rawState));
-      } else if (rawState is String && rawState.trim().isNotEmpty) {
-        final decoded = jsonDecode(rawState);
-        if (decoded is Map) {
-          _restoreStateFromMap(Map<String, dynamic>.from(decoded));
+    final loadFuture = Future<void>(() async {
+      try {
+        final row = await supabase
+            .from(_stateTableName)
+            .select('state')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        final dynamic rawState = row?['state'];
+        if (rawState is Map) {
+          _restoreStateFromMap(Map<String, dynamic>.from(rawState));
+        } else if (rawState is String && rawState.trim().isNotEmpty) {
+          final decoded = jsonDecode(rawState);
+          if (decoded is Map) {
+            _restoreStateFromMap(Map<String, dynamic>.from(decoded));
+          }
         }
+        _loadedUserId = user.id;
+        _lastSavedSnapshot = _buildSnapshotJson();
+        await _upsertUserProfile(user.id);
+        startAutoSync();
+      } catch (error) {
+        final message = '$error';
+        if (message.contains(_stateTableName) &&
+            (message.contains('relation') ||
+                message.contains('does not exist'))) {
+          _stateTableMissing = true;
+          debugPrint(
+            'User data table "$_stateTableName" is missing. Create it to enable persistence.',
+          );
+        } else {
+          debugPrint('Failed to load user app state: $error');
+        }
+      } finally {
+        _isLoading = false;
       }
-      _loadedUserId = user.id;
-      _lastSavedSnapshot = _buildSnapshotJson();
-      await _upsertUserProfile(user.id);
-      startAutoSync();
-    } catch (error) {
-      final message = '$error';
-      if (message.contains(_stateTableName) &&
-          (message.contains('relation') ||
-              message.contains('does not exist'))) {
-        _stateTableMissing = true;
-        debugPrint(
-          'User data table "$_stateTableName" is missing. Create it to enable persistence.',
-        );
-      } else {
-        debugPrint('Failed to load user app state: $error');
-      }
+    });
+    _activeLoadFuture = loadFuture;
+    try {
+      await loadFuture;
     } finally {
-      _isLoading = false;
+      if (identical(_activeLoadFuture, loadFuture)) {
+        _activeLoadFuture = null;
+      }
     }
   }
 
@@ -2940,8 +2962,25 @@ class _FirstScreenState extends State<FirstScreen>
       if (!mounted) {
         return;
       }
+      final hasLoggedInUser = supabase.auth.currentUser != null;
+      if (hasLoggedInUser) {
+        unawaited(_goToDailyProgressAfterDataLoad());
+        return;
+      }
       _replaceScreen(const LoadingScreen());
     });
+  }
+
+  Future<void> _goToDailyProgressAfterDataLoad() async {
+    await _UserDataSync.loadForCurrentUser(force: true);
+    if (!mounted) {
+      return;
+    }
+    if (supabase.auth.currentUser == null) {
+      _replaceScreen(const LoadingScreen());
+      return;
+    }
+    _replaceScreen(const DailyProgressScreen());
   }
 
   void _replaceScreen(Widget screen) {
@@ -12461,6 +12500,21 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     });
   }
 
+  Future<void> _copyAssistantResponse(String responseText) async {
+    await Clipboard.setData(ClipboardData(text: responseText));
+    if (!mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Response copied'),
+        duration: Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
   void _scheduleScrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_messageScrollController.hasClients) {
@@ -13676,16 +13730,49 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
         ),
         border: Border.all(color: const Color(0x8FFFFFFF), width: 1 * scale),
       ),
-      child: Text(
-        message.text,
-        style: TextStyle(
-          fontFamily: _defaultNonBorelFontFamily,
-          fontSize: (15 * scale).clamp(13.0, 18.0),
-          color: Colors.black,
-          fontWeight: FontWeight.w400,
-          height: 1.35,
-        ),
-      ),
+      child: isUser
+          ? Text(
+              message.text,
+              style: TextStyle(
+                fontFamily: _defaultNonBorelFontFamily,
+                fontSize: (15 * scale).clamp(13.0, 18.0),
+                color: Colors.black,
+                fontWeight: FontWeight.w400,
+                height: 1.35,
+              ),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message.text,
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (15 * scale).clamp(13.0, 18.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w400,
+                    height: 1.35,
+                  ),
+                ),
+                SizedBox(height: 8 * scale),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _copyAssistantResponse(message.text),
+                    child: SizedBox(
+                      width: 16,
+                      height: 18,
+                      child: SvgPicture.asset(
+                        'assets/Copy_response.svg',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
 
     if (isUser) {
@@ -21555,6 +21642,177 @@ class _AccountScreenState extends State<AccountScreen>
     );
   }
 
+  Future<void> _confirmAndLogout() async {
+    if (!mounted) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    final shouldLogout =
+        await showDialog<bool>(
+          context: context,
+          barrierColor: Colors.transparent,
+          useSafeArea: false,
+          builder: (dialogContext) {
+            final media = MediaQuery.of(dialogContext);
+            final dialogScale = (media.size.width / 393).clamp(0.82, 1.0);
+            final dialogTopGap = 30 * dialogScale;
+            final dialogBottomGap = 16 * dialogScale;
+            final sentenceVerticalGap = 20 * dialogScale;
+            final dialogWidth = math.min(
+              322 * dialogScale,
+              media.size.width - (32 * dialogScale),
+            );
+
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(
+                          sigmaX: 24 * dialogScale,
+                          sigmaY: 24 * dialogScale,
+                        ),
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: dialogWidth,
+                      padding: EdgeInsets.fromLTRB(
+                        16 * dialogScale,
+                        0,
+                        16 * dialogScale,
+                        0,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0x8FFFFFFF),
+                        borderRadius: BorderRadius.circular(16 * dialogScale),
+                        border: Border.all(
+                          color: const Color(0x7AFFFFFF),
+                          width: (2 * dialogScale).clamp(1.0, 2.0),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(height: dialogTopGap),
+                          Text(
+                            'Logout',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'Borel',
+                              fontSize: (32 * dialogScale).clamp(24.0, 34.0),
+                              color: Colors.white,
+                              height: 0.99,
+                            ),
+                          ),
+                          SizedBox(height: sentenceVerticalGap),
+                          Text(
+                            'Are you sure you want to logout?',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (14 * dialogScale).clamp(12.0, 16.0),
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: sentenceVerticalGap),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _RotatingGlassButton(
+                                  scale: dialogScale,
+                                  height: 56 * dialogScale,
+                                  borderRadius: 32 * dialogScale,
+                                  fillColor: Colors.white,
+                                  enablePressShadeFeedback: true,
+                                  onTap: () =>
+                                      Navigator.of(dialogContext).pop(false),
+                                  child: Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      color: const Color(0xFFFFD206),
+                                      fontSize: (34 * dialogScale / 1.7).clamp(
+                                        18.0,
+                                        24.0,
+                                      ),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 10 * dialogScale),
+                              Expanded(
+                                child: _RotatingGlassButton(
+                                  scale: dialogScale,
+                                  height: 56 * dialogScale,
+                                  borderRadius: 32 * dialogScale,
+                                  fillColor: const Color(0x8FFF0606),
+                                  enablePressShadeFeedback: true,
+                                  onTap: () =>
+                                      Navigator.of(dialogContext).pop(true),
+                                  child: Text(
+                                    'Logout',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      color: Colors.white,
+                                      fontSize: (34 * dialogScale / 1.7).clamp(
+                                        18.0,
+                                        24.0,
+                                      ),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: dialogBottomGap),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+    if (!shouldLogout || !mounted) {
+      return;
+    }
+
+    try {
+      await supabase.auth.signOut(scope: SignOutScope.local);
+      await _UserDataSync.handleSignedOut();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Logout failed. Please try again. ($error)')),
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).pushAndRemoveUntil(
+      _buildFadeRoute(screen: const BellyoIntroScreen()),
+      (route) => false,
+    );
+  }
+
   Widget _sectionTitle(String title, double scale) {
     return Text(
       title,
@@ -21996,6 +22254,7 @@ class _AccountScreenState extends State<AccountScreen>
                         titleColor: const Color(0xFFFF0000),
                         showArrow: false,
                         centerTitle: true,
+                        onTap: _confirmAndLogout,
                       ),
                     ],
                   ),

@@ -84,6 +84,7 @@ flutter:
     - assets/Add_new.svg
     - assets/Chat.svg
     - assets/New_chat.svg
+    - assets/Copy_response.svg
     - assets/Add.png
     - assets/Food.svg
     - assets/Food__exchange.svg
