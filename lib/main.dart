@@ -3276,6 +3276,11 @@ class _TermsScreenState extends State<TermsScreen>
                       label: 'Privacy Policy',
                       scale: metrics.designScale,
                     ),
+                    SizedBox(height: linkGap),
+                    _TermsLinkTile(
+                      label: 'AI Terms',
+                      scale: metrics.designScale,
+                    ),
                   ],
                 ),
               ),
@@ -3469,6 +3474,8 @@ class _AccountTermsScreenState extends State<AccountTermsScreen>
                     _TermsLinkTile(label: 'Terms and Conditions', scale: scale),
                     SizedBox(height: 32 * scale),
                     _TermsLinkTile(label: 'Privacy Policy', scale: scale),
+                    SizedBox(height: 32 * scale),
+                    _TermsLinkTile(label: 'AI Terms', scale: scale),
                   ],
                 ),
               ),
@@ -4223,6 +4230,7 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
   late final AnimationController _controller;
   late final StreamSubscription<AuthState> _authSubscription;
   bool _isGoogleSigningIn = false;
+  bool _isAppleSigningIn = false;
   bool _didNavigateToWelcome = false;
   _AuthProviderSelection? _selectedAuthProvider;
   Timer? _authSelectionResetTimer;
@@ -4241,12 +4249,18 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
         return;
       }
       if (authState.event == AuthChangeEvent.signedIn) {
-        setState(() => _isGoogleSigningIn = false);
+        setState(() {
+          _isGoogleSigningIn = false;
+          _isAppleSigningIn = false;
+        });
         unawaited(_goToWelcomeScreenAfterDataLoad());
         return;
       }
       if (authState.event == AuthChangeEvent.signedOut) {
-        setState(() => _isGoogleSigningIn = false);
+        setState(() {
+          _isGoogleSigningIn = false;
+          _isAppleSigningIn = false;
+        });
         unawaited(_UserDataSync.handleSignedOut());
       }
     });
@@ -4302,6 +4316,32 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
     }
   }
 
+  Future<void> _signInWithApple() async {
+    if (_isAppleSigningIn) {
+      return;
+    }
+
+    setState(() => _isAppleSigningIn = true);
+
+    try {
+      await supabase.auth.signInWithOAuth(
+        OAuthProvider.apple,
+        redirectTo: kIsWeb ? null : _authCallbackUrl,
+        authScreenLaunchMode: kIsWeb
+            ? LaunchMode.platformDefault
+            : LaunchMode.externalApplication,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isAppleSigningIn = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Apple sign-in failed: $error')));
+    }
+  }
+
   void _cancelAuthSelectionResetTimer() {
     _authSelectionResetTimer?.cancel();
     _authSelectionResetTimer = null;
@@ -4319,20 +4359,20 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
       setState(() {
         _selectedAuthProvider = null;
         _isGoogleSigningIn = false;
+        _isAppleSigningIn = false;
       });
     });
   }
 
-  void _clearAuthSelection({bool clearGoogleProgress = false}) {
+  void _clearAuthSelection() {
     _cancelAuthSelectionResetTimer();
     if (!mounted) {
       return;
     }
     setState(() {
       _selectedAuthProvider = null;
-      if (clearGoogleProgress) {
-        _isGoogleSigningIn = false;
-      }
+      _isGoogleSigningIn = false;
+      _isAppleSigningIn = false;
     });
   }
 
@@ -4341,7 +4381,7 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
       return;
     }
     if (_selectedAuthProvider == _AuthProviderSelection.google) {
-      _clearAuthSelection(clearGoogleProgress: true);
+      _clearAuthSelection();
       return;
     }
     if (!mounted) {
@@ -4369,6 +4409,7 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
       _selectedAuthProvider = _AuthProviderSelection.apple;
     });
     _cancelAuthSelectionResetTimer();
+    unawaited(_signInWithApple());
   }
 
   void _goToWelcomeScreen() {
@@ -4485,7 +4526,9 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
                     SizedBox(height: 32 * metrics.designScale),
                     _GlassActionButton(
                       scale: metrics.designScale,
-                      label: 'Continue with Apple',
+                      label: _isAppleSigningIn
+                          ? 'Connecting to Apple...'
+                          : 'Continue with Apple',
                       icon: SvgPicture.asset(
                         'assets/Apple.svg',
                         fit: BoxFit.contain,
