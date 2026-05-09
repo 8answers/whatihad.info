@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:crypto/crypto.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' as rendering;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -4324,13 +4326,53 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
     setState(() => _isAppleSigningIn = true);
 
     try {
+      final useNativeAppleFlow =
+          !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS);
+      if (useNativeAppleFlow) {
+        final rawNonce = supabase.auth.generateRawNonce();
+        final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+
+        final credential = await SignInWithApple.getAppleIDCredential(
+          scopes: const [
+            AppleIDAuthorizationScopes.email,
+            AppleIDAuthorizationScopes.fullName,
+          ],
+          nonce: hashedNonce,
+        );
+        final idToken = credential.identityToken;
+        if (idToken == null || idToken.isEmpty) {
+          throw const AuthException(
+            'Could not find ID Token from generated Apple credential.',
+          );
+        }
+        await supabase.auth.signInWithIdToken(
+          provider: OAuthProvider.apple,
+          idToken: idToken,
+          nonce: rawNonce,
+        );
+        return;
+      }
+
       await supabase.auth.signInWithOAuth(
         OAuthProvider.apple,
         redirectTo: kIsWeb ? null : _authCallbackUrl,
         authScreenLaunchMode: kIsWeb
             ? LaunchMode.platformDefault
-            : LaunchMode.externalApplication,
+            : LaunchMode.inAppBrowserView,
       );
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isAppleSigningIn = false);
+      if (error.code == AuthorizationErrorCode.canceled) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Apple sign-in failed: $error')));
     } catch (error) {
       if (!mounted) {
         return;
@@ -4423,9 +4465,32 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
     ).pushReplacement(_buildFadeRoute(screen: const WelcomeScreen()));
   }
 
+  void _goToDailyProgressScreen() {
+    if (_didNavigateToWelcome || !mounted) {
+      return;
+    }
+    _didNavigateToWelcome = true;
+    Navigator.of(
+      context,
+    ).pushReplacement(_buildFadeRoute(screen: const DailyProgressScreen()));
+  }
+
+  bool _hasCompletedOnboardingProfile() {
+    final hasName = _OnboardingProfileState.selectedName.trim().isNotEmpty;
+    final hasGoal = _OnboardingProfileState.selectedGoalIndex >= 0;
+    final hasActivity = _OnboardingProfileState.selectedActivityIndex >= 0;
+    final hasDietPreference =
+        _OnboardingProfileState.selectedDietPreferenceIndex >= 0;
+    return hasName && hasGoal && hasActivity && hasDietPreference;
+  }
+
   Future<void> _goToWelcomeScreenAfterDataLoad() async {
     await _UserDataSync.loadForCurrentUser(force: true);
     if (!mounted) {
+      return;
+    }
+    if (_hasCompletedOnboardingProfile()) {
+      _goToDailyProgressScreen();
       return;
     }
     _goToWelcomeScreen();
