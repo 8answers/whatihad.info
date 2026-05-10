@@ -16221,7 +16221,8 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
           );
           final navHeight = 64 * scale;
           final backButtonHeight = 56 * scale;
-          final showBackOnlyControls = _hasQuery && !isKeyboardVisible;
+          final showBackOnlyControls =
+              _searchFocusNode.hasFocus || !isKeyboardVisible;
           final controlsRowHeight = showBackOnlyControls
               ? backButtonHeight
               : navHeight;
@@ -16280,6 +16281,8 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
                                 controller: _searchController,
                                 focusNode: _searchFocusNode,
                                 textInputAction: TextInputAction.search,
+                                onTapOutside: (_) =>
+                                    _searchFocusNode.unfocus(),
                                 style: TextStyle(
                                   fontFamily: _defaultNonBorelFontFamily,
                                   fontSize: (16 * scale).clamp(14.0, 20.0),
