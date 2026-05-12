@@ -3544,6 +3544,9 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
   static const int _otpLength = 6;
   static const int _resendCooldownDefaultSeconds = 60;
   static const int _tryAgainLockSeconds = 90 * 60;
+  static final RegExp _emailValidationPattern = RegExp(
+    r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+  );
 
   late final AnimationController _controller;
   late final TextEditingController _otpHiddenController;
@@ -3562,12 +3565,48 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
   int _otpVerifyGeneration = 0;
   String _otpValue = '';
 
-  String? get _registeredEmail {
-    final email = supabase.auth.currentUser?.email?.trim();
-    if (email == null || email.isEmpty) {
+  String? _validatedEmailCandidate(Object? rawValue) {
+    if (rawValue is! String) {
+      return null;
+    }
+    final email = rawValue.trim();
+    if (email.isEmpty || !_emailValidationPattern.hasMatch(email)) {
       return null;
     }
     return email;
+  }
+
+  String? get _registeredEmail {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final primaryEmail = _validatedEmailCandidate(user.email);
+    if (primaryEmail != null) {
+      return primaryEmail;
+    }
+
+    final metadataEmail = _validatedEmailCandidate(user.userMetadata?['email']);
+    if (metadataEmail != null) {
+      return metadataEmail;
+    }
+
+    final appMetadataEmail = _validatedEmailCandidate(user.appMetadata['email']);
+    if (appMetadataEmail != null) {
+      return appMetadataEmail;
+    }
+
+    for (final identity in user.identities ?? const <UserIdentity>[]) {
+      final identityEmail = _validatedEmailCandidate(
+        identity.identityData?['email'],
+      );
+      if (identityEmail != null) {
+        return identityEmail;
+      }
+    }
+
+    return null;
   }
 
   bool get _hasRegisteredEmail => _registeredEmail != null;
