@@ -2189,12 +2189,7 @@ class _DailyFoodDatabase {
     if (prioritizedFoods.isEmpty) {
       return compatibleFoods;
     }
-
-    final prioritizedIds = prioritizedFoods.map((food) => food.id).toSet();
-    final remainingFoods = compatibleFoods
-        .where((food) => !prioritizedIds.contains(food.id))
-        .toList(growable: false);
-    return <_DailyFoodCatalogItem>[...prioritizedFoods, ...remainingFoods];
+    return prioritizedFoods;
   }
 
   static void setFavorite(int foodId, bool isFavorite) {
@@ -2223,6 +2218,30 @@ class _DailyFoodDatabase {
   static void clearFavorites() {
     _favoriteFoodIds.clear();
   }
+
+  static Future<List<_DailyFoodCatalogItem>> favoriteFoods() async {
+    if (_favoriteFoodIds.isEmpty) {
+      return const <_DailyFoodCatalogItem>[];
+    }
+    await _ensureCsvFoodsLoaded();
+    final foodsById = <int, _DailyFoodCatalogItem>{};
+    for (final food in _localFoods) {
+      foodsById[food.id] = food;
+    }
+    for (final food in _csvFoods) {
+      foodsById[food.id] = food;
+    }
+    final favorites = <_DailyFoodCatalogItem>[];
+    for (final id in _favoriteFoodIds) {
+      final food = foodsById[id];
+      if (food == null) {
+        continue;
+      }
+      favorites.add(food.copyWith(isFavorite: true));
+    }
+    favorites.sort((a, b) => a.name.compareTo(b.name));
+    return favorites;
+  }
 }
 
 class _UserDataSync {
@@ -2241,6 +2260,7 @@ class _UserDataSync {
   static bool _pendingSaveAfterCurrent = false;
   static bool _stateTableMissing = false;
   static bool _profileTableMissing = false;
+  static bool _isHandlingInvalidAuthSession = false;
 
   static void startAutoSync() {
     _autosaveTimer ??= Timer.periodic(_autosaveInterval, (_) {
@@ -2265,7 +2285,38 @@ class _UserDataSync {
     _pendingSaveAfterCurrent = false;
     _stateTableMissing = false;
     _profileTableMissing = false;
+    _isHandlingInvalidAuthSession = false;
     _resetAllLocalState();
+  }
+
+  static bool _isAuthUserForeignKeyError(Object error) {
+    if (error is! PostgrestException) {
+      return false;
+    }
+    if (error.code != '23503') {
+      return false;
+    }
+    final combinedMessage = '${error.message} ${error.details ?? ''}'
+        .toLowerCase();
+    return combinedMessage.contains('user_app_state_user_id_fkey') ||
+        combinedMessage.contains('user_profiles_user_id_fkey') ||
+        combinedMessage.contains('key is not present in table "users"');
+  }
+
+  static Future<void> _handleInvalidAuthSessionFromForeignKey() async {
+    if (_isHandlingInvalidAuthSession) {
+      return;
+    }
+    _isHandlingInvalidAuthSession = true;
+    debugPrint(
+      'Auth user id is no longer valid in Supabase. Clearing local session.',
+    );
+    try {
+      await supabase.auth.signOut(scope: SignOutScope.local);
+    } catch (_) {
+      // Best effort; local state reset still prevents repeated write failures.
+    }
+    await handleSignedOut();
   }
 
   static Future<void> loadForCurrentUser({bool force = false}) async {
@@ -2314,6 +2365,10 @@ class _UserDataSync {
         await _upsertUserProfile(user.id);
         startAutoSync();
       } catch (error) {
+        if (_isAuthUserForeignKeyError(error)) {
+          await _handleInvalidAuthSessionFromForeignKey();
+          return;
+        }
         final message = '$error';
         if (message.contains(_stateTableName) &&
             (message.contains('relation') ||
@@ -2380,6 +2435,10 @@ class _UserDataSync {
       await _upsertUserProfile(user.id);
       _lastSavedSnapshot = snapshotJson;
     } catch (error) {
+      if (_isAuthUserForeignKeyError(error)) {
+        await _handleInvalidAuthSessionFromForeignKey();
+        return;
+      }
       final message = '$error';
       if (message.contains(_stateTableName) &&
           (message.contains('relation') ||
@@ -2452,6 +2511,10 @@ class _UserDataSync {
           .from(_profileTableName)
           .upsert(_buildUserProfileRow(userId), onConflict: 'user_id');
     } catch (error) {
+      if (_isAuthUserForeignKeyError(error)) {
+        await _handleInvalidAuthSessionFromForeignKey();
+        return;
+      }
       final message = '$error';
       if (message.contains(_profileTableName) &&
           (message.contains('relation') ||
@@ -3541,29 +3604,12 @@ class AccountDeletionScreen extends StatefulWidget {
 
 class _AccountDeletionScreenState extends State<AccountDeletionScreen>
     with SingleTickerProviderStateMixin {
-  static const int _otpLength = 6;
-  static const int _resendCooldownDefaultSeconds = 60;
-  static const int _tryAgainLockSeconds = 90 * 60;
   static final RegExp _emailValidationPattern = RegExp(
     r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
   );
 
   late final AnimationController _controller;
-  late final TextEditingController _otpHiddenController;
-  late final FocusNode _otpHiddenFocusNode;
-  Timer? _otpTimer;
-  Timer? _otpAutoVerifyTimer;
-
-  bool _isRequestInProgress = false;
-  bool _isVerifyInProgress = false;
-  bool _isOtpVerified = false;
-  bool _didRequestOtp = false;
-  bool _showOtpError = false;
-  int _resendAttempts = 0;
-  int _resendCooldownSeconds = 0;
-  int _tryAgainSeconds = 0;
-  int _otpVerifyGeneration = 0;
-  String _otpValue = '';
+  bool _isDeletingAccount = false;
 
   String? _validatedEmailCandidate(Object? rawValue) {
     if (rawValue is! String) {
@@ -3592,7 +3638,9 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
       return metadataEmail;
     }
 
-    final appMetadataEmail = _validatedEmailCandidate(user.appMetadata['email']);
+    final appMetadataEmail = _validatedEmailCandidate(
+      user.appMetadata['email'],
+    );
     if (appMetadataEmail != null) {
       return appMetadataEmail;
     }
@@ -3609,37 +3657,9 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
     return null;
   }
 
-  bool get _hasRegisteredEmail => _registeredEmail != null;
-
-  bool get _canTapOtpAction {
-    if (_isRequestInProgress || _isVerifyInProgress) {
-      return false;
-    }
-    if (!_hasRegisteredEmail) {
-      return false;
-    }
-    if (_tryAgainSeconds > 0) {
-      return false;
-    }
-    if (!_didRequestOtp) {
-      return true;
-    }
-    return _resendCooldownSeconds == 0 && _resendAttempts < 3;
-  }
-
-  bool get _canTapDeleteAccount =>
-      _didRequestOtp &&
-      _tryAgainSeconds == 0 &&
-      !_isVerifyInProgress &&
-      _otpValue.length == _otpLength &&
-      _isOtpVerified;
-
   @override
   void initState() {
     super.initState();
-    _otpHiddenController = TextEditingController();
-    _otpHiddenFocusNode = FocusNode();
-    _otpHiddenController.addListener(_syncOtpValueFromField);
     _controller = AnimationController(
       vsync: this,
       duration: _kBackgroundMotionDuration,
@@ -3648,357 +3668,18 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
 
   @override
   void dispose() {
-    _otpTimer?.cancel();
-    _otpAutoVerifyTimer?.cancel();
-    _otpHiddenController.removeListener(_syncOtpValueFromField);
-    _otpHiddenController.dispose();
-    _otpHiddenFocusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   void _goBack() {
-    if (!mounted) {
+    if (!mounted || _isDeletingAccount) {
       return;
     }
     Navigator.of(context).pop();
   }
 
-  void _ensureOtpTimerRunning() {
-    if (_otpTimer != null) {
-      return;
-    }
-    _otpTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        if (_resendCooldownSeconds > 0) {
-          _resendCooldownSeconds--;
-        }
-        if (_tryAgainSeconds > 0) {
-          _tryAgainSeconds--;
-          if (_tryAgainSeconds == 0) {
-            _didRequestOtp = false;
-            _resendAttempts = 0;
-            _resendCooldownSeconds = 0;
-            _resetOtpValidationState();
-            _setOtpValue('', updateField: true);
-          }
-        }
-      });
-      _stopOtpTimerIfIdle();
-    });
-  }
-
-  void _stopOtpTimerIfIdle() {
-    if (_resendCooldownSeconds > 0 || _tryAgainSeconds > 0) {
-      return;
-    }
-    _otpTimer?.cancel();
-    _otpTimer = null;
-  }
-
-  String _formatCountdownLabel(int totalSeconds) {
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  String get _otpActionLabel {
-    if (!_hasRegisteredEmail) {
-      return 'No registered email';
-    }
-    if (_isRequestInProgress) {
-      return _didRequestOtp ? 'Sending OTP...' : 'Getting OTP...';
-    }
-    if (_tryAgainSeconds > 0) {
-      return 'Try After (${_formatCountdownLabel(_tryAgainSeconds)})';
-    }
-    if (!_didRequestOtp) {
-      return 'Get OTP';
-    }
-    if (_resendCooldownSeconds > 0) {
-      return 'Resend OTP (${_formatCountdownLabel(_resendCooldownSeconds)}) [$_resendAttempts/3]';
-    }
-    return 'Resend OTP [$_resendAttempts/3]';
-  }
-
-  String _sanitizeOtp(String input) {
-    final filtered = input
-        .replaceAll(RegExp(r'[^0-9A-Za-z]'), '')
-        .toUpperCase();
-    if (filtered.length <= _otpLength) {
-      return filtered;
-    }
-    return filtered.substring(0, _otpLength);
-  }
-
-  void _setOtpValue(String value, {required bool updateField}) {
-    final normalized = _sanitizeOtp(value);
-    _otpValue = normalized;
-    if (updateField && _otpHiddenController.text != normalized) {
-      _otpHiddenController.value = TextEditingValue(
-        text: normalized,
-        selection: TextSelection.collapsed(offset: normalized.length),
-      );
-    }
-  }
-
-  void _resetOtpValidationState({bool clearError = true}) {
-    _otpVerifyGeneration++;
-    _otpAutoVerifyTimer?.cancel();
-    _otpAutoVerifyTimer = null;
-    _isOtpVerified = false;
-    if (clearError) {
-      _showOtpError = false;
-    }
-  }
-
-  Future<bool> _verifyOtpWithFallback(String token) async {
-    final email = _registeredEmail;
-    if (email == null) {
-      return false;
-    }
-    final otpTypes = <OtpType>[
-      OtpType.email,
-      OtpType.magiclink,
-      OtpType.signup,
-    ];
-    for (final otpType in otpTypes) {
-      try {
-        await supabase.auth.verifyOTP(
-          type: otpType,
-          token: token,
-          email: email,
-        );
-        return true;
-      } on AuthException {
-        continue;
-      }
-    }
-    return false;
-  }
-
-  void _scheduleAutoOtpVerification() {
-    _otpAutoVerifyTimer?.cancel();
-    if (!_didRequestOtp ||
-        _tryAgainSeconds > 0 ||
-        _otpValue.length != _otpLength) {
-      return;
-    }
-    final generation = ++_otpVerifyGeneration;
-    _otpAutoVerifyTimer = Timer(const Duration(milliseconds: 250), () async {
-      if (!mounted ||
-          generation != _otpVerifyGeneration ||
-          _isVerifyInProgress) {
-        return;
-      }
-      final token = _otpValue;
-      if (token.length != _otpLength) {
-        return;
-      }
-      setState(() {
-        _isVerifyInProgress = true;
-      });
-      final verified = await _verifyOtpWithFallback(token);
-      if (!mounted || generation != _otpVerifyGeneration) {
-        return;
-      }
-      setState(() {
-        _isVerifyInProgress = false;
-        _isOtpVerified = verified;
-        _showOtpError = !verified;
-      });
-    });
-  }
-
-  void _syncOtpValueFromField() {
-    if (!mounted) {
-      return;
-    }
-    final nextValue = _sanitizeOtp(_otpHiddenController.text);
-    if (_otpHiddenController.text != nextValue) {
-      _otpHiddenController.value = TextEditingValue(
-        text: nextValue,
-        selection: TextSelection.collapsed(offset: nextValue.length),
-      );
-    }
-    if (_otpValue == nextValue) {
-      return;
-    }
-    setState(() {
-      _otpValue = nextValue;
-      _resetOtpValidationState();
-    });
-    _scheduleAutoOtpVerification();
-  }
-
-  void _focusOtpInput() {
-    if (!mounted) {
-      return;
-    }
-    _otpHiddenFocusNode.requestFocus();
-    _otpHiddenController.selection = TextSelection.collapsed(
-      offset: _otpHiddenController.text.length,
-    );
-  }
-
-  String _otpDisplayCharacter(int index) {
-    if (_showOtpError) {
-      const wrongPattern = <String>['0', 'X', '0', '0', '0', '0'];
-      return wrongPattern[index];
-    }
-    if (index >= _otpValue.length) {
-      return '';
-    }
-    return _otpValue[index];
-  }
-
-  String get _otpStatusLabel {
-    if (!_didRequestOtp || _otpValue.length != _otpLength) {
-      return '';
-    }
-    if (_isVerifyInProgress) {
-      return 'Checking OTP...';
-    }
-    if (_isOtpVerified) {
-      return 'OTP is correct';
-    }
-    if (_showOtpError) {
-      return 'OTP is wrong';
-    }
-    return '';
-  }
-
-  Color get _otpStatusColor {
-    if (_isOtpVerified) {
-      return const Color(0xFF31E68B);
-    }
-    if (_showOtpError) {
-      return const Color(0xFFFF6B6B);
-    }
-    return Colors.white;
-  }
-
-  Future<void> _requestOrResendOtp() async {
-    if (!_canTapOtpAction || !mounted) {
-      return;
-    }
-    final email = _registeredEmail;
-    if (email == null) {
-      return;
-    }
-
-    setState(() {
-      _isRequestInProgress = true;
-      _resetOtpValidationState();
-      _setOtpValue('', updateField: true);
-    });
-
-    try {
-      await supabase.auth.signInWithOtp(email: email, shouldCreateUser: false);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        if (!_didRequestOtp) {
-          _didRequestOtp = true;
-          _resendAttempts = 1;
-          _resendCooldownSeconds = _resendCooldownDefaultSeconds;
-        } else {
-          _resendAttempts += 1;
-          if (_resendAttempts >= 3) {
-            _resendAttempts = 3;
-            _tryAgainSeconds = _tryAgainLockSeconds;
-            _resendCooldownSeconds = 0;
-          } else {
-            _resendCooldownSeconds = _resendCooldownDefaultSeconds;
-          }
-        }
-      });
-      _ensureOtpTimerRunning();
-      _focusOtpInput();
-    } on AuthException catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _resetOtpValidationState();
-        _showOtpError = true;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRequestInProgress = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _validateOtpAndDelete() async {
-    if (!_canTapDeleteAccount || !mounted) {
-      return;
-    }
-    FocusScope.of(context).unfocus();
-    // OTP is already verified before this point; now only execute delete flow.
-    setState(() {
-      _resetOtpValidationState();
-      _resendAttempts = _resendAttempts <= 0 ? 1 : _resendAttempts;
-      _resendCooldownSeconds = _resendCooldownDefaultSeconds;
-      _setOtpValue('', updateField: true);
-    });
-    _ensureOtpTimerRunning();
-  }
-
-  Widget _buildOtpDigitCell({required int index, required double scale}) {
-    final canEdit = _didRequestOtp && _tryAgainSeconds == 0;
-    final fillColor = _showOtpError
-        ? const Color(0x29FF0000)
-        : (_didRequestOtp ? const Color(0x52FFFFFF) : const Color(0x3DFFFFFF));
-    final textColor = _showOtpError
-        ? Colors.black
-        : (_didRequestOtp ? Colors.black : const Color(0x29000000));
-
-    return SizedBox(
-      width: 50 * scale,
-      height: 50 * scale,
-      child: _RotatingGlassPanel(
-        scale: scale,
-        borderRadius: 15 * scale,
-        fillColor: fillColor,
-        padding: EdgeInsets.zero,
-        expandToBounds: true,
-        boxShadow: _showOtpError
-            ? const [
-                BoxShadow(
-                  color: Color(0xFFFF0000),
-                  blurRadius: 2,
-                  blurStyle: BlurStyle.outer,
-                ),
-              ]
-            : const <BoxShadow>[],
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: canEdit ? _focusOtpInput : null,
-          child: Center(
-            child: Text(
-              _otpDisplayCharacter(index),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: (24 * scale).clamp(18.0, 30.0),
-                color: textColor,
-                fontWeight: FontWeight.w500,
-                height: 1.0,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOtpSupportCard(double scale) {
+  Widget _buildDeletionSupportCard(double scale) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -4010,7 +3691,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Having trouble with OTP verification?',
+            'Having trouble in deleting account?',
             style: TextStyle(
               fontSize: (16 * scale).clamp(14.0, 20.0),
               color: Colors.black,
@@ -4061,6 +3742,240 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
         ],
       ),
     );
+  }
+
+  Future<bool> _showDeleteConfirmationDialog() async {
+    final shouldDelete =
+        await showDialog<bool>(
+          context: context,
+          barrierColor: Colors.transparent,
+          useSafeArea: false,
+          builder: (dialogContext) {
+            final media = MediaQuery.of(dialogContext);
+            final dialogScale = (media.size.width / 393).clamp(0.82, 1.0);
+            final dialogTopGap = 30 * dialogScale;
+            final dialogBottomGap = 16 * dialogScale;
+            final sentenceVerticalGap = 20 * dialogScale;
+            final dialogWidth = math.min(
+              322 * dialogScale,
+              media.size.width - (32 * dialogScale),
+            );
+
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(
+                          sigmaX: 24 * dialogScale,
+                          sigmaY: 24 * dialogScale,
+                        ),
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: dialogWidth,
+                      padding: EdgeInsets.fromLTRB(
+                        16 * dialogScale,
+                        0,
+                        16 * dialogScale,
+                        0,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0x6BFF0606),
+                        borderRadius: BorderRadius.circular(16 * dialogScale),
+                        border: Border.all(
+                          color: const Color(0x7AFFFFFF),
+                          width: (2 * dialogScale).clamp(1.0, 2.0),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(height: dialogTopGap),
+                          Text(
+                            'Delete Account',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'Borel',
+                              fontSize: (32 * dialogScale).clamp(24.0, 34.0),
+                              color: Colors.white,
+                              height: 0.99,
+                            ),
+                          ),
+                          SizedBox(height: sentenceVerticalGap),
+                          Text(
+                            'Are you sure you want to delete your account?',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (14 * dialogScale).clamp(12.0, 16.0),
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: 8 * dialogScale),
+                          Text(
+                            'This action cannot be undone.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: _defaultNonBorelFontFamily,
+                              fontSize: (14 * dialogScale).clamp(12.0, 16.0),
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: sentenceVerticalGap),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _RotatingGlassButton(
+                                  scale: dialogScale,
+                                  height: 56 * dialogScale,
+                                  borderRadius: 32 * dialogScale,
+                                  fillColor: Colors.white,
+                                  enablePressShadeFeedback: true,
+                                  onTap: () =>
+                                      Navigator.of(dialogContext).pop(false),
+                                  child: Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      color: const Color(0xFFFFD206),
+                                      fontSize: (34 * dialogScale / 1.7).clamp(
+                                        18.0,
+                                        24.0,
+                                      ),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 10 * dialogScale),
+                              Expanded(
+                                child: _RotatingGlassButton(
+                                  scale: dialogScale,
+                                  height: 56 * dialogScale,
+                                  borderRadius: 32 * dialogScale,
+                                  fillColor: Colors.white,
+                                  enablePressShadeFeedback: true,
+                                  onTap: () =>
+                                      Navigator.of(dialogContext).pop(true),
+                                  child: Text(
+                                    'Delete',
+                                    style: TextStyle(
+                                      fontFamily: _defaultNonBorelFontFamily,
+                                      color: const Color(0xFFFF0606),
+                                      fontSize: (34 * dialogScale / 1.7).clamp(
+                                        18.0,
+                                        24.0,
+                                      ),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: dialogBottomGap),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+    return shouldDelete;
+  }
+
+  Future<void> _deleteCurrentAccount() async {
+    if (!mounted || _isDeletingAccount) {
+      return;
+    }
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active account session found.')),
+      );
+      return;
+    }
+
+    setState(() => _isDeletingAccount = true);
+    try {
+      await supabase.rpc('delete_current_user');
+      try {
+        await supabase.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {
+        // Account may already be removed; local cleanup below still runs.
+      }
+      await _UserDataSync.handleSignedOut();
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pushAndRemoveUntil(
+        _buildFadeRoute(screen: const BellyoIntroScreen()),
+        (route) => false,
+      );
+    } on PostgrestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final combinedMessage = '${error.message} ${error.details ?? ''}'
+          .toLowerCase();
+      final isDeleteRpcMissing =
+          error.code == 'PGRST202' ||
+          (combinedMessage.contains('delete_current_user') &&
+              combinedMessage.contains('could not find'));
+      final isPermissionError =
+          error.code == '42501' ||
+          combinedMessage.contains('permission denied');
+      final errorText = isDeleteRpcMissing
+          ? 'Delete backend is not configured. Run scripts/sql/delete_current_user.sql in Supabase SQL Editor.'
+          : isPermissionError
+          ? 'Delete is blocked by database permissions. Please run scripts/sql/delete_current_user.sql and retry.'
+          : 'Unable to delete account right now. Please try again.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorText)));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to delete account. Please try again. ($error)'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isDeletingAccount = false);
+      }
+    }
+  }
+
+  Future<void> _confirmAndDeleteAccount() async {
+    if (!mounted || _isDeletingAccount) {
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    final shouldDelete = await _showDeleteConfirmationDialog();
+    if (!shouldDelete || !mounted) {
+      return;
+    }
+    await _deleteCurrentAccount();
   }
 
   @override
@@ -4142,82 +4057,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
                           ),
                         ),
                         SizedBox(height: 24 * scale),
-                        SizedBox(
-                          width: deleteButtonWidth,
-                          child: _RotatingGlassButton(
-                            scale: scale,
-                            height: 56 * scale,
-                            borderRadius: 32 * scale,
-                            fillColor: _canTapOtpAction
-                                ? const Color(0xCC00B2FF)
-                                : const Color(0x6600B2FF),
-                            enablePressShadeFeedback: _canTapOtpAction,
-                            onTap: _canTapOtpAction
-                                ? _requestOrResendOtp
-                                : () {},
-                            child: Text(
-                              _otpActionLabel,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: (34 * scale / 1.7).clamp(18.0, 28.0),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 24 * scale),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: List<Widget>.generate(
-                            _otpLength,
-                            (index) =>
-                                _buildOtpDigitCell(index: index, scale: scale),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 1,
-                          height: 1,
-                          child: Opacity(
-                            opacity: 0,
-                            child: TextField(
-                              controller: _otpHiddenController,
-                              focusNode: _otpHiddenFocusNode,
-                              autofocus: false,
-                              enabled: _didRequestOtp && _tryAgainSeconds == 0,
-                              keyboardType: TextInputType.number,
-                              textInputAction: TextInputAction.done,
-                              maxLength: _otpLength,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'[0-9A-Za-z]'),
-                                ),
-                                LengthLimitingTextInputFormatter(_otpLength),
-                              ],
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                counterText: '',
-                                isCollapsed: true,
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 10 * scale),
-                        SizedBox(
-                          height: 20 * scale,
-                          child: Text(
-                            _otpStatusLabel,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: (14 * scale).clamp(12.0, 18.0),
-                              color: _otpStatusColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 16 * scale),
-                        _buildOtpSupportCard(scale),
+                        _buildDeletionSupportCard(scale),
                       ],
                     ),
                   ),
@@ -4251,16 +4091,16 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen>
                           scale: scale,
                           height: 56 * scale,
                           borderRadius: 32 * scale,
-                          fillColor: _canTapDeleteAccount
-                              ? const Color(0x52FF0606)
-                              : const Color(0x24FF0606),
-                          enablePressShadeFeedback: _canTapDeleteAccount,
-                          onTap: _canTapDeleteAccount
-                              ? _validateOtpAndDelete
-                              : () {},
+                          fillColor: _isDeletingAccount
+                              ? const Color(0x24FF0606)
+                              : const Color(0x52FF0606),
+                          enablePressShadeFeedback: !_isDeletingAccount,
+                          onTap: _isDeletingAccount
+                              ? () {}
+                              : _confirmAndDeleteAccount,
                           child: Text(
-                            _isVerifyInProgress
-                                ? 'Verifying...'
+                            _isDeletingAccount
+                                ? 'Deleting...'
                                 : 'Delete Account',
                             style: TextStyle(
                               color: Colors.white,
@@ -6524,7 +6364,7 @@ class _AccountDailyNutritionGoalsScreenState
                         ),
                       ),
                       if (_isAdvanceOpen) ...[
-                        SizedBox(height: 16 * scale),
+                        SizedBox(height: 8 * scale),
                         ..._advancedGoalItems.map(
                           (item) => Padding(
                             padding: EdgeInsets.only(
@@ -11508,38 +11348,37 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
     );
   }
 
+  double _mealsTimelineDotGap(double scale) => 16 * scale;
+
   Widget _buildMealsTimelineDotsWithContent({
     required double scale,
     required Widget content,
   }) {
     final dotSize = 6 * scale;
-    final edgeGap = 3 * scale;
-    final contentVerticalInset = dotSize + edgeGap;
+    // Keep edit-mode spacing visually consistent in both view and edit states.
+    final dotGap = _mealsTimelineDotGap(scale);
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: dotSize,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildMealsTimelineDot(scale: scale),
-                _buildMealsTimelineDot(scale: scale),
-                _buildMealsTimelineDot(scale: scale),
-              ],
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: dotSize,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildMealsTimelineDot(scale: scale),
+              SizedBox(height: dotGap),
+              _buildMealsTimelineDot(scale: scale),
+              SizedBox(height: dotGap),
+              _buildMealsTimelineDot(scale: scale),
+            ],
           ),
-          SizedBox(width: 8 * scale),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: contentVerticalInset),
-              child: Align(alignment: Alignment.centerLeft, child: content),
-            ),
-          ),
-        ],
-      ),
+        ),
+        SizedBox(width: 8 * scale),
+        Expanded(
+          child: Align(alignment: Alignment.centerLeft, child: content),
+        ),
+      ],
     );
   }
 
@@ -11580,7 +11419,9 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                 final isLastMeal = mealIndex == groupEntries.length - 1;
                 final showCalories = _parseNumericText(entry.caloriesText) > 0;
                 return Padding(
-                  padding: EdgeInsets.only(bottom: isLastMeal ? 0 : 8 * scale),
+                  padding: EdgeInsets.only(
+                    bottom: isLastMeal ? 0 : _mealsTimelineDotGap(scale),
+                  ),
                   child: _buildMealsTimelineDotsWithContent(
                     scale: scale,
                     content: Column(
@@ -11666,7 +11507,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                           _parseNumericText(entry.caloriesText) > 0;
                       return Padding(
                         padding: EdgeInsets.only(
-                          bottom: isLastMeal ? 0 : 8 * scale,
+                          bottom: isLastMeal ? 0 : _mealsTimelineDotGap(scale),
                         ),
                         child: _buildMealsTimelineDotsWithContent(
                           scale: scale,
@@ -12961,6 +12802,96 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     return value;
   }
 
+  bool _isHydrationDrinkFood(_DailyFoodCatalogItem food) {
+    final name = food.name.toLowerCase();
+    if (_containsAny(name, const <String>[
+      'water',
+      'buttermilk',
+      'lassi',
+      'juice',
+      'tea',
+      'coffee',
+      'milk',
+      'chaas',
+      'panna',
+      'jaljeera',
+      'sherbet',
+      'sharbat',
+      'smoothie',
+      'drink',
+      'lemonade',
+      'coconut',
+      'electrolyte',
+      'oral rehydration',
+      'broth',
+      'soup',
+    ])) {
+      return true;
+    }
+    final quantityType = food.quantityTypeLabel.trim().toLowerCase();
+    return quantityType == 'ml' || quantityType == 'l';
+  }
+
+  bool _isStrongChaatFood(_DailyFoodCatalogItem food) {
+    final name = food.name.toLowerCase();
+    return _containsAny(name, const <String>[
+      'chaat',
+      'chat',
+      'bhel',
+      'papdi',
+      'golgappa',
+      'gol gappa',
+      'golgappe',
+      'gol gappe',
+      'pani puri',
+      'panipuri',
+      'sev puri',
+      'dahi puri',
+      'phuchka',
+      'puchka',
+      'ragda',
+      'ragda pattice',
+      'ragda patties',
+      'dahi bhalla',
+      'dahi vada',
+      'dahi wada',
+      'aloo tikki chaat',
+      'samosa chaat',
+      'jhal muri',
+      'muri',
+    ]);
+  }
+
+  bool _isChaatFood(_DailyFoodCatalogItem food) {
+    if (_isStrongChaatFood(food)) {
+      return true;
+    }
+    final name = food.name.toLowerCase();
+    return _containsAny(name, const <String>['tikki', 'bhel', 'papdi']);
+  }
+
+  bool _hasChaatIntent(String query) {
+    final normalized = query.trim().toLowerCase();
+    return normalized == 'chat' ||
+        normalized == 'chats' ||
+        normalized.contains('chaat') ||
+        _containsAny(normalized, const <String>[
+          'pani puri',
+          'panipuri',
+          'golgappa',
+          'gol gappa',
+          'phuchka',
+          'puchka',
+          'sev puri',
+          'dahi puri',
+          'papdi chaat',
+          'bhel puri',
+          'ragda pattice',
+          'aloo tikki chaat',
+          'samosa chaat',
+        ]);
+  }
+
   int _assistantIntentScore({
     required _DailyFoodCatalogItem food,
     required String query,
@@ -12968,6 +12899,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     required bool hasProteinIntent,
     required bool hasLowCalorieIntent,
     required bool hasHydrationIntent,
+    required bool hasChaatIntent,
     required bool hasSnackIntent,
     required bool hasBreakfastIntent,
     required bool hasLunchIntent,
@@ -12993,15 +12925,92 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     if (hasLowCalorieIntent) {
       score += math.max(0, (320 - calories).round());
     }
-    if (hasHydrationIntent &&
-        _containsAny(name, const <String>[
+    if (hasHydrationIntent) {
+      if (_isHydrationDrinkFood(food)) {
+        score += 220;
+        if (_containsAny(name, const <String>[
           'water',
+          'chaas',
           'buttermilk',
           'lassi',
-          'juice',
-          'tea',
+          'coconut water',
+          'jaljeera',
+          'aam panna',
+          'lemon water',
         ])) {
-      score += 110;
+          score += 80;
+        }
+      } else {
+        score -= 220;
+      }
+    }
+    if (hasChaatIntent) {
+      if (_isStrongChaatFood(food)) {
+        score += 340;
+      } else if (_isChaatFood(food)) {
+        score += 180;
+      } else {
+        score -= 320;
+      }
+      if (_containsAny(name, const <String>['chaat', 'chat'])) {
+        score += 70;
+      }
+      if (_containsAny(name, const <String>[
+        'pani puri',
+        'panipuri',
+        'golgappa',
+        'gol gappa',
+        'phuchka',
+        'puchka',
+        'sev puri',
+        'dahi puri',
+        'papdi chaat',
+        'bhel puri',
+      ])) {
+        score += 65;
+      }
+
+      const specificChaatTerms = <String>[
+        'pani puri',
+        'panipuri',
+        'golgappa',
+        'gol gappa',
+        'phuchka',
+        'puchka',
+        'sev puri',
+        'dahi puri',
+        'papdi chaat',
+        'bhel puri',
+        'ragda',
+        'aloo tikki',
+        'samosa chaat',
+        'dahi bhalla',
+        'dahi vada',
+        'dahi wada',
+      ];
+      for (final term in specificChaatTerms) {
+        if (query.contains(term) && name.contains(term)) {
+          score += 90;
+        }
+      }
+
+      if (_containsAny(query, const <String>[
+            'chaat',
+            'chaats',
+            'chat',
+            'chats',
+          ]) &&
+          _isStrongChaatFood(food)) {
+        score += 45;
+      }
+      if (_containsAny(query, const <String>[
+            'snack',
+            'snacks',
+            'street food',
+          ]) &&
+          _isChaatFood(food)) {
+        score += 20;
+      }
     }
     if (hasSnackIntent &&
         _containsAny(name, const <String>[
@@ -13202,24 +13211,6 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     ]);
   }
 
-  bool _hasNoCuisinePreferenceIntent(String query) {
-    return _containsAny(query, const <String>[
-      'any cuisine',
-      'all cuisines',
-      'no cuisine preference',
-      'cuisine is fine',
-      'cuisine fine',
-      'any food is fine',
-      'anything is fine',
-      "doesn't matter",
-      'doesnt matter',
-      'not a problem',
-      'no problem',
-      'not an issue',
-      'any country is fine',
-    ]);
-  }
-
   String _formatProteinEstimate(double value) {
     if (value <= 0) {
       return '~0g';
@@ -13349,7 +13340,6 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
   String _buildTodayMealPlanReply({
     required List<_DailyFoodCatalogItem> candidates,
     required String dietLabel,
-    required String preferredCountry,
     required String currencyCode,
     required String currencyPrefix,
     required double? effectiveBudget,
@@ -13462,7 +13452,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     }
 
     final lines = <String>[
-      'Here is a practical meal plan for today ($dietLabel${preferredCountry.isNotEmpty ? ', $preferredCountry priority' : ''}):',
+      'Here is a practical meal plan for today ($dietLabel):',
       '',
       'A. Breakfast${effectiveBudget == null ? '' : ' (${_budgetRangeText(budget: effectiveBudget, currencyPrefix: currencyPrefix, lowFactor: 0.55, highFactor: 0.8)})'}',
       ...breakfastItems.map((food) => '- ${itemLine(food)}'),
@@ -13488,6 +13478,25 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     return lines.join('\n');
   }
 
+  String _assistantPreferredCountry() {
+    final savedPreferredCountry = _OnboardingProfileState.selectedCountryName
+        .trim();
+    if (savedPreferredCountry.isNotEmpty) {
+      return savedPreferredCountry;
+    }
+    final localeCountryCode = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .locale
+        .countryCode
+        ?.trim()
+        .toUpperCase();
+    if (localeCountryCode == null || localeCountryCode.isEmpty) {
+      return '';
+    }
+    return _countryNameByIso2Code[localeCountryCode] ?? localeCountryCode;
+  }
+
   Future<String> _buildDatabaseAssistantReply(String prompt) async {
     final query = prompt.toLowerCase();
     final requestedNutrientKeys = _requestedNutrientKeys(query);
@@ -13496,8 +13505,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
         .clamp(0, _dietPreferenceOptions.length - 1);
     final dietLabel =
         _dietPreferenceOptions[safeDietPreferenceIndex.toInt()].label;
-    final savedPreferredCountry = _OnboardingProfileState.selectedCountryName
-        .trim();
+    final preferredCountry = _assistantPreferredCountry();
     final budgetCurrencyRaw = _OnboardingProfileState.budgetCurrencyCode
         .trim()
         .toUpperCase();
@@ -13539,9 +13547,11 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     final hasHydrationIntent = _containsAny(query, const <String>[
       'water',
       'hydrate',
+      'hydrating',
       'hydration',
       'drink',
     ]);
+    final hasChaatIntent = _hasChaatIntent(query);
     final hasSnackIntent = _containsAny(query, const <String>[
       'snack',
       'quick bite',
@@ -13559,10 +13569,6 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
       'fast',
       'easy',
     ]);
-    final hasNoCuisinePreference = _hasNoCuisinePreferenceIntent(query);
-    final preferredCountry = hasNoCuisinePreference
-        ? ''
-        : savedPreferredCountry;
     final hasTodayPlanIntent = _isTodayMealPlanIntent(query);
     final shouldShowTargets = _containsAny(query, const <String>[
       'target',
@@ -13586,6 +13592,28 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     }
 
     List<_DailyFoodCatalogItem> candidates = foods;
+    if (hasChaatIntent) {
+      final strongChaatCandidates = candidates
+          .where(_isStrongChaatFood)
+          .toList(growable: false);
+      if (strongChaatCandidates.isNotEmpty) {
+        candidates = strongChaatCandidates;
+      }
+      final chaatCandidates = candidates
+          .where(_isChaatFood)
+          .toList(growable: false);
+      if (chaatCandidates.isNotEmpty) {
+        candidates = chaatCandidates;
+      }
+    }
+    if (hasHydrationIntent) {
+      final hydrationCandidates = candidates
+          .where(_isHydrationDrinkFood)
+          .toList(growable: false);
+      if (hydrationCandidates.isNotEmpty) {
+        candidates = hydrationCandidates;
+      }
+    }
     bool budgetApplied = false;
     if (effectiveBudget != null) {
       final withinBudget = candidates
@@ -13625,7 +13653,6 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
       return _buildTodayMealPlanReply(
         candidates: candidates,
         dietLabel: dietLabel,
-        preferredCountry: preferredCountry,
         currencyCode: budgetCurrencyCode,
         currencyPrefix: currencyPrefix,
         effectiveBudget: effectiveBudget,
@@ -13644,6 +13671,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
               hasProteinIntent: hasProteinIntent,
               hasLowCalorieIntent: hasLowCalorieIntent,
               hasHydrationIntent: hasHydrationIntent,
+              hasChaatIntent: hasChaatIntent,
               hasSnackIntent: hasSnackIntent,
               hasBreakfastIntent: hasBreakfastIntent,
               hasLunchIntent: hasLunchIntent,
@@ -13677,7 +13705,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     }
 
     final lines = <String>[
-      'Based on your profile ($dietLabel${preferredCountry.isNotEmpty ? ', $preferredCountry cuisine priority' : ''}), here are practical options:',
+      'Based on your profile ($dietLabel), here are practical options:',
     ];
     if (effectiveBudget != null) {
       final budgetText = _formatCompactNumber(effectiveBudget);
@@ -14748,7 +14776,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   int _selectedWaterAmountIndex = 0;
-  double _waterIntakeLiters = 0.0;
+  double _waterIntakeLiters = 0.25;
   bool _waterEditedManually = false;
   bool _isCustomWaterEntrySelected = false;
   bool _consumeNextWaterPresetTap = false;
@@ -15025,8 +15053,12 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
   @override
   void initState() {
     super.initState();
+    _selectedWaterAmountIndex = 0;
+    _waterIntakeLiters = _waterPresetAmountsLiters.first;
+    _waterEditedManually = false;
+    _isCustomWaterEntrySelected = false;
     _waterController = TextEditingController(
-      text: _formatDisplayedWaterValue(0),
+      text: _formatDisplayedWaterValue(_waterIntakeLiters),
     );
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
@@ -15418,7 +15450,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                             ],
                           ),
                         ),
-                        SizedBox(height: 24),
+                        SizedBox(height: 36),
                         Text(
                           'Water Intake',
                           textAlign: TextAlign.center,
@@ -15429,7 +15461,7 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
                             height: 0.99,
                           ),
                         ),
-                        SizedBox(height: 16 * scale),
+                        SizedBox(height: 2 * scale),
                         Container(
                           decoration: BoxDecoration(
                             color: const Color(0x29FFFFFF),
@@ -16035,31 +16067,6 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
     Navigator.of(context).pop();
   }
 
-  void _goToDailyProgressTab(int tabIndex) {
-    if (!mounted) {
-      return;
-    }
-    Navigator.of(context).pushReplacement(
-      _buildNoTransitionRoute(
-        screen: DailyProgressScreen(initialSelectedBottomNavIndex: tabIndex),
-      ),
-    );
-  }
-
-  void _goToAccountPage() {
-    if (!mounted) {
-      return;
-    }
-    Navigator.of(context).pushReplacement(
-      _buildNoTransitionRoute(
-        screen: AccountScreen(
-          skippedBudgetSection: _OnboardingSkipFlags.skippedBudgetSection,
-          skippedWaterSection: _OnboardingSkipFlags.skippedWaterSection,
-        ),
-      ),
-    );
-  }
-
   void _toggleFavorite(_DailyFoodCatalogItem item) {
     if (!mounted) {
       return;
@@ -16112,53 +16119,6 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
           )
           .toList(growable: false);
     });
-  }
-
-  Widget _bottomNavIconButton({
-    required double scale,
-    required String assetPath,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      width: 48 * scale,
-      height: 48 * scale,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: _RotatingGlassPanel(
-          scale: scale,
-          borderRadius: 15 * scale,
-          fillColor: isSelected ? Colors.white : const Color(0x52FFFFFF),
-          padding: EdgeInsets.zero,
-          expandToBounds: true,
-          boxShadow: isSelected
-              ? const [
-                  BoxShadow(
-                    color: Color(0xFFFF0000),
-                    blurRadius: 4,
-                    blurStyle: BlurStyle.outer,
-                  ),
-                ]
-              : const <BoxShadow>[],
-          enableBlur: false,
-          child: Center(
-            child: SizedBox(
-              width: 30 * scale,
-              height: 30 * scale,
-              child: SvgPicture.asset(
-                assetPath,
-                fit: BoxFit.contain,
-                colorFilter: ColorFilter.mode(
-                  isSelected ? _bottomNavActiveIconColor : Colors.black,
-                  BlendMode.srcIn,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildSearchResultCard({
@@ -16247,7 +16207,6 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
         contentBuilder: (context, metrics) {
           final scale = metrics.designScale;
           final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-          final isKeyboardVisible = keyboardInset > 0;
           final contentWidth = math.min(
             358 * scale,
             metrics.width - (32 * scale),
@@ -16258,16 +16217,8 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
             metrics: metrics,
             scale: scale,
           );
-          final navHeight = 64 * scale;
           final backButtonHeight = 56 * scale;
-          final showBackOnlyControls =
-              _searchFocusNode.hasFocus || !isKeyboardVisible;
-          final controlsRowHeight = showBackOnlyControls
-              ? backButtonHeight
-              : navHeight;
-          final blurPanelHeight =
-              (controlsRowHeight - (showBackOnlyControls ? 0 : (8 * scale))) +
-              controlsBottom;
+          final blurPanelHeight = backButtonHeight + controlsBottom;
           final scrollBottomPadding =
               blurPanelHeight + keyboardInset + (24 * scale);
 
@@ -16320,8 +16271,7 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
                                 controller: _searchController,
                                 focusNode: _searchFocusNode,
                                 textInputAction: TextInputAction.search,
-                                onTapOutside: (_) =>
-                                    _searchFocusNode.unfocus(),
+                                onTapOutside: (_) => _searchFocusNode.unfocus(),
                                 style: TextStyle(
                                   fontFamily: _defaultNonBorelFontFamily,
                                   fontSize: (16 * scale).clamp(14.0, 20.0),
@@ -16416,98 +16366,21 @@ class _SearchFoodScreenState extends State<SearchFoodScreen>
                 left: contentLeft,
                 width: contentWidth,
                 bottom: controlsBottom,
-                child: showBackOnlyControls
-                    ? _TodaysEntryGlassTile(
-                        scale: scale,
-                        height: backButtonHeight,
-                        borderRadius: 32 * scale,
-                        inactiveFillColor: Colors.white,
-                        selectedFillColor: Colors.white,
-                        onTap: _goBack,
-                        child: Center(
-                          child: Icon(
-                            Icons.arrow_back,
-                            color: const Color(0xFFFFD206),
-                            size: (26 * scale).clamp(20.0, 30.0),
-                          ),
-                        ),
-                      )
-                    : Row(
-                        children: [
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16 * scale),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(
-                                  sigmaX: _dailyProgressMenuBarBlurSigma,
-                                  sigmaY: _dailyProgressMenuBarBlurSigma,
-                                ),
-                                child: Container(
-                                  height: navHeight,
-                                  decoration: BoxDecoration(
-                                    color: _menuBarBlockFillColor,
-                                    borderRadius: BorderRadius.circular(
-                                      16 * scale,
-                                    ),
-                                  ),
-                                  padding: EdgeInsets.all(8 * scale),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      _bottomNavIconButton(
-                                        scale: scale,
-                                        assetPath: 'assets/Home_in.svg',
-                                        isSelected: false,
-                                        onTap: () => _goToDailyProgressTab(0),
-                                      ),
-                                      _bottomNavIconButton(
-                                        scale: scale,
-                                        assetPath: 'assets/Notification_in.svg',
-                                        isSelected: false,
-                                        onTap: () => _goToDailyProgressTab(1),
-                                      ),
-                                      _bottomNavIconButton(
-                                        scale: scale,
-                                        assetPath: 'assets/Account_in.svg',
-                                        isSelected: false,
-                                        onTap: _goToAccountPage,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 16 * scale),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16 * scale),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                sigmaX: _dailyProgressMenuBarBlurSigma,
-                                sigmaY: _dailyProgressMenuBarBlurSigma,
-                              ),
-                              child: Container(
-                                width: navHeight,
-                                height: navHeight,
-                                decoration: BoxDecoration(
-                                  color: _menuBarBlockFillColor,
-                                  borderRadius: BorderRadius.circular(
-                                    16 * scale,
-                                  ),
-                                ),
-                                padding: EdgeInsets.all(8 * scale),
-                                child: _bottomNavIconButton(
-                                  scale: scale,
-                                  assetPath: 'assets/Add_new.svg',
-                                  isSelected: true,
-                                  onTap: () {},
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                child: _TodaysEntryGlassTile(
+                  scale: scale,
+                  height: backButtonHeight,
+                  borderRadius: 32 * scale,
+                  inactiveFillColor: Colors.white,
+                  selectedFillColor: Colors.white,
+                  onTap: _goBack,
+                  child: Center(
+                    child: Icon(
+                      Icons.arrow_back,
+                      color: const Color(0xFFFFD206),
+                      size: (26 * scale).clamp(20.0, 30.0),
+                    ),
+                  ),
+                ),
               ),
             ],
           );
@@ -16568,6 +16441,7 @@ class _SearchFoodItemDetailsScreenState
   bool _isFavorite = false;
   int _selectedQuantityUnitIndex = 0;
   bool _consumeNextBudgetPresetTap = false;
+  double? _lastQuantityValueForScaling;
 
   late final TextEditingController _itemNameController;
   late final TextEditingController _quantityController;
@@ -16757,6 +16631,72 @@ class _SearchFoodItemDetailsScreenState
         .toStringAsFixed(2)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  double? _parsePositiveQuantityValue(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return null;
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed <= 0) {
+      return null;
+    }
+    return parsed;
+  }
+
+  double _parseNonNegativeNumericValue(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return 0;
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return 0;
+    }
+    return parsed;
+  }
+
+  void _scaleNutritionControllerValue(
+    TextEditingController controller,
+    double factor,
+  ) {
+    final current = _parseNonNegativeNumericValue(controller.text);
+    final scaled = math.max(0, current * factor);
+    final normalized = _normalizedNumericText(scaled.toString());
+    controller.text = normalized;
+    controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: normalized.length),
+    );
+  }
+
+  void _scaleNutritionValuesForQuantityChange(double factor) {
+    if (factor.isNaN ||
+        factor.isInfinite ||
+        factor <= 0 ||
+        (factor - 1).abs() <= 0.0001) {
+      return;
+    }
+    _scaleNutritionControllerValue(_caloriesController, factor);
+    _scaleNutritionControllerValue(_proteinController, factor);
+    _scaleNutritionControllerValue(_carbsController, factor);
+    _scaleNutritionControllerValue(_fatController, factor);
+    _scaleNutritionControllerValue(_fiberController, factor);
+    _scaleNutritionControllerValue(_sugarController, factor);
+    _scaleNutritionControllerValue(_sodiumController, factor);
+  }
+
+  void _handleQuantityChangedForScaling() {
+    final nextQuantity = _parsePositiveQuantityValue(_quantityController.text);
+    if (nextQuantity != null) {
+      final previousQuantity = _lastQuantityValueForScaling ?? nextQuantity;
+      final factor = nextQuantity / previousQuantity;
+      _scaleNutritionValuesForQuantityChange(factor);
+      _lastQuantityValueForScaling = nextQuantity;
+    }
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _adjustUnitQuantity(int delta) {
@@ -17322,6 +17262,9 @@ class _SearchFoodItemDetailsScreenState
     _quantityController = TextEditingController(
       text: _normalizedQuantityText(widget.item.quantityAmountText),
     );
+    _lastQuantityValueForScaling = _parsePositiveQuantityValue(
+      _quantityController.text,
+    );
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _budgetPriceController = TextEditingController(
@@ -17381,9 +17324,10 @@ class _SearchFoodItemDetailsScreenState
     _bindFieldFocus(focusNode: _sugarFocusNode, fieldKey: _sugarFieldKey);
     _bindFieldFocus(focusNode: _sodiumFocusNode, fieldKey: _sodiumFieldKey);
 
+    _quantityController.addListener(_handleQuantityChangedForScaling);
+
     for (final controller in <TextEditingController>[
       _itemNameController,
-      _quantityController,
       _budgetPriceController,
       _caloriesController,
       _proteinController,
@@ -17423,6 +17367,7 @@ class _SearchFoodItemDetailsScreenState
     _sodiumFocusNode.dispose();
 
     _itemNameController.dispose();
+    _quantityController.removeListener(_handleQuantityChangedForScaling);
     _quantityController.dispose();
     _hourController.dispose();
     _minuteController.dispose();
@@ -18180,6 +18125,9 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final TextEditingController _searchController;
+  bool _isLoadingCatalogFavorites = false;
+  List<_DailyFoodCatalogItem> _catalogFavorites =
+      const <_DailyFoodCatalogItem>[];
 
   @override
   void initState() {
@@ -18189,6 +18137,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
       vsync: this,
       duration: _kBackgroundMotionDuration,
     )..repeat();
+    _loadCatalogFavorites();
   }
 
   @override
@@ -18205,6 +18154,33 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     Navigator.of(context).pop();
   }
 
+  Future<void> _loadCatalogFavorites() async {
+    if (_isLoadingCatalogFavorites) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _isLoadingCatalogFavorites = true;
+      });
+    }
+    final favorites = await _DailyFoodDatabase.favoriteFoods();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _catalogFavorites = favorites;
+      _isLoadingCatalogFavorites = false;
+    });
+  }
+
+  String _catalogFavoriteCaloriesText(_DailyFoodCatalogItem food) {
+    final normalized = food.caloriesText.trim();
+    if (normalized.isNotEmpty && normalized != '0') {
+      return normalized;
+    }
+    return food.caloriesKcal.toString();
+  }
+
   Future<void> _openNewCustomEntryScreen() async {
     if (!mounted) {
       return;
@@ -18219,6 +18195,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     );
     if (mounted) {
       setState(() {});
+      _loadCatalogFavorites();
     }
   }
 
@@ -18245,9 +18222,22 @@ class _FavoritesScreenState extends State<FavoritesScreen>
               math.max(metrics.padding.bottom, 24 * scale);
           final contentBottomInset =
               bottomPanelHeight + controlsBottom + (24 * scale);
-          final allFavorites = _CustomFoodEntryStore.entries
-              .where((entry) => entry.isFavorite)
-              .toList(growable: false);
+          final allFavorites = <({String name, String caloriesText})>[
+            ..._CustomFoodEntryStore.entries
+                .where((entry) => entry.isFavorite)
+                .map(
+                  (entry) =>
+                      (name: entry.name, caloriesText: entry.caloriesText),
+                ),
+            ..._catalogFavorites
+                .where((food) => _DailyFoodDatabase.isFavorite(food.id))
+                .map(
+                  (food) => (
+                    name: food.name,
+                    caloriesText: _catalogFavoriteCaloriesText(food),
+                  ),
+                ),
+          ];
           final hasFavorites = allFavorites.isNotEmpty;
           final searchQuery = _searchController.text.trim().toLowerCase();
           final visibleFavorites = searchQuery.isEmpty
@@ -19459,6 +19449,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
   bool _isQuantityUnitDropdownPressed = false;
   bool _consumeNextBudgetPresetTap = false;
   int _selectedQuantityUnitIndex = 0;
+  double? _lastQuantityValueForScaling;
   final List<_CustomFoodEntry> _pendingCustomEntries = <_CustomFoodEntry>[];
 
   late final TextEditingController _itemNameController;
@@ -19576,6 +19567,18 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
         .toStringAsFixed(2)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  double? _parsePositiveQuantityValue(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return null;
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed <= 0) {
+      return null;
+    }
+    return parsed;
   }
 
   void _toggleQuantityUnitDropdown() {
@@ -19887,6 +19890,60 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
+  double _parseNonNegativeNumericValue(String raw) {
+    final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+    if (cleaned.isEmpty) {
+      return 0;
+    }
+    final parsed = double.tryParse(cleaned);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed < 0) {
+      return 0;
+    }
+    return parsed;
+  }
+
+  void _scaleNutritionControllerValue(
+    TextEditingController controller,
+    double factor,
+  ) {
+    final current = _parseNonNegativeNumericValue(controller.text);
+    final scaled = math.max(0, current * factor);
+    final normalized = _normalizedNumericText(scaled.toString());
+    controller.text = normalized;
+    controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: normalized.length),
+    );
+  }
+
+  void _scaleNutritionValuesForQuantityChange(double factor) {
+    if (factor.isNaN ||
+        factor.isInfinite ||
+        factor <= 0 ||
+        (factor - 1).abs() <= 0.0001) {
+      return;
+    }
+    _scaleNutritionControllerValue(_caloriesController, factor);
+    _scaleNutritionControllerValue(_proteinController, factor);
+    _scaleNutritionControllerValue(_carbsController, factor);
+    _scaleNutritionControllerValue(_fatController, factor);
+    _scaleNutritionControllerValue(_fiberController, factor);
+    _scaleNutritionControllerValue(_sugarController, factor);
+    _scaleNutritionControllerValue(_sodiumController, factor);
+  }
+
+  void _handleQuantityChangedForScaling() {
+    final nextQuantity = _parsePositiveQuantityValue(_quantityController.text);
+    if (nextQuantity != null) {
+      final previousQuantity = _lastQuantityValueForScaling ?? nextQuantity;
+      final factor = nextQuantity / previousQuantity;
+      _scaleNutritionValuesForQuantityChange(factor);
+      _lastQuantityValueForScaling = nextQuantity;
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   String _normalizedBudgetText(String raw) {
     final cleaned = raw.trim().replaceAll(' ', '').replaceAll(',', '.');
     if (cleaned.isEmpty) {
@@ -20050,6 +20107,9 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     super.initState();
     _itemNameController = TextEditingController(text: '');
     _quantityController = TextEditingController(text: '1');
+    _lastQuantityValueForScaling = _parsePositiveQuantityValue(
+      _quantityController.text,
+    );
     _hourController = TextEditingController(text: _timeHourText);
     _minuteController = TextEditingController(text: _timeMinuteText);
     _budgetPriceController = TextEditingController(text: '');
@@ -20107,9 +20167,10 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _bindFieldFocus(focusNode: _sugarFocusNode, fieldKey: _sugarFieldKey);
     _bindFieldFocus(focusNode: _sodiumFocusNode, fieldKey: _sodiumFieldKey);
 
+    _quantityController.addListener(_handleQuantityChangedForScaling);
+
     for (final controller in <TextEditingController>[
       _itemNameController,
-      _quantityController,
       _budgetPriceController,
       _caloriesController,
       _proteinController,
@@ -20147,6 +20208,7 @@ class _NewCustomEntryScreenState extends State<NewCustomEntryScreen>
     _sugarFocusNode.dispose();
     _sodiumFocusNode.dispose();
     _itemNameController.dispose();
+    _quantityController.removeListener(_handleQuantityChangedForScaling);
     _quantityController.dispose();
     _hourController.dispose();
     _minuteController.dispose();
