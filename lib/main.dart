@@ -12,6 +12,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const Duration _kScreenFadeDuration = Duration(milliseconds: 380);
 const Duration _kSplashDuration = Duration(milliseconds: 2500);
@@ -33,6 +34,10 @@ const String _supabaseAnonKey = String.fromEnvironment(
 const String _authCallbackScheme = 'com.example.whatihad';
 const String _authCallbackHost = 'login-callback';
 const String _authCallbackUrl = '$_authCallbackScheme://$_authCallbackHost/';
+const String _termsAndConditionsUrl =
+    'https://whatihad.info/terms_and_condition/';
+const String _privacyPolicyUrl = 'https://whatihad.info/privacy_policy/';
+const String _aiTermsUrl = 'https://whatihad.info/ai_terms/';
 const String _goalLoseWeightImageUrl = 'assets/Lose_weight.png';
 const String _goalGainWeightImageUrl = 'assets/Gain_weight.png';
 const String _goalGainMuscleImageUrl = 'assets/Gain_muscle.png';
@@ -3360,16 +3365,19 @@ class _TermsScreenState extends State<TermsScreen>
                     _TermsLinkTile(
                       label: 'Terms and Conditions',
                       scale: metrics.designScale,
+                      url: _termsAndConditionsUrl,
                     ),
                     SizedBox(height: linkGap),
                     _TermsLinkTile(
                       label: 'Privacy Policy',
                       scale: metrics.designScale,
+                      url: _privacyPolicyUrl,
                     ),
                     SizedBox(height: linkGap),
                     _TermsLinkTile(
                       label: 'AI Terms',
                       scale: metrics.designScale,
+                      url: _aiTermsUrl,
                     ),
                   ],
                 ),
@@ -3561,11 +3569,23 @@ class _AccountTermsScreenState extends State<AccountTermsScreen>
                 width: contentWidth,
                 child: Column(
                   children: [
-                    _TermsLinkTile(label: 'Terms and Conditions', scale: scale),
+                    _TermsLinkTile(
+                      label: 'Terms and Conditions',
+                      scale: scale,
+                      url: _termsAndConditionsUrl,
+                    ),
                     SizedBox(height: 32 * scale),
-                    _TermsLinkTile(label: 'Privacy Policy', scale: scale),
+                    _TermsLinkTile(
+                      label: 'Privacy Policy',
+                      scale: scale,
+                      url: _privacyPolicyUrl,
+                    ),
                     SizedBox(height: 32 * scale),
-                    _TermsLinkTile(label: 'AI Terms', scale: scale),
+                    _TermsLinkTile(
+                      label: 'AI Terms',
+                      scale: scale,
+                      url: _aiTermsUrl,
+                    ),
                   ],
                 ),
               ),
@@ -24057,10 +24077,15 @@ class _GoalCardState extends State<_GoalCard> {
 }
 
 class _TermsLinkTile extends StatefulWidget {
-  const _TermsLinkTile({required this.label, required this.scale});
+  const _TermsLinkTile({
+    required this.label,
+    required this.scale,
+    required this.url,
+  });
 
   final String label;
   final double scale;
+  final String url;
 
   @override
   State<_TermsLinkTile> createState() => _TermsLinkTileState();
@@ -24069,6 +24094,44 @@ class _TermsLinkTile extends StatefulWidget {
 class _TermsLinkTileState extends State<_TermsLinkTile> {
   bool _isLongPressed = false;
   bool _isClicked = false;
+  bool _isOpeningLink = false;
+
+  Future<void> _openTermsLink() async {
+    if (_isOpeningLink) {
+      return;
+    }
+    setState(() {
+      _isOpeningLink = true;
+      _isClicked = true;
+      _isLongPressed = false;
+    });
+
+    final linkUri = Uri.tryParse(widget.url);
+    bool launched = false;
+    if (linkUri != null) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      launched = await launchUrl(linkUri, mode: LaunchMode.externalApplication);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (!launched) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open this page right now. Please try again.',
+          ),
+        ),
+      );
+    }
+
+    setState(() {
+      _isOpeningLink = false;
+      _isClicked = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24112,10 +24175,7 @@ class _TermsLinkTileState extends State<_TermsLinkTile> {
         });
       },
       onTap: () {
-        setState(() {
-          _isClicked = true;
-          _isLongPressed = false;
-        });
+        unawaited(_openTermsLink());
       },
       child: SizedBox(
         height: 56 * scale,
