@@ -34,6 +34,16 @@ const String _supabaseAnonKey = String.fromEnvironment(
 const String _authCallbackScheme = 'com.example.whatihad';
 const String _authCallbackHost = 'login-callback';
 const String _authCallbackUrl = '$_authCallbackScheme://$_authCallbackHost/';
+String _authRedirectUrl() {
+  if (!kIsWeb) {
+    return _authCallbackUrl;
+  }
+  final currentUri = Uri.base;
+  return currentUri
+      .replace(queryParameters: const <String, String>{}, fragment: '')
+      .toString();
+}
+
 const String _termsAndConditionsUrl =
     'https://whatihad.info/terms_and_condition/';
 const String _privacyPolicyUrl = 'https://whatihad.info/privacy_policy/';
@@ -2364,6 +2374,8 @@ class _UserDataSync {
           if (decoded is Map) {
             _restoreStateFromMap(Map<String, dynamic>.from(decoded));
           }
+        } else {
+          _resetAllLocalState();
         }
         _loadedUserId = user.id;
         _lastSavedSnapshot = _buildSnapshotJson();
@@ -4225,7 +4237,7 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
     try {
       await supabase.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: kIsWeb ? null : _authCallbackUrl,
+        redirectTo: _authRedirectUrl(),
         authScreenLaunchMode: kIsWeb
             ? LaunchMode.platformDefault
             : LaunchMode.externalApplication,
@@ -4281,7 +4293,7 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
 
       await supabase.auth.signInWithOAuth(
         OAuthProvider.apple,
-        redirectTo: kIsWeb ? null : _authCallbackUrl,
+        redirectTo: _authRedirectUrl(),
         authScreenLaunchMode: kIsWeb
             ? LaunchMode.platformDefault
             : LaunchMode.inAppBrowserView,
