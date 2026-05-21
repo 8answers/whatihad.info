@@ -2631,6 +2631,15 @@ class _UserDataSync {
   }
 }
 
+bool _hasCompletedOnboardingProfile() {
+  final hasName = _OnboardingProfileState.selectedName.trim().isNotEmpty;
+  final hasGoal = _OnboardingProfileState.selectedGoalIndex >= 0;
+  final hasActivity = _OnboardingProfileState.selectedActivityIndex >= 0;
+  final hasDietPreference =
+      _OnboardingProfileState.selectedDietPreferenceIndex >= 0;
+  return hasName && hasGoal && hasActivity && hasDietPreference;
+}
+
 class _AccountWeightSelection {
   const _AccountWeightSelection({
     required this.weightKg,
@@ -3085,6 +3094,10 @@ class _FirstScreenState extends State<FirstScreen>
     }
     if (supabase.auth.currentUser == null) {
       _replaceScreen(const LoadingScreen());
+      return;
+    }
+    if (!_hasCompletedOnboardingProfile()) {
+      _replaceScreen(const WelcomeScreen());
       return;
     }
     _replaceScreen(const DailyProgressScreen());
@@ -4409,15 +4422,6 @@ class _BellyoIntroScreenState extends State<BellyoIntroScreen>
     Navigator.of(
       context,
     ).pushReplacement(_buildFadeRoute(screen: const DailyProgressScreen()));
-  }
-
-  bool _hasCompletedOnboardingProfile() {
-    final hasName = _OnboardingProfileState.selectedName.trim().isNotEmpty;
-    final hasGoal = _OnboardingProfileState.selectedGoalIndex >= 0;
-    final hasActivity = _OnboardingProfileState.selectedActivityIndex >= 0;
-    final hasDietPreference =
-        _OnboardingProfileState.selectedDietPreferenceIndex >= 0;
-    return hasName && hasGoal && hasActivity && hasDietPreference;
   }
 
   Future<void> _goToWelcomeScreenAfterDataLoad() async {
