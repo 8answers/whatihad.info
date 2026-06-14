@@ -12092,55 +12092,6 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
                           ),
                         ),
                       ],
-                      if (!_isHistoryViewOpen) ...[
-                        SizedBox(height: 30 * scale),
-                        _sectionTitle('Bellyo Suggestion', scale),
-                        SizedBox(height: 8 * scale),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _openBellyoAiScreen,
-                          child: _outerPanel(
-                            scale: scale,
-                            child: _innerPanel(
-                              scale: scale,
-                              height: 88,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Expanded(
-                                    child: Align(
-                                      alignment: Alignment.topLeft,
-                                      child: Text(
-                                        'Your source for expert nutrition tips and covering healthy recipes, cooking hacks.',
-                                        style: TextStyle(
-                                          fontSize: (14 * scale).clamp(
-                                            12.0,
-                                            16.0,
-                                          ),
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: (18 * scale).clamp(14.0, 22.0),
-                                    height: (18 * scale).clamp(14.0, 22.0),
-                                    child: SvgPicture.asset(
-                                      'assets/Chat.svg',
-                                      fit: BoxFit.contain,
-                                      colorFilter: const ColorFilter.mode(
-                                        Colors.white,
-                                        BlendMode.srcIn,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
                       if (!hideMealsTimelineSection) ...[
                         SizedBox(height: 30 * scale),
                         KeyedSubtree(
@@ -12304,7 +12255,7 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
               ),
               if (showFloatingBanana)
                 Positioned(
-                  right: 16 * scale,
+                  right: metrics.width - contentLeft - contentWidth,
                   bottom: controlsBottom + (74 * scale),
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -12506,9 +12457,10 @@ class BellyoAssistantScreen extends StatefulWidget {
 }
 
 class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final TextEditingController _promptController;
   late final ScrollController _messageScrollController;
+  late final AnimationController _backgroundController;
   late final AnimationController _loadingDotsController;
   final List<_BellyoAssistantMessage> _messages = <_BellyoAssistantMessage>[];
   bool _isAsking = false;
@@ -12518,6 +12470,10 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     super.initState();
     _promptController = TextEditingController()..addListener(_handlePromptEdit);
     _messageScrollController = ScrollController();
+    _backgroundController = AnimationController(
+      vsync: this,
+      duration: _kBackgroundMotionDuration,
+    )..repeat();
     _loadingDotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3000),
@@ -12529,6 +12485,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     _promptController.removeListener(_handlePromptEdit);
     _promptController.dispose();
     _messageScrollController.dispose();
+    _backgroundController.dispose();
     _loadingDotsController.dispose();
     super.dispose();
   }
@@ -14093,49 +14050,58 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
     required double scale,
     required double bottomInset,
     required EdgeInsets viewPadding,
+    required double contentLeft,
+    required double contentWidth,
   }) {
+    final topOffset = viewPadding.top + (72 * scale);
+    final promptAreaHeight = (204 * scale) + viewPadding.bottom + bottomInset;
+
     if (_messages.isEmpty) {
-      return Align(
-        alignment: const Alignment(0, -0.10),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 24 * scale),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 168 * scale,
-                child: Image.asset(
-                  'assets/Bellyo_open_page.png',
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
+      return Positioned(
+        left: contentLeft,
+        width: contentWidth,
+        top: topOffset,
+        bottom: promptAreaHeight,
+        child: Align(
+          alignment: const Alignment(0, -0.10),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24 * scale),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 168 * scale,
+                  child: Image.asset(
+                    'assets/Bellyo_open_page.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
                 ),
-              ),
-              SizedBox(height: 20 * scale),
-              Text(
-                'Ask me anything about food,\nmeals, calories, or what to eat next.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: _defaultNonBorelFontFamily,
-                  fontSize: (16 * scale).clamp(14.0, 18.0),
-                  color: Colors.black,
-                  fontWeight: FontWeight.w400,
-                  height: 1.42,
+                SizedBox(height: 20 * scale),
+                Text(
+                  'Ask me anything about food,\nmeals, calories, or what to eat next.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: _defaultNonBorelFontFamily,
+                    fontSize: (16 * scale).clamp(14.0, 18.0),
+                    color: Colors.black,
+                    fontWeight: FontWeight.w400,
+                    height: 1.42,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
     }
 
     final itemCount = _messages.length + (_isAsking ? 1 : 0);
-    final topOffset = viewPadding.top + (72 * scale);
-    final promptAreaHeight = (204 * scale) + viewPadding.bottom + bottomInset;
 
-    return Positioned.fill(
+    return Positioned(
       top: topOffset,
-      left: 0,
-      right: 0,
+      left: contentLeft,
+      width: contentWidth,
       bottom: 0,
       child: ListView.builder(
         controller: _messageScrollController,
@@ -14166,311 +14132,265 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final scale = (media.size.width / 390).clamp(0.82, 1.08);
-    final bottomInset = media.viewInsets.bottom;
-    final hasPromptInput = _promptController.text.trim().isNotEmpty;
-    final canSendPrompt = hasPromptInput && !_isAsking;
-    final hasUserPrompted = _messages.any((message) => message.isUser);
-    final firstRowItemCount = (_bellyoAssistantPromptSuggestions.length / 2)
-        .ceil();
-    final firstRowPrompts = _bellyoAssistantPromptSuggestions
-        .take(firstRowItemCount)
-        .toList(growable: false);
-    final secondRowPrompts = _bellyoAssistantPromptSuggestions
-        .skip(firstRowItemCount)
-        .toList(growable: false);
-
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
       child: Scaffold(
         resizeToAvoidBottomInset: false,
-        backgroundColor: const Color(0xFFFF8E92),
-        body: Stack(
-          children: [
-            Positioned.fill(child: Container(color: const Color(0xFFFF8E92))),
-            Positioned(
-              bottom: -84 * scale,
-              left: -30 * scale,
-              right: -30 * scale,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(
-                  sigmaX: 100 * scale,
-                  sigmaY: 100 * scale,
+        body: _AnimatedGradientScene(
+          animation: _backgroundController,
+          contentBuilder: (context, metrics) {
+            final media = MediaQuery.of(context);
+            final scale = metrics.designScale;
+            final bottomInset = media.viewInsets.bottom;
+            final hasPromptInput = _promptController.text.trim().isNotEmpty;
+            final canSendPrompt = hasPromptInput && !_isAsking;
+            final hasUserPrompted = _messages.any((message) => message.isUser);
+            final firstRowItemCount =
+                (_bellyoAssistantPromptSuggestions.length / 2).ceil();
+            final firstRowPrompts = _bellyoAssistantPromptSuggestions
+                .take(firstRowItemCount)
+                .toList(growable: false);
+            final secondRowPrompts = _bellyoAssistantPromptSuggestions
+                .skip(firstRowItemCount)
+                .toList(growable: false);
+            final contentWidth = math.min(
+              358 * scale,
+              metrics.width - (32 * scale),
+            );
+            final contentLeft = (metrics.width - contentWidth) / 2;
+            final titleTop = metrics.padding.top + (18 * scale);
+
+            return Stack(
+              children: [
+                _buildConversationBody(
+                  scale: scale,
+                  bottomInset: bottomInset,
+                  viewPadding: media.padding,
+                  contentLeft: contentLeft,
+                  contentWidth: contentWidth,
                 ),
-                child: Container(
-                  height: 240 * scale,
-                  color: const Color(0xFFFFDC92),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 92 * scale,
-              left: -112 * scale,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(
-                  sigmaX: 100 * scale,
-                  sigmaY: 100 * scale,
-                ),
-                child: Container(
-                  width: 196 * scale,
-                  height: 244 * scale,
-                  color: const Color(0xFF92EBFF),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 170 * scale,
-              right: -56 * scale,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(
-                  sigmaX: 50 * scale,
-                  sigmaY: 50 * scale,
-                ),
-                child: Container(
-                  width: 195 * scale,
-                  height: 244 * scale,
-                  color: const Color(0xFFFF7375),
-                ),
-              ),
-            ),
-            _buildConversationBody(
-              scale: scale,
-              bottomInset: bottomInset,
-              viewPadding: media.padding,
-            ),
-            SafeArea(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-                child: SizedBox(
-                  height: 48 * scale,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Transform.translate(
-                        offset: Offset(0, 15 * scale),
-                        child: Text(
-                          'Bellyo',
-                          style: TextStyle(
-                            fontFamily: 'Borel',
-                            fontSize: (32 * scale).clamp(24.0, 38.0),
-                            color: Colors.white,
-                            height: 0.99,
-                          ),
-                        ),
-                      ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: SizedBox(
-                          width: 48 * scale,
-                          height: 48 * scale,
-                          child: _RotatingGlassButton(
-                            scale: scale,
-                            height: 48 * scale,
-                            borderRadius: 24 * scale,
-                            fillColor: Colors.white,
-                            enablePressShadeFeedback: true,
-                            onTap: () => Navigator.of(context).pop(),
-                            child: Icon(
-                              Icons.arrow_back_rounded,
-                              color: const Color(0xFFFFD206),
-                              size: (24 * scale).clamp(20.0, 28.0),
+                Positioned(
+                  top: titleTop,
+                  left: contentLeft,
+                  width: contentWidth,
+                  child: SizedBox(
+                    height: 48 * scale,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Transform.translate(
+                          offset: Offset(0, 15 * scale),
+                          child: Text(
+                            'Bellyo',
+                            style: TextStyle(
+                              fontFamily: 'Borel',
+                              fontSize: (32 * scale).clamp(24.0, 38.0),
+                              color: Colors.white,
+                              height: 0.99,
                             ),
                           ),
                         ),
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _startNewChat,
-                          child: Container(
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: SizedBox(
                             width: 48 * scale,
                             height: 48 * scale,
-                            decoration: BoxDecoration(
-                              color: const Color(0x29FFFFFF),
-                              borderRadius: BorderRadius.circular(16 * scale),
-                              border: Border.all(
-                                color: const Color(0x8FFFFFFF),
-                                width: 1 * scale,
+                            child: _RotatingGlassButton(
+                              scale: scale,
+                              height: 48 * scale,
+                              borderRadius: 24 * scale,
+                              fillColor: Colors.white,
+                              enablePressShadeFeedback: true,
+                              onTap: () => Navigator.of(context).pop(),
+                              child: Icon(
+                                Icons.arrow_back_rounded,
+                                color: const Color(0xFFFFD206),
+                                size: (24 * scale).clamp(20.0, 28.0),
                               ),
                             ),
-                            child: Center(
-                              child: SizedBox(
-                                width: 34 * scale,
-                                height: 25 * scale,
-                                child: SvgPicture.asset(
-                                  'assets/New_chat.svg',
-                                  fit: BoxFit.contain,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _startNewChat,
+                            child: Container(
+                              width: 48 * scale,
+                              height: 48 * scale,
+                              decoration: BoxDecoration(
+                                color: const Color(0x29FFFFFF),
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                border: Border.all(
+                                  color: const Color(0x8FFFFFFF),
+                                  width: 1 * scale,
+                                ),
+                              ),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 34 * scale,
+                                  height: 25 * scale,
+                                  child: SvgPicture.asset(
+                                    'assets/New_chat.svg',
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: SizedBox(
-                width: double.infinity,
-                child: ClipRect(
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: Container(color: const Color(0xFFFF8E92)),
-                      ),
-                      Positioned(
-                        bottom: -84 * scale,
-                        left: -30 * scale,
-                        right: -30 * scale,
-                        child: ImageFiltered(
-                          imageFilter: ImageFilter.blur(
-                            sigmaX: 100 * scale,
-                            sigmaY: 100 * scale,
-                          ),
-                          child: Container(
-                            height: 240 * scale,
-                            color: const Color(0xFFFFDC92),
-                          ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: ClipRect(
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: _buildBottomBlurFadeOverlay(),
                         ),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          0,
-                          10 * scale,
-                          0,
-                          (8 * scale) + media.padding.bottom,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (!hasUserPrompted) ...[
-                              _buildSuggestionRow(
-                                scale: scale,
-                                prompts: firstRowPrompts,
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: SizedBox(
+                            width: contentWidth,
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                0,
+                                10 * scale,
+                                0,
+                                (8 * scale) + media.padding.bottom,
                               ),
-                              SizedBox(height: 8 * scale),
-                              _buildSuggestionRow(
-                                scale: scale,
-                                prompts: secondRowPrompts,
-                              ),
-                              SizedBox(height: 10 * scale),
-                            ],
-                            AnimatedPadding(
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeOut,
-                              padding: EdgeInsets.only(bottom: bottomInset),
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 16 * scale,
-                                ),
-                                child: Container(
-                                  height: 56 * scale,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0x52FFFFFF),
-                                    borderRadius: BorderRadius.circular(
-                                      32 * scale,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (!hasUserPrompted) ...[
+                                    _buildSuggestionRow(
+                                      scale: scale,
+                                      prompts: firstRowPrompts,
                                     ),
-                                    border: Border.all(
-                                      color: const Color(0x8FFFFFFF),
-                                      width: 1 * scale,
+                                    SizedBox(height: 8 * scale),
+                                    _buildSuggestionRow(
+                                      scale: scale,
+                                      prompts: secondRowPrompts,
                                     ),
-                                  ),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 16 * scale,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: _promptController,
-                                          textInputAction: TextInputAction.send,
-                                          onSubmitted: (_) => _sendPrompt(),
-                                          style: TextStyle(
-                                            fontFamily:
-                                                _defaultNonBorelFontFamily,
-                                            fontSize: (16 * scale).clamp(
-                                              14.0,
-                                              18.0,
-                                            ),
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          cursorColor: Colors.black,
-                                          decoration: InputDecoration(
-                                            border: InputBorder.none,
-                                            isCollapsed: true,
-                                            hintText: 'Ask',
-                                            hintStyle: TextStyle(
-                                              fontFamily:
-                                                  _defaultNonBorelFontFamily,
-                                              fontSize: (16 * scale).clamp(
-                                                14.0,
-                                                18.0,
-                                              ),
-                                              color: const Color(0x52000000),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
+                                    SizedBox(height: 10 * scale),
+                                  ],
+                                  AnimatedPadding(
+                                    duration: const Duration(milliseconds: 180),
+                                    curve: Curves.easeOut,
+                                    padding: EdgeInsets.only(bottom: bottomInset),
+                                    child: Container(
+                                      height: 56 * scale,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0x52FFFFFF),
+                                        borderRadius: BorderRadius.circular(
+                                          32 * scale,
+                                        ),
+                                        border: Border.all(
+                                          color: const Color(0x8FFFFFFF),
+                                          width: 1 * scale,
                                         ),
                                       ),
-                                      SizedBox(width: 8 * scale),
-                                      SizedBox(
-                                        width: 32 * scale,
-                                        height: 32 * scale,
-                                        child: _RotatingGlassButton(
-                                          scale: scale,
-                                          height: 32 * scale,
-                                          borderRadius: 16 * scale,
-                                          fillColor: canSendPrompt
-                                              ? Colors.white
-                                              : const Color(0x29FFFFFF),
-                                          enablePressShadeFeedback: true,
-                                          onTap: canSendPrompt
-                                              ? _sendPrompt
-                                              : () {},
-                                          showBorderLight: canSendPrompt,
-                                          child: _isAsking
-                                              ? SizedBox(
-                                                  width: 14 * scale,
-                                                  height: 14 * scale,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2 * scale,
-                                                    valueColor:
-                                                        const AlwaysStoppedAnimation<
-                                                          Color
-                                                        >(Colors.black),
-                                                  ),
-                                                )
-                                              : Icon(
-                                                  Icons.arrow_upward,
-                                                  color: Colors.black,
-                                                  size: (18 * scale).clamp(
-                                                    14.0,
-                                                    20.0,
-                                                  ),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 16 * scale,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextField(
+                                              controller: _promptController,
+                                              textInputAction:
+                                                  TextInputAction.send,
+                                              onSubmitted: (_) => _sendPrompt(),
+                                              style: TextStyle(
+                                                fontFamily:
+                                                    _defaultNonBorelFontFamily,
+                                                fontSize: (16 * scale).clamp(
+                                                  14.0,
+                                                  18.0,
                                                 ),
-                                        ),
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              cursorColor: Colors.black,
+                                              decoration: InputDecoration(
+                                                border: InputBorder.none,
+                                                isCollapsed: true,
+                                                hintText: 'Ask',
+                                                hintStyle: TextStyle(
+                                                  fontFamily:
+                                                      _defaultNonBorelFontFamily,
+                                                  fontSize: (16 * scale).clamp(
+                                                    14.0,
+                                                    18.0,
+                                                  ),
+                                                  color: const Color(
+                                                    0x52000000,
+                                                  ),
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8 * scale),
+                                          SizedBox(
+                                            width: 32 * scale,
+                                            height: 32 * scale,
+                                            child: _RotatingGlassButton(
+                                              scale: scale,
+                                              height: 32 * scale,
+                                              borderRadius: 16 * scale,
+                                              fillColor: canSendPrompt
+                                                  ? Colors.white
+                                                  : const Color(0x29FFFFFF),
+                                              enablePressShadeFeedback: true,
+                                              onTap: canSendPrompt
+                                                  ? _sendPrompt
+                                                  : () {},
+                                              showBorderLight: canSendPrompt,
+                                              child: _isAsking
+                                                  ? SizedBox(
+                                                      width: 14 * scale,
+                                                      height: 14 * scale,
+                                                      child: CircularProgressIndicator(
+                                                        strokeWidth: 2 * scale,
+                                                        valueColor:
+                                                            const AlwaysStoppedAnimation<
+                                                              Color
+                                                            >(Colors.black),
+                                                      ),
+                                                    )
+                                                  : Icon(
+                                                      Icons.arrow_upward,
+                                                      color: Colors.black,
+                                                      size: (18 * scale).clamp(
+                                                        14.0,
+                                                        20.0,
+                                                      ),
+                                                    ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
