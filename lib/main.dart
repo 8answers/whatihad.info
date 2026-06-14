@@ -582,12 +582,6 @@ Widget _buildProgressiveBottomBlurSlice({
   );
 }
 
-bool _isCompactIPhoneLayout(_SceneMetrics metrics) {
-  return !kIsWeb &&
-      defaultTargetPlatform == TargetPlatform.iOS &&
-      math.min(metrics.width, metrics.height) < 600;
-}
-
 DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 
 TimeOfDay _currentLocalTimeOfDay() {
@@ -648,11 +642,7 @@ double _actionControlsBottomInset({
   required _SceneMetrics metrics,
   required double scale,
 }) {
-  if (_isCompactIPhoneLayout(metrics)) {
-    // Keep action rows just above iPhone safe area.
-    return metrics.padding.bottom + (8 * scale);
-  }
-  return math.max(66 * scale, metrics.padding.bottom + (26 * scale));
+  return metrics.padding.bottom + (8 * scale);
 }
 
 class _OnboardingSkipFlags {
@@ -3566,9 +3556,9 @@ class _AccountTermsScreenState extends State<AccountTermsScreen>
           final contentLeft = (metrics.width - contentWidth) / 2;
           final titleTop = metrics.padding.top + (52 * scale);
           final linksTop = titleTop + (84 * scale);
-          final bottomButtonBottom = math.max(
-            66 * scale,
-            metrics.padding.bottom + (26 * scale),
+          final bottomButtonBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
           );
 
           return Stack(
@@ -11641,13 +11631,10 @@ class _DailyProgressScreenState extends State<DailyProgressScreen>
           final titleTop = metrics.padding.top + (18 * scale);
           final contentTop =
               titleTop + ((_isHistoryViewOpen ? 74 : 66) * scale);
-          final isIPhone =
-              !kIsWeb &&
-              defaultTargetPlatform == TargetPlatform.iOS &&
-              math.min(metrics.width, metrics.height) < 600;
-          final controlsBottom = isIPhone
-              ? metrics.padding.bottom
-              : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
           final navHeight = 64 * scale;
           final blurPanelHeight = navHeight + controlsBottom;
           final showFloatingBanana = !_isHistoryViewOpen;
@@ -14160,6 +14147,10 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
             );
             final contentLeft = (metrics.width - contentWidth) / 2;
             final titleTop = metrics.padding.top + (18 * scale);
+            final controlsBottom = _actionControlsBottomInset(
+              metrics: metrics,
+              scale: scale,
+            );
 
             return Stack(
               children: [
@@ -14263,7 +14254,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
                                 0,
                                 10 * scale,
                                 0,
-                                (8 * scale) + media.padding.bottom,
+                                controlsBottom,
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -15237,13 +15228,10 @@ class _TodaysEntryScreenState extends State<TodaysEntryScreen>
           );
           final contentLeft = (metrics.width - contentWidth) / 2;
           final contentTop = metrics.padding.top + (16 * scale);
-          final isIPhone =
-              !kIsWeb &&
-              defaultTargetPlatform == TargetPlatform.iOS &&
-              math.min(metrics.width, metrics.height) < 600;
-          final controlsBottom = isIPhone
-              ? metrics.padding.bottom
-              : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
           final navHeight = 64 * scale;
           final blurPanelHeight = (navHeight - (8 * scale)) + controlsBottom;
           final effectiveBottomOverlayHeight = isKeyboardVisible
@@ -22506,13 +22494,10 @@ class _AccountScreenState extends State<AccountScreen>
           final contentLeft = (metrics.width - contentWidth) / 2;
           final titleTop = metrics.padding.top + (18 * scale);
           final contentTop = titleTop + (58 * scale);
-          final isIPhone =
-              !kIsWeb &&
-              defaultTargetPlatform == TargetPlatform.iOS &&
-              math.min(metrics.width, metrics.height) < 600;
-          final controlsBottom = isIPhone
-              ? metrics.padding.bottom
-              : math.max(66 * scale, metrics.padding.bottom + (26 * scale));
+          final controlsBottom = _actionControlsBottomInset(
+            metrics: metrics,
+            scale: scale,
+          );
           final navHeight = 64 * scale;
           final blurPanelHeight = navHeight + controlsBottom;
           final scrollBottomPadding = blurPanelHeight + (24 * scale);
