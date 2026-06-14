@@ -13918,7 +13918,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
           padding: EdgeInsets.only(bottom: 10 * scale),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(14 * scale),
@@ -14028,7 +14028,7 @@ class _BellyoAssistantScreenState extends State<BellyoAssistantScreen>
       alignment: Alignment.centerLeft,
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(14 * scale),
